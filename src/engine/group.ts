@@ -502,6 +502,9 @@ export class GroupEngine {
     const real = this.local.mirror.filter((m) => m.localId);
     const lost = real.filter((m) => !live.has(m.localId));
     if (lost.length < 3 || lost.length < real.length * 0.3) return true;
+    const known = new Set([...this.local.idmap.map(([l]) => l), ...this.local.excluded.map(([l]) => l), ...this.roots.map((r) => this.localRoot(r))]);
+    const unmapped = [...live.keys()].filter((l) => !known.has(l)).length;
+    if (unmapped < lost.length * 0.5) return true;
 
     const mirror = new Map(this.local.mirror.map((m) => [m.id, { ...m }]));
     const taken = new Set(real.filter((m) => live.has(m.localId)).map((m) => m.localId));
