@@ -35,10 +35,12 @@ const icons = { 'brand-google-drive': brandGoogleDrive, server, bookmarks, 'chev
 
 export type IconName = keyof typeof icons;
 
+const parser = new DOMParser();
+
 export function icon(name: IconName, cls = ''): HTMLSpanElement {
   const span = document.createElement('span');
   span.className = `icon ${cls}`.trim();
   span.setAttribute('aria-hidden', 'true');
-  span.innerHTML = icons[name];
+  span.append(document.importNode(parser.parseFromString(icons[name], 'image/svg+xml').documentElement, true));
   return span;
 }
