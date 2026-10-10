@@ -20,7 +20,7 @@ interface Profile {
   page: Page;
 }
 
-async function launch(): Promise<Profile> {
+async function launch(): Promise<Profile & { id: string }> {
   const context = await chromium.launchPersistentContext(mkdtempSync(join(tmpdir(), 'bsync-e2e-')), {
     channel: 'chromium',
     headless: true,
@@ -30,8 +30,9 @@ async function launch(): Promise<Profile> {
   worker ??= await context.waitForEvent('serviceworker');
   const id = new URL(worker.url()).host;
   const page = await context.newPage();
+  page.setDefaultTimeout(20_000);
   await page.goto(`chrome-extension://${id}/options.html`);
-  return { context, page };
+  return { context, page, id };
 }
 
 async function command<T>(p: Profile, cmd: unknown): Promise<T> {
@@ -131,6 +132,47 @@ describe('the extension in two Chromium profiles', () => {
       await command(b, { t: 'syncNow' });
       expect(await bar(a)).toEqual([['Recipes', ['Pasta']]]);
       expect(await bar(b)).toEqual([['Recipes', ['Pasta']]]);
+    } finally {
+      await a.context.close();
+      await b.context.close();
+    }
+  });
+  it('sets up one browser and joins another through the setup pages (checklist 1, 9)', async () => {
+    const a = await launch();
+    const b = await launch();
+    const connect = async (p: Profile, password: string) => {
+      await p.page.getByLabel('Server address').fill(`http://127.0.0.1:${port}/`);
+      await p.page.getByLabel('Username').fill('e2e');
+      await p.page.getByLabel('Password', { exact: true }).fill(password);
+      await p.page.getByRole('button', { name: 'Connect' }).click();
+    };
+    try {
+      await create(a, { title: 'Alpha', url: 'https://alpha.example/' });
+      await a.page.goto(`chrome-extension://${a.id}/options.html#setup`);
+      await a.page.getByText('Your own server').click();
+      await connect(a, 'wrong');
+      await expect.poll(() => a.page.locator('.error').innerText(), { timeout: 15_000 }).toMatch(/didn’t accept the sign-in/);
+      await a.page.getByLabel('Password', { exact: true }).fill('pw');
+      await a.page.getByRole('button', { name: 'Connect' }).click();
+      await a.page.getByText('Name this sync').waitFor();
+      await a.page.getByRole('button', { name: 'Continue' }).click();
+      await a.page.getByRole('button', { name: 'Start syncing' }).click();
+      await a.page.getByText('Your bookmarks are syncing').waitFor();
+      await a.page.getByRole('button', { name: 'Open the dashboard' }).click();
+      await a.page.getByRole('tab', { name: 'Overview' }).waitFor();
+
+      await create(b, { title: 'Beta', url: 'https://beta.example/' });
+      await b.page.goto(`chrome-extension://${b.id}/options.html#setup`);
+      await b.page.getByText('Your own server').click();
+      await connect(b, 'pw');
+      await b.page.getByText('Join your synced bookmarks').waitFor();
+      await b.page.locator('.choice').first().click();
+      await expect.poll(() => b.page.locator('.banner.info').innerText(), { timeout: 15_000 }).toMatch(/gets 1 item/);
+      await b.page.getByRole('button', { name: 'Join and sync' }).click();
+      await b.page.getByText('Your bookmarks are syncing').waitFor();
+      await command(a, { t: 'syncNow' });
+      expect(await bar(b)).toEqual(['Alpha', 'Beta']);
+      expect(await bar(a)).toEqual(['Alpha', 'Beta']);
     } finally {
       await a.context.close();
       await b.context.close();
