@@ -489,8 +489,8 @@ export class GroupEngine {
 
   /**
    * Chromium can give every bookmark a new local ID (for example when native sync reloads its data).
-   * Mirror entries whose local ID vanished are matched again by parent, kind, title and URL; if most
-   * cannot be matched the group pauses instead of recording a mass delete and re-create.
+   * Mirror entries whose local ID vanished are matched again by parent, kind, title and URL. If most
+   * cannot be matched it was an ordinary delete-and-add, which reconcile records as usual.
    */
   private async rebuildIdMapIfLost(): Promise<boolean> {
     const live = new Map<string, LiveNode>();
@@ -522,10 +522,7 @@ export class GroupEngine {
       localOf.set(n.id, c.localId);
       rematched++;
     }
-    if (rematched < lost.length * 0.5) {
-      await this.pause('needs-join', `${lost.length - rematched} of ${real.length} items could not be matched`);
-      return false;
-    }
+    if (rematched < lost.length * 0.5) return true;
     this.local.mirror = [...mirror.values()];
     this.local.idmap = [...mirror.values()].filter((m) => m.localId).map((m) => [m.localId, m.id]);
     return true;

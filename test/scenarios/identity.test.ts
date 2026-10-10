@@ -173,18 +173,19 @@ describe('local bookmark IDs changing', () => {
     expect(titles(a)).toContain('renamed after');
   });
 
-  it('pauses for a new join when renumbered bookmarks cannot be matched', async () => {
+  it('treats deleting a folder and adding new bookmarks as ordinary edits, not a renumbering', async () => {
     const sim = new Simulator({ devices: 2, seed: 30 });
     await sim.setup();
     const [a, b] = sim.devices as [SimDevice, SimDevice];
-    for (let i = 0; i < 6; i++) await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.other, kind: 'bookmark', title: `b${i}`, url: `https://b${i}.example/` });
+    const f = await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Old', url: '' });
+    for (let i = 0; i < 10; i++) await a.bookmarks.userCreate({ parentId: f, kind: 'bookmark', title: `old${i}`, url: `https://old${i}.example/` });
     await sim.quiet();
-    b.bookmarks.reassignIds('renumbered_');
-    for (const c of (await b.bookmarks.getSubTree(FAKE_ROOTS.other)).children!) await b.bookmarks.update(c.localId, { title: `changed ${c.title}` });
-    await sim.sync(b);
-    expect(b.engine.status).toMatchObject({ state: 'paused', reason: 'needs-join' });
+    const fb = (await b.bookmarks.getSubTree(FAKE_ROOTS.other)).children![0]!.localId;
+    await b.bookmarks.removeTree(fb);
+    for (let i = 0; i < 6; i++) await b.bookmarks.userCreate({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: `new${i}`, url: `https://new${i}.example/` });
     await sim.quiet();
-    expect(titles(a)).toEqual(['b0', 'b1', 'b2', 'b3', 'b4', 'b5']);
+    expect(b.engine.status.state).toBe('active');
+    expect(titles(a)).toEqual(['new0', 'new1', 'new2', 'new3', 'new4', 'new5']);
   });
 });
 
