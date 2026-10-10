@@ -7,6 +7,7 @@ import {
   type GroupConfig,
   type GroupLocal,
   type GroupStore,
+  type JoinOptions,
 } from '../../src/engine/group.js';
 import { MemoryProvider, type MemoryFaults } from '../../src/storage/memory.js';
 import { FAKE_ROOTS, FakeBookmarks } from './fakeBookmarks.js';
@@ -55,6 +56,7 @@ export interface SimOptions {
   passphrase?: string;
   chromiumDevices?: number[];
   guardPolicy?: 'apply' | 'revert';
+  visibilityDelayMs?: number;
 }
 
 export const GROUP_ID = 'g0';
@@ -70,7 +72,9 @@ export class Simulator {
 
   constructor(readonly options: SimOptions) {
     this.rng = mulberry32(options.seed);
-    const faults: MemoryFaults = options.faults
+    const faults: MemoryFaults = options.visibilityDelayMs
+      ? { visibilityDelay: () => (this.faultsOn ? options.visibilityDelayMs! : 0) }
+      : options.faults
       ? {
           visibilityDelay: () => (this.faultsOn && this.rng() < 0.3 ? Math.floor(this.rng() * 20_000) : 0),
           loseCreateResponse: () => this.faultsOn && this.rng() < 0.1,
@@ -133,6 +137,39 @@ export class Simulator {
       this.devices.push(d);
     }
     this.faultsOn = true;
+  }
+
+  /** Add a device whose bookmarks are filled in first, then create or join the group. */
+  async addDevice(
+    name: string,
+    fill: (bm: FakeBookmarks) => Promise<void>,
+    how: { create: true; ignoreDefaults?: boolean } | { create?: false; join: JoinOptions },
+    browser: GroupConfig['browser'] = 'firefox',
+  ): Promise<SimDevice> {
+    const d = this.makeDevice(name);
+    await fill(d.bookmarks);
+    const config = { ...this.config(d), browser };
+    if (how.create) {
+      const { encrypted: _e, ...rest } = config;
+      const res = await GroupEngine.create(d.ports, rest, { passphrase: this.options.passphrase, iterations: 1000, ignoreDefaults: how.ignoreDefaults ?? false });
+      d.engine = res.engine;
+      if (res.key) d.keys.set(GROUP_ID, res.key);
+    } else {
+      if (this.options.passphrase) d.keys.set(GROUP_ID, this.devices[0]!.keys.get(GROUP_ID)!);
+      d.engine = await GroupEngine.join(d.ports, config, how.join, d.keys.get(GROUP_ID) ?? null);
+    }
+    this.devices.push(d);
+    return d;
+  }
+
+  async preview(name: string, fill: (bm: FakeBookmarks) => Promise<void>, opts: JoinOptions) {
+    const d = this.makeDevice(name);
+    await fill(d.bookmarks);
+    return GroupEngine.preview(d.ports, this.config(d), opts, this.devices[0]?.keys.get(GROUP_ID) ?? null);
+  }
+
+  enableFaults(on = true): void {
+    this.faultsOn = on;
   }
 
   advance(ms: number): void {
