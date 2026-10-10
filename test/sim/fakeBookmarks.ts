@@ -135,6 +135,19 @@ export class FakeBookmarks implements BookmarksPort {
     return false;
   }
 
+  /** Give every bookmark a new local ID, as Chromium may when native sync reloads its data. */
+  reassignIds(prefix: string): void {
+    const fixed = new Set([FAKE_TOP, ...Object.values(FAKE_ROOTS)]);
+    const map = new Map<string, string>();
+    for (const id of this.nodes.keys()) map.set(id, fixed.has(id) ? id : `${prefix}${++this.counter}`);
+    const next = new Map<string, FakeNode>();
+    for (const n of this.nodes.values()) {
+      const id = map.get(n.id)!;
+      next.set(id, { ...n, id, parent: n.parent && map.get(n.parent)!, children: n.children.map((c) => map.get(c)!) });
+    }
+    this.nodes = next;
+  }
+
   clone(prefix: string): FakeBookmarks {
     const c = new FakeBookmarks(prefix, { separators: this.supportsSeparators });
     c.nodes = new Map([...this.nodes].map(([k, v]) => [k, { ...v, children: [...v.children] }]));

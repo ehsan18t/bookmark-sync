@@ -148,3 +148,39 @@ describe('lost upload response', () => {
     expect(sim.provider.overwrittenPaths()).toEqual([]);
   });
 });
+
+describe('local bookmark IDs changing', () => {
+  it('rebuilds the ID map when the browser renumbers its bookmarks, recording nothing', async () => {
+    const sim = new Simulator({ devices: 2, seed: 29 });
+    await sim.setup();
+    const [a, b] = sim.devices as [SimDevice, SimDevice];
+    const folder = await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'F', url: '' });
+    for (let i = 0; i < 6; i++) await a.bookmarks.userCreate({ parentId: folder, kind: 'bookmark', title: `b${i}`, url: `https://b${i}.example/` });
+    await sim.quiet();
+    const before = b.engine.state.ops.length;
+    b.bookmarks.reassignIds('renumbered_');
+    await sim.quiet();
+    expect(b.engine.state.ops.length).toBe(before);
+    expect(b.engine.status.state).toBe('active');
+    expect(sim.canonicalMirror(a)).toEqual(sim.canonicalMirror(b));
+    const f = (await b.bookmarks.getSubTree(FAKE_ROOTS.other)).children![0]!;
+    await b.bookmarks.update(f.children![0]!.localId, { title: 'renamed after' });
+    await sim.quiet();
+    expect(titles(a)).toContain('renamed after');
+  });
+
+  it('pauses for a new join when renumbered bookmarks cannot be matched', async () => {
+    const sim = new Simulator({ devices: 2, seed: 30 });
+    await sim.setup();
+    const [a, b] = sim.devices as [SimDevice, SimDevice];
+    for (let i = 0; i < 6; i++) await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.other, kind: 'bookmark', title: `b${i}`, url: `https://b${i}.example/` });
+    await sim.quiet();
+    b.bookmarks.reassignIds('renumbered_');
+    for (const c of (await b.bookmarks.getSubTree(FAKE_ROOTS.other)).children!) await b.bookmarks.update(c.localId, { title: `changed ${c.title}` });
+    await sim.sync(b);
+    expect(b.engine.status).toMatchObject({ state: 'paused', reason: 'needs-join' });
+    await sim.quiet();
+    expect(titles(a)).toEqual(['b0', 'b1', 'b2', 'b3', 'b4', 'b5']);
+  });
+});
+

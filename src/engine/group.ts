@@ -468,6 +468,7 @@ export class GroupEngine {
   async recordLocalChanges(opts: { confirmed?: boolean } = {}): Promise<number> {
     if (this.importing) return 0;
     if (this.local.applyInProgress) await this.adoptInterruptedApply();
+    if (!(await this.rebuildIdMapIfLost())) return 0;
     const result = reconcile({
       roots: await this.liveRoots(),
       mirror: this.mirror(),
@@ -484,6 +485,47 @@ export class GroupEngine {
     if (result.released.length) this.local.excluded = this.local.excluded.filter(([l]) => !result.released.includes(l));
     await this.persist();
     return result.drafts.length;
+  }
+
+  /**
+   * Chromium can give every bookmark a new local ID (for example when native sync reloads its data).
+   * Mirror entries whose local ID vanished are matched again by parent, kind, title and URL; if most
+   * cannot be matched the group pauses instead of recording a mass delete and re-create.
+   */
+  private async rebuildIdMapIfLost(): Promise<boolean> {
+    const live = new Map<string, LiveNode>();
+    const index = (n: LiveNode) => {
+      live.set(n.localId, n);
+      for (const c of n.children ?? []) index(c);
+    };
+    for (const r of await this.liveRoots()) index(r.live);
+    const real = this.local.mirror.filter((m) => m.localId);
+    const lost = real.filter((m) => !live.has(m.localId));
+    if (lost.length < 3 || lost.length < real.length * 0.3) return true;
+
+    const mirror = new Map(this.local.mirror.map((m) => [m.id, { ...m }]));
+    const taken = new Set(real.filter((m) => live.has(m.localId)).map((m) => m.localId));
+    const localOf = new Map<string, string>(this.roots.map((r) => [r, this.localRoot(r)]));
+    for (const m of mirror.values()) if (m.localId && live.has(m.localId)) localOf.set(m.id, m.localId);
+    let rematched = 0;
+    for (const t of preorder({ roots: this.roots, nodes: mirror })) {
+      const n = mirror.get(t.id)!;
+      if (!n.localId || live.has(n.localId)) continue;
+      const parent = localOf.get(n.parent);
+      const c = parent && live.get(parent)?.children?.find((x) => !taken.has(x.localId) && x.kind === n.kind && x.title === n.title && (n.kind !== 'bookmark' || x.url === n.url));
+      if (!c) continue;
+      taken.add(c.localId);
+      mirror.get(n.id)!.localId = c.localId;
+      localOf.set(n.id, c.localId);
+      rematched++;
+    }
+    if (rematched < lost.length * 0.5) {
+      await this.pause('needs-join', `${lost.length - rematched} of ${real.length} items could not be matched`);
+      return false;
+    }
+    this.local.mirror = [...mirror.values()];
+    this.local.idmap = [...mirror.values()].filter((m) => m.localId).map((m) => [m.localId, m.id]);
+    return true;
   }
 
   private async adoptInterruptedApply(): Promise<void> {
