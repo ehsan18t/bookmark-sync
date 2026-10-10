@@ -2,6 +2,23 @@
 
 This document turns [SPEC.md](SPEC.md) (draft 3) into code-level design: modules, data formats, algorithms, browser and provider details, testing and milestones. The spec says what the extension does; this says how. When they disagree, the spec wins and this document gets fixed.
 
+## As built
+
+Every milestone below is implemented. Where the code ended up differing from this plan:
+
+- **Local state** is one IndexedDB record per group holding the whole `GroupLocal` object (`src/engine/group.ts`), plus a `meta` record and a `keys` store, instead of the many stores in section 5. Each queue task writes the record once at its end.
+- **The queue** lives in `SyncApp` (`src/engine/app.ts`). Bookmark events only schedule a sync 3 seconds later; reconcile always compares the whole mapped tree rather than only dirty folders.
+- **Crash recovery during apply** uses a persisted apply-in-progress flag instead of a step journal: after an interrupted apply, local items that match merged nodes missing from the mirror (same parent, kind, title and URL) are adopted before reconcile runs.
+- **Restore** checks every plan by simulation and patches it until the result is exact (`planRestoreExact`), because re-placing a folder can expose descendants an older delete hid only through it.
+- **The large change guard** counts only existing items that would be removed, moved or edited; additions never trigger it.
+- **Device files:** `device.json` also carries the device's base frontier, its first retained batch, versions of its markers (so readers fetch a marker only when it changes) and `forkOf` notices for device ID rotations.
+- **Profile copies:** besides `createOnce` reporting a different existing batch, every cycle checks the device's newest batches for duplicates, which is how simultaneous uploads by two copies show up on Google Drive. Both copies then rotate with `dropOld`, and readers drop the old ID's ops from the reported point.
+- **WebDAV** uploads to a `.tmp-*` file in the same folder and moves it into place; listings skip those names. Leftover temporary files are not swept yet.
+- **Google Drive** stores each file's path, folder, group and kind as the appProperties `p`, `dir`, `g` and `k`. The cheap `changes.list` idle check is not implemented; each cycle lists devices and reads their `device.json`.
+- **The UI** talks to the background with `runtime.sendMessage` only; there is no long-lived port.
+- **The default bookmarks list** is data inside `src/core/defaults.ts`.
+- **Firefox** requires version 140 (for `data_collection_permissions`), not 128.
+
 ## 1. Stack and repository layout
 
 - TypeScript (strict), WXT for building Chromium (MV3 service worker) and Firefox (MV3 event page) packages from one codebase. Firefox must be built with `manifestVersion: 3`, because WXT defaults to MV2 for Firefox.
