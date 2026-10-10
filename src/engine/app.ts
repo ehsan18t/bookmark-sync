@@ -101,6 +101,7 @@ export interface GroupSummary {
   migration: { waitingFor: string[]; initiator: boolean } | null;
   restorePoints: RestorePoint[];
   oldestRestorable: string;
+  canUndoJoin: boolean;
 }
 
 export class SyncApp {
@@ -353,6 +354,7 @@ export class SyncApp {
           migration: m ? { waitingFor: m.waitingFor, initiator: m.initiator } : null,
           restorePoints: e.state.restorePoints,
           oldestRestorable: e.oldestRestorable,
+          canUndoJoin: !!e.state.join && !e.state.join.created,
         });
       }
       return out;

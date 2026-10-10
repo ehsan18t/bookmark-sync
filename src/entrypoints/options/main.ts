@@ -84,10 +84,12 @@ function groupCard(g: GroupSummary) {
       action('Devices', async () => detail.replaceChildren(await devicesPanel(g)), { kind: 'quiet' }),
       action('Encryption', async () => detail.replaceChildren(encryptionPanel(g)), { kind: 'quiet' }),
       action('Leave', async () => (await send({ t: 'leave', groupId: g.groupId }), refresh()), { kind: 'quiet', confirm: 'Stop syncing this group here? Your bookmarks stay as they are.' }),
-      action('Undo join', async () => (await send({ t: 'undoJoin', groupId: g.groupId }), refresh()), {
-        kind: 'quiet',
-        confirm: 'Remove what this browser added to the group, put this browser’s bookmarks back as they were before joining, and leave?',
-      }),
+      g.canUndoJoin
+        ? action('Undo join', async () => (await send({ t: 'undoJoin', groupId: g.groupId }), refresh()), {
+            kind: 'quiet',
+            confirm: 'Remove what this browser added to the group, put this browser’s bookmarks back as they were before joining, and leave?',
+          })
+        : null,
       action('Delete everywhere', async () => (await send({ t: 'deleteEverywhere', groupId: g.groupId }), refresh()), {
         kind: 'danger',
         confirm: 'Delete this group for every browser? Bookmarks stay in each browser, but nothing syncs any more.',
@@ -126,6 +128,9 @@ function pauseBanner(g: GroupSummary) {
   return h('div', { class: 'banner' }, text, buttons);
 }
 
+/** The latest HLC that sorts before `hlc`: one millisecond earlier, after every op in that millisecond. */
+const justBefore = (hlc: string) => `${String(Number(hlc.slice(0, 15)) - 1).padStart(15, '0')}-999999-~`;
+
 async function historyPanel(g: GroupSummary) {
   const entries = await send<TimelineEntry[]>({ t: 'timeline', groupId: g.groupId });
   const devices = await send<{ deviceId: string; name: string }[]>({ t: 'devices', groupId: g.groupId });
@@ -150,8 +155,8 @@ async function historyPanel(g: GroupSummary) {
     h(
       'ul',
       { class: 'list' },
-      ...entries.map((e, i) =>
-        h('li', { class: 'row spread' }, h('span', {}, `${hlcTime(e.to)} · ${name(e.device)} · ${describe(e.kinds)}`), entries[i + 1] ? action('Restore to before this', () => restoreTo(entries[i + 1]!.to)) : null),
+      ...entries.map((e) =>
+        h('li', { class: 'row spread' }, h('span', {}, `${hlcTime(e.to)} · ${name(e.device)} · ${describe(e.kinds)}`), e.from > g.oldestRestorable ? action('Restore to before this', () => restoreTo(justBefore(e.from))) : null),
       ),
     ),
   );

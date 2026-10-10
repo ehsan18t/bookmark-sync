@@ -155,8 +155,9 @@ export interface RestorePoint {
 }
 
 interface JoinRecord {
+  created: boolean;
   restorePoint: Hlc;
-  created: string[];
+  nodes: string[];
   local: { groupRoot: string; live: LiveNode }[];
 }
 
@@ -222,6 +223,7 @@ export class ForkError extends Error {}
 export interface JoinOptions {
   mode: 'merge' | 'replace';
   ignoreDefaults: boolean;
+  creating?: boolean;
   excluded?: [string, Excluded][];
 }
 
@@ -330,7 +332,7 @@ export class GroupEngine {
     const res = await ports.provider.createOnce(groupHeaderPath(config.groupId), await encode('group', header));
     if (res.status !== 'created') throw new Error('a group with this ID already exists');
     const engine = new GroupEngine(ports, freshLocal({ ...config, encrypted: !!encryption }), key);
-    await engine.performJoin({ mode: 'merge', ignoreDefaults: opts.ignoreDefaults ?? false, excluded: opts.excluded ?? [] });
+    await engine.performJoin({ mode: 'merge', ignoreDefaults: opts.ignoreDefaults ?? false, excluded: opts.excluded ?? [], creating: true });
     return { engine, key };
   }
 
@@ -995,8 +997,8 @@ export class GroupEngine {
 
     this.local.excluded = [...excluded];
     const restorePoint = this.clock.tick();
-    this.local.join = { restorePoint, created: plan.drafts.map((d) => d.node), local: roots };
-    this.local.restorePoints.push({ hlc: restorePoint, label: 'Before joining', at: this.ports.clock.now() });
+    this.local.join = { created: !!opts.creating, restorePoint, nodes: plan.drafts.map((d) => d.node), local: roots };
+    this.local.restorePoints.push({ hlc: restorePoint, label: opts.creating ? 'Before creating the group' : 'Before joining', at: this.ports.clock.now() });
     for (const n of removable) await this.ports.bookmarks.removeTree(n.localId);
     this.recordDrafts(plan.drafts, true);
     this.local.mirror = [...plan.mirror.values()];
@@ -1035,10 +1037,10 @@ export class GroupEngine {
 
   async undoJoin(): Promise<void> {
     const j = this.local.join;
-    if (!j) throw new Error('this group was not joined from this browser');
+    if (!j || j.created) throw new Error('this group was not joined from this browser');
     await this.recordLocalChanges();
     const then = visibleTree(replay(this.baseState(), this.local.ops.filter((op) => op.hlc <= j.restorePoint)), this.roots);
-    this.recordRestore(then, new Set(j.created));
+    this.recordRestore(then, new Set(j.nodes));
     this.guardBypass = true;
     try {
       await this.pull();
