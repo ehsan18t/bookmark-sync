@@ -351,7 +351,7 @@ export class SyncApp {
           name: c.name,
           accountId: c.accountId,
           mode: c.mode,
-          location: c.mode === 'folder' ? await this.deps.roots.pathOf(c.mapping['root:group']!) : 'Whole bookmark tree',
+          location: c.mode === 'folder' ? await this.deps.roots.pathOf(c.mapping['root:group']!) : 'All bookmarks',
           encrypted: c.encrypted,
           bookmarks: [...e.mirror().nodes.values()].filter((n) => n.kind === 'bookmark').length,
           status: e.status,
