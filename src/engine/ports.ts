@@ -7,6 +7,7 @@ export class DuplicateFileError extends Error {}
 
 export interface StorageProvider {
   listGroups(): Promise<string[]>;
+  /** Devices that have published a device.json in this group. */
   listDevices(group: string): Promise<string[]>;
   get(path: string): Promise<Uint8Array | null>;
   createOnce(path: string, data: Uint8Array): Promise<CreateOnceResult>;

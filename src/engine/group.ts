@@ -715,6 +715,7 @@ export class GroupEngine {
     const { provider } = this.ports;
     const { groupId } = this.local.config;
     this.restampBelow(hlcFloor(provider.serverDate() - this.settings.restampAfterMs));
+    if (this.local.ownBatches.length) await this.checkOwnDuplicates();
     let pushed = 0;
     for (let guard = 0; guard < 100; guard++) {
       if (!this.local.pendingBatch) {
@@ -737,6 +738,24 @@ export class GroupEngine {
       await this.persist();
     }
     return pushed;
+  }
+
+  /**
+   * On Drive two copies of a profile can upload the same batch number at once without either seeing
+   * the other. Both find the duplicate here and rotate, republishing from the first duplicated batch.
+   */
+  private async checkOwnDuplicates(): Promise<void> {
+    let earliest: { batchNo: number; firstOpSeq: number } | null = null;
+    for (const b of this.local.ownBatches.slice(-20).reverse()) {
+      try {
+        await this.ports.provider.get(batchPath(this.groupId, this.deviceId, b.batchNo));
+        if (earliest) break;
+      } catch (e) {
+        if (!(e instanceof DuplicateFileError)) throw e;
+        earliest = b;
+      }
+    }
+    if (earliest) await this.rotateDevice(earliest.firstOpSeq, true);
   }
 
   private async freezeBatch(): Promise<void> {

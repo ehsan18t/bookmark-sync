@@ -2,7 +2,9 @@ import { createRequire } from 'node:module';
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { StorageProvider } from '../../src/engine/ports.js';
+import { DriveProvider } from '../../src/storage/gdrive.js';
 import { MemoryProvider } from '../../src/storage/memory.js';
+import { FakeDrive } from '../sim/fakeDrive.js';
 import { parseMultistatus, ProviderAuthError, WebDavProvider } from '../../src/storage/webdav.js';
 
 const require = createRequire(import.meta.url);
@@ -47,6 +49,7 @@ function contract(name: string, make: () => StorageProvider) {
       await p.createOnce('groups/g2/group.json', bytes('h'));
       await p.overwrite('groups/g2/devices/a/device.json', bytes('v1'));
       await p.overwrite('groups/g2/devices/a/device.json', bytes('v2'));
+      await p.overwrite('groups/g2/devices/b/device.json', bytes('b'));
       await p.createOnce('groups/g2/devices/b/batches/000000000001.json', bytes('b1'));
       await p.createOnce('groups/g2/devices/b/batches/000000000002.json', bytes('b2'));
       expect(text(await p.get('groups/g2/devices/a/device.json'))).toBe('v2');
@@ -75,6 +78,34 @@ contract('memory', () => {
   return m.client();
 });
 contract('webdav', () => new WebDavProvider({ url: `http://127.0.0.1:${port}/bsync-${Math.random().toString(36).slice(2)}/`, username: 'test', password: 'secret' }));
+
+contract('google drive (fake API)', () => {
+  const drive = new FakeDrive();
+  return new DriveProvider({ token: async () => 'good', refresh: async () => 'good' }, drive.fetch);
+});
+
+describe('google drive specifics', () => {
+  it('refreshes an expired token once and retries', async () => {
+    const drive = new FakeDrive();
+    let refreshed = 0;
+    let token = 'expired';
+    const p = new DriveProvider({ token: async () => token, refresh: async () => (refreshed++, (token = 'good')) }, drive.fetch);
+    await p.overwrite('groups/g/devices/d/device.json', bytes('x'));
+    await p.overwrite('groups/g/devices/d/device.json', bytes('x'));
+    expect(refreshed).toBe(1);
+  });
+
+  it('reports duplicate files for one path, which is how profile copies show up on Drive', async () => {
+    const { DuplicateFileError } = await import('../../src/engine/ports.js');
+    const drive = new FakeDrive();
+    const auth = { token: async () => 'good', refresh: async () => 'good' };
+    const one = new DriveProvider(auth, drive.fetch);
+    const two = new DriveProvider(auth, drive.fetch);
+    const path = 'groups/g/devices/d/batches/000000000001.json';
+    await Promise.all([one.createOnce(path, bytes('a')), two.createOnce(path, bytes('b'))]);
+    await expect(one.get(path)).rejects.toBeInstanceOf(DuplicateFileError);
+  });
+});
 
 describe('webdav specifics', () => {
   it('rejects bad credentials with an auth error', async () => {
@@ -138,5 +169,76 @@ describe('engine over WebDAV', () => {
     expect(await titles(a.bookmarks)).toEqual(['from b', 'over http']);
     expect(await titles(b.bookmarks)).toEqual(['from b', 'over http']);
     expect(ea.status.state).toBe('active');
+  });
+});
+
+describe('profile copies on Google Drive', () => {
+  it('two copies uploading the same batch number at once both rotate and no edit is lost', async () => {
+    const { GroupEngine } = await import('../../src/engine/group.js');
+    const { FakeBookmarks, FAKE_ROOTS } = await import('../sim/fakeBookmarks.js');
+    const { MemoryStore } = await import('../sim/simulator.js');
+    const drive = new FakeDrive();
+    let racing = false;
+    let waiting: (() => void)[] = [];
+    const racyFetch: typeof fetch = async (input, init) => {
+      if (racing && init?.method === 'POST' && String(input).includes('/upload/')) {
+        await new Promise<void>((resolve) => {
+          waiting.push(resolve);
+          if (waiting.length === 2) {
+            waiting.forEach((r) => r());
+            waiting = [];
+          }
+          setTimeout(resolve, 500);
+        });
+      }
+      return drive.fetch(input, init);
+    };
+    const auth = { token: async () => 'good', refresh: async () => 'good' };
+    const config = (name: string) => ({
+      groupId: 'gd',
+      accountId: 'a',
+      deviceId: name,
+      deviceName: name,
+      browser: 'firefox' as const,
+      mode: 'everything' as const,
+      mapping: { 'root:toolbar': FAKE_ROOTS.toolbar, 'root:other': FAKE_ROOTS.other, 'root:menu': FAKE_ROOTS.menu },
+      name: 'Drive group',
+      encrypted: false,
+    });
+    const ports = (bookmarks: InstanceType<typeof FakeBookmarks>, store: InstanceType<typeof MemoryStore>) => ({
+      provider: new DriveProvider(auth, racyFetch),
+      bookmarks,
+      store,
+      clock: { now: () => Date.now() },
+      settings: { consistentReadDelayMs: 10 },
+    });
+    const bmA = new FakeBookmarks('a_');
+    const { engine: a } = await GroupEngine.create(ports(bmA, new MemoryStore()), config('deva'));
+    const bmB = new FakeBookmarks('b_');
+    const storeB = new MemoryStore();
+    const b = await GroupEngine.join(ports(bmB, storeB), config('devb'), { mode: 'merge', ignoreDefaults: false }, null);
+    await bmB.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'shared', url: 'https://s.example/' });
+    await b.cycle();
+
+    const storeCopy = new MemoryStore();
+    storeCopy.data = new Map([...storeB.data].map(([k, v]) => [k, structuredClone(v)]));
+    const bmCopy = bmB.clone('copy_');
+    const copy = await GroupEngine.open(ports(bmCopy, storeCopy), 'gd');
+    await bmB.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'original', url: 'https://o.example/' });
+    await bmCopy.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'copy', url: 'https://c.example/' });
+    racing = true;
+    await Promise.all([b.cycle(), copy.cycle()]);
+    racing = false;
+    const batchPaths = [...drive.files.values()].map((f) => f.appProperties.p).filter((p) => p?.includes('/devb/batches/'));
+    expect(new Set(batchPaths).size).toBeLessThan(batchPaths.length);
+
+    for (let round = 0; round < 4; round++) for (const e of [a, b, copy]) await e.cycle();
+    const titles = async (bm: InstanceType<typeof FakeBookmarks>) => ((await bm.getSubTree(FAKE_ROOTS.toolbar)).children ?? []).map((c) => c.title).sort();
+    for (const bm of [bmA, bmB, bmCopy]) expect(await titles(bm)).toEqual(['copy', 'original', 'shared']);
+    await bmB.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'later', url: 'https://l.example/' });
+    for (let round = 0; round < 3; round++) for (const e of [b, a, copy]) await e.cycle();
+    for (const bm of [bmA, bmB, bmCopy]) expect(await titles(bm)).toEqual(['copy', 'later', 'original', 'shared']);
+    expect(b.deviceId).not.toBe('devb');
+    expect(copy.deviceId).not.toBe('devb');
   });
 });
