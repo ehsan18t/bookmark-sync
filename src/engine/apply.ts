@@ -16,9 +16,10 @@ export async function applyMerged(
   merged: Tree,
   excluded: ReadonlySet<string>,
 ): Promise<ApplyResult> {
-  const diff = diffTrees({ roots: mirror.roots, nodes: mirror.nodes }, merged);
+  const retried = new Map([...mirror.nodes].filter(([, m]) => m.localId !== '' || (m.kind === 'separator' && !port.supportsSeparators)));
+  const diff = diffTrees({ roots: mirror.roots, nodes: retried }, merged);
   const localOf = new Map<string, string>(Object.entries(rootLocal));
-  for (const m of mirror.nodes.values()) localOf.set(m.id, m.localId);
+  for (const m of retried.values()) localOf.set(m.id, m.localId);
   const local = (sid: string): string => {
     const l = localOf.get(sid);
     if (l === undefined) throw new Error(`no local folder for ${sid}`);
@@ -26,37 +27,57 @@ export async function applyMerged(
   };
   const virtual = (sid: string) => localOf.get(sid) === '';
 
+  // The browser may refuse single items (Firefox rejects javascript: bookmarks from extensions). A refused
+  // create has no local copy; a refused move or edit keeps its last state, so it is retried, not recorded back.
+  const kept = new Map<string, MirrorNode>();
   for (const n of diff.creates) {
-    if (n.kind === 'separator' && !port.supportsSeparators) {
+    const parent = localOf.get(n.parent);
+    if ((n.kind === 'separator' && !port.supportsSeparators) || !parent) {
       localOf.set(n.id, '');
       continue;
     }
-    localOf.set(n.id, await port.create({ parentId: local(n.parent), kind: n.kind, title: n.title, url: n.url }));
+    try {
+      localOf.set(n.id, await port.create({ parentId: parent, kind: n.kind, title: n.title, url: n.url }));
+    } catch {
+      localOf.set(n.id, '');
+    }
   }
   for (const n of diff.moves) {
-    if (virtual(n.id)) continue;
-    if (mirror.nodes.get(n.id)!.parent !== n.parent) await port.move(local(n.id), { parentId: local(n.parent) });
+    const old = retried.get(n.id)!;
+    if (virtual(n.id) || old.parent === n.parent) continue;
+    try {
+      if (!localOf.get(n.parent)) throw new Error('no local folder');
+      await port.move(local(n.id), { parentId: local(n.parent) });
+    } catch {
+      kept.set(n.id, old);
+    }
   }
   for (const n of diff.updates) {
     if (virtual(n.id)) continue;
-    await port.update(local(n.id), n.kind === 'bookmark' ? { title: n.title, url: n.url } : { title: n.title });
+    try {
+      await port.update(local(n.id), n.kind === 'bookmark' ? { title: n.title, url: n.url } : { title: n.title });
+    } catch {
+      const old = kept.get(n.id) ?? retried.get(n.id)!;
+      kept.set(n.id, { ...old, title: old.title, url: old.url });
+    }
   }
   const deleted = new Set(diff.deletes.map((n) => n.id));
   for (const n of diff.deletes) {
     const wasVirtual = virtual(n.id);
     localOf.delete(n.id);
-    if (wasVirtual || deleted.has(mirror.nodes.get(n.id)!.parent)) continue;
-    await port.removeTree(mirror.nodes.get(n.id)!.localId);
+    if (wasVirtual || deleted.has(retried.get(n.id)!.parent)) continue;
+    await port.removeTree(retried.get(n.id)!.localId).catch(() => {});
   }
 
   const changed = diff.creates.length + diff.moves.length + diff.updates.length + diff.deletes.length > 0;
-  if (changed) await reorder(port, merged, localOf, excluded);
+  if (changed) await reorder(port, merged, localOf, excluded).catch(() => {});
 
   const nodes = new Map<string, MirrorNode>();
   const idmap = new Map<string, string>();
   for (const n of merged.nodes.values()) {
-    const localId = local(n.id);
-    nodes.set(n.id, { ...n, localId });
+    const localId = localOf.get(n.id) ?? '';
+    const k = kept.get(n.id);
+    nodes.set(n.id, k ? { ...n, parent: k.parent, pos: k.pos, title: k.title, url: k.url, localId } : { ...n, localId });
     if (localId) idmap.set(localId, n.id);
   }
   return { mirror: { roots: merged.roots, nodes }, idmap, changed };

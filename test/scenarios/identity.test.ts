@@ -80,7 +80,11 @@ describe('interrupted apply', () => {
     for (let i = 0; i < 12; i++) await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.other, kind: 'bookmark', title: `item${i}`, url: `https://i${i}.example/` });
     await sim.sync(a);
     b.bookmarks.crashAfter = 5;
-    await expect(b.engine.cycle()).rejects.toThrow('worker stopped');
+    b.bookmarks.onCrash = () => {
+      b.store.frozen = true;
+    };
+    await b.engine.cycle().catch(() => {});
+    b.store.frozen = false;
     await sim.restart(b);
     await sim.quiet();
     expect(titles(a)).toHaveLength(12);

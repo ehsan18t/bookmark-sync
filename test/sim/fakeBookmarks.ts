@@ -42,15 +42,21 @@ export class FakeBookmarks implements BookmarksPort {
     return this.nodes.get(localId)?.parent ?? null;
   }
 
+  /** URLs this browser refuses, like Firefox with javascript: bookmarks created by extensions. */
+  rejectUrl: ((url: string) => boolean) | null = null;
+
   /** Throw on the nth write from now, like a background worker being stopped mid-apply. */
   crashAfter: number | null = null;
+  onCrash: (() => void) | null = null;
 
   async create(args: { parentId: string; index?: number; kind: Kind; title: string; url: string }): Promise<string> {
     this.writes++;
     if (this.crashAfter !== null && --this.crashAfter < 0) {
       this.crashAfter = null;
+      this.onCrash?.();
       throw new Error('worker stopped');
     }
+    if (args.kind === 'bookmark' && this.rejectUrl?.(args.url)) throw new Error('refused URL');
     const id = `${this.prefix}${++this.counter}`;
     this.addNode(id, args.kind, args.kind === 'separator' ? '' : args.title, args.kind === 'bookmark' ? args.url : '', args.parentId, args.index);
     return id;
@@ -59,6 +65,7 @@ export class FakeBookmarks implements BookmarksPort {
   async update(localId: string, changes: { title?: string; url?: string }): Promise<void> {
     this.writes++;
     const n = this.must(localId);
+    if (changes.url !== undefined && this.rejectUrl?.(changes.url)) throw new Error('refused URL');
     if (changes.title !== undefined) n.title = changes.title;
     if (changes.url !== undefined && n.kind === 'bookmark') n.url = changes.url;
   }

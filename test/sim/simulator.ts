@@ -25,12 +25,14 @@ export function mulberry32(seed: number): () => number {
 
 export class MemoryStore implements GroupStore {
   data = new Map<string, GroupLocal>();
+  /** While frozen, saves are dropped, like writes after the background worker was stopped. */
+  frozen = false;
   async load(groupId: string) {
     const v = this.data.get(groupId);
     return v ? structuredClone(v) : null;
   }
   async save(local: GroupLocal) {
-    this.data.set(local.config.groupId, structuredClone(local));
+    if (!this.frozen) this.data.set(local.config.groupId, structuredClone(local));
   }
   async delete(groupId: string) {
     this.data.delete(groupId);

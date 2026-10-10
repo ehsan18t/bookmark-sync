@@ -121,3 +121,41 @@ describe('separators across Firefox and Chromium', () => {
     );
   });
 });
+
+describe('items a browser refuses', () => {
+  it('a bookmark Firefox refuses stays in the group without stopping that browser', async () => {
+    const sim = new Simulator({ devices: 2, seed: 65 });
+    await sim.setup();
+    const [chrome, firefox] = sim.devices as [SimDevice, SimDevice];
+    firefox.bookmarks.rejectUrl = (u) => u.startsWith('javascript:');
+    await chrome.bookmarks.userCreate({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'bookmarklet', url: 'javascript:alert(1)' });
+    await chrome.bookmarks.userCreate({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'normal', url: 'https://n.example/' });
+    await sim.quiet();
+    expect(firefox.engine.status.state).toBe('active');
+    expect(await titlesIn(firefox.bookmarks, FAKE_ROOTS.toolbar)).toEqual(['normal']);
+    expect(sim.canonicalMirror(chrome)).toEqual(sim.canonicalMirror(firefox));
+    const normal = (await chrome.bookmarks.getSubTree(FAKE_ROOTS.toolbar)).children![1]!.localId;
+    await chrome.bookmarks.update(normal, { url: 'javascript:void(0)' });
+    await sim.quiet();
+    expect(firefox.engine.status.state).toBe('active');
+    expect(await titlesIn(chrome.bookmarks, FAKE_ROOTS.toolbar)).toEqual(['bookmarklet', 'normal']);
+    const op = [...chrome.engine.mirror().nodes.values()].find((n) => n.title === 'normal')!;
+    expect(op.url).toBe('javascript:void(0)');
+  });
+});
+
+describe('items that failed once', () => {
+  it('a bookmark the browser refused once is created on a later sync', async () => {
+    const sim = new Simulator({ devices: 2, seed: 66 });
+    await sim.setup();
+    const [a, b] = sim.devices as [SimDevice, SimDevice];
+    let refuse = true;
+    b.bookmarks.rejectUrl = () => refuse;
+    await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'later', url: 'https://later.example/' });
+    await sim.quiet();
+    expect(await titlesIn(b.bookmarks, FAKE_ROOTS.toolbar)).toEqual([]);
+    refuse = false;
+    await sim.quiet();
+    expect(await titlesIn(b.bookmarks, FAKE_ROOTS.toolbar)).toEqual(['later']);
+  });
+});
