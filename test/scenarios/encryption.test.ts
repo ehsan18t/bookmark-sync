@@ -110,3 +110,23 @@ describe('encryption migration', () => {
     }
   });
 });
+
+describe('leaving a locked encrypted group', () => {
+  it('refuses until unlocked and never writes a plaintext file', async () => {
+    const sim = new Simulator({ devices: 2, seed: 56, passphrase: 'pw' });
+    await sim.setup();
+    const [a, b] = sim.devices as [SimDevice, SimDevice];
+    await sim.quiet();
+    const key = b.keys.get(GROUP_ID)!;
+    b.keys.delete(GROUP_ID);
+    await sim.restart(b);
+    await expect(b.engine.leave()).rejects.toThrow(/unlock/);
+    await sim.sync(a);
+    expect(a.engine.status.state).toBe('active');
+    b.engine.setKey(key);
+    await b.engine.leave();
+    await sim.sync(a);
+    expect(a.engine.status.state).toBe('active');
+    expect(a.engine.devices().find((d) => d.deviceId === 'devb')?.left).toBe(true);
+  });
+});

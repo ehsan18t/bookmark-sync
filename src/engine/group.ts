@@ -1246,6 +1246,7 @@ export class GroupEngine {
   }
 
   async leave(): Promise<void> {
+    if (this.local.config.encrypted && !this.key) throw new Error('unlock the group before leaving it, so the other browsers can read that you left');
     try {
       await this.push();
     } catch {

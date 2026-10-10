@@ -101,6 +101,7 @@ export interface Crypt {
 }
 
 export async function encode(kind: FileKind, body: unknown, crypt?: Crypt): Promise<Uint8Array> {
+  if (crypt?.required && !crypt.key) throw new LockedError();
   let env: Envelope = { format: FORMAT, v: FORMAT_MAJOR, minor: FORMAT_MINOR, kind, enc: null, body };
   if (crypt?.key) {
     const enc = await encryptBytes(crypt.key, new TextEncoder().encode(JSON.stringify(body)), crypt.path);
