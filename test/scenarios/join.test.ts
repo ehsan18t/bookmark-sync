@@ -110,3 +110,15 @@ describe('joining a group', () => {
     ]);
   });
 });
+
+describe('a failed join', () => {
+  it('leaves no device behind in the group', async () => {
+    const sim = new Simulator({ devices: 1, seed: 6 });
+    await sim.setup();
+    const d = sim.makeDevice('devlate');
+    d.skew = 10 * 60_000;
+    const { GroupEngine } = await import('../../src/engine/group.js');
+    await expect(GroupEngine.join(d.ports, sim.config(d), { mode: 'merge', ignoreDefaults: false }, null)).rejects.toThrow(/cannot join/);
+    expect(await sim.provider.client().listDevices('g0')).toEqual(['deva']);
+  });
+});

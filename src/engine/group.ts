@@ -1085,7 +1085,6 @@ export class GroupEngine {
     if (header.encryption && !this.key) throw new LockedError();
     if (!(await this.waitForConsistentView())) throw new Error('the group is changing too fast to join; try again');
     this.observe(hlcFloor(this.ports.provider.serverDate()));
-    await this.publish(true);
     await this.pull();
     if (await this.loadNewestSnapshot()) await this.pull();
     if (this.paused) throw new Error(`cannot join: ${(this.local.status as { reason: string }).reason}`);
@@ -1113,6 +1112,7 @@ export class GroupEngine {
     };
     if (this.dryRun) return preview;
 
+    await this.publish(true);
     this.local.excluded = [...excluded];
     const restorePoint = this.clock.tick();
     this.local.join = { created: !!opts.creating, restorePoint, nodes: plan.drafts.map((d) => d.node), local: roots };
