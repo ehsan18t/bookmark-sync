@@ -11,12 +11,12 @@ Every milestone in the implementation plan is built: the merge engine, joins, fo
 
 What has been checked:
 
-- 108 unit, property and scenario tests, including randomized runs with up to 5 simulated browsers, provider faults and clock skew, a check against a plain tree model, and scenarios for crashes, lost responses, copied profiles, departed devices and renumbered bookmarks.
+- 113 unit, property and scenario tests, including randomized runs with up to 5 simulated browsers, provider faults and clock skew, a check against a plain tree model, and scenarios for crashes, lost responses, copied profiles, departed devices and renumbered bookmarks.
 - The WebDAV provider against a real WebDAV server, and the Google Drive provider against a fake of the Drive API.
 - 2 end-to-end tests that load the built extension into two real Chromium profiles syncing through a local WebDAV server.
 - The Firefox package passes `web-ext lint` with no warnings.
 
-An independent code review of the finished branch found 12 bugs (lost or duplicated bookmarks in rare races, a deadlock in the encryption switch, keys written to disk, and others); all are fixed, each with a test where it could be simulated.
+An independent code review of the finished branch found 12 bugs (lost or duplicated bookmarks in rare races, a deadlock in the encryption switch, keys written to disk, and others), and a second review of those fixes found 10 more problems in them. All are fixed, each with a test where it could be simulated.
 
 Not checked yet: Firefox, Edge, Brave and Vivaldi at runtime, a real Google account, and a real Nextcloud server. See "Known limits" below.
 
