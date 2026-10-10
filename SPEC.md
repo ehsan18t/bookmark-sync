@@ -45,7 +45,7 @@ Status: personal project first, public open source release later. Date: 2026-10-
 ## Decisions
 
 1. **Scope is bookmarks only.** Passwords are out of scope.
-2. **Platforms:** desktop Chromium browsers (Chrome, Edge, Brave, Vivaldi, version 134 or later) and desktop Firefox (128 or later), from one codebase with one package per browser family.
+2. **Platforms:** desktop Chromium browsers (Chrome, Edge, Brave, Vivaldi, version 134 or later) and desktop Firefox (140 or later, the current ESR), from one codebase with one package per browser family.
 3. **Sync model is a change log, not snapshot comparison.** Bookmark changes are recorded as changes. Snapshots are only checkpoints of the log.
 4. **Each device writes only to its own folder at the provider**, including its own snapshots. The only shared file is the group header, written once by the group's creator. The one exception: files of a device that left the group or was removed may be deleted by any device, once a snapshot covers them.
 5. **Encryption is optional, off by default, and fixed for the lifetime of a group.** Turning it on or off migrates everyone to a new group with the new setting: the old group is frozen first, then the new group starts from its complete final state. Nobody rewrites another device's files.
@@ -268,4 +268,4 @@ Draft 2 was reviewed by four separate reviews: merge correctness, storage protoc
 - **Compaction:** it now fails safe when a device is missing from a listing. It also never runs within 1 day of the present, and devices that fall behind load a snapshot instead of waiting for deleted files.
 - **Copied profiles:** they are now detected through hashed batch chains, which also works on Google Drive. A crash after an upload no longer looks like a copied profile.
 - **New features:** creating, leaving and deleting groups, removing devices, excluded items, locked encrypted groups, a local undo for duplicates that are not synced, and exemptions from the large change guard for confirmed changes.
-- **Version minimums:** Chromium 134+ and Firefox 128+. The clock tolerance is tightened to 2 minutes.
+- **Version minimums:** Chromium 134+ and Firefox 140+. The clock tolerance is tightened to 2 minutes.

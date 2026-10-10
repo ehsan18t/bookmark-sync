@@ -743,7 +743,7 @@ type Command =
 | `host_permissions` | `https://www.googleapis.com/*`, `https://oauth2.googleapis.com/*` | same |
 | `optional_host_permissions` | `https://*/*`, `http://127.0.0.1/*`, `http://localhost/*` (WebDAV) | same |
 | Background | service worker | event page (`background.scripts`), MV3 |
-| Version floor | `minimum_chrome_version: "134"` | `strict_min_version: "128.0"` (needed for `optional_host_permissions`) |
+| Version floor | `minimum_chrome_version: "134"` | `strict_min_version: "140.0"` (needed for `optional_host_permissions` and `data_collection_permissions`) |
 | ID pinning | `key` in the dev manifest | `browser_specific_settings.gecko.id` |
 
 The test hook page used by end-to-end tests is included only in test builds.
