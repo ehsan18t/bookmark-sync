@@ -95,17 +95,18 @@ export class Simulator {
     const st = store ?? new MemoryStore();
     const ks = keys ?? new Map<string, CryptoKey>();
     const skew = this.options.maxSkew ? Math.floor((this.rng() * 2 - 1) * this.options.maxSkew) : 0;
+    const device = { skew } as SimDevice;
     const ports: EnginePorts = {
       provider: this.provider.client(),
       bookmarks: bm,
       store: st,
-      clock: { now: () => this.time + skew },
+      clock: { now: () => this.time + device.skew },
       random: this.randomBytes,
       settings: { ...SIM_SETTINGS, ...this.options.settings },
       sleep: async (ms) => this.advance(ms),
       keyFor: async (g) => ks.get(g) ?? null,
     };
-    return { name, bookmarks: bm, store: st, keys: ks, ports, engine: undefined as unknown as GroupEngine, skew };
+    return Object.assign(device, { name, bookmarks: bm, store: st, keys: ks, ports, engine: undefined as unknown as GroupEngine });
   }
 
   config(d: SimDevice): GroupConfig {
