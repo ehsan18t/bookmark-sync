@@ -1,0 +1,24 @@
+{
+  "name": "bookmark-sync",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Cross-browser bookmark sync over storage you choose",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check": "tsc --noEmit && vitest run"
+  },
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@10.33.3",
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "fast-check": "^4.10.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "dependencies": {
+    "fractional-indexing": "^4.0.0"
+  }
+}
