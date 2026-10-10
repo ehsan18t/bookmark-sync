@@ -54,7 +54,7 @@ Status: personal project first, public open source release later. Date: 2026-10-
 8. **History:** the history window defaults to 7 days, is configurable, and can be turned off. Turned off, the timeline is hidden, but the extension still keeps 1 day of history so joins and large changes can be undone.
 9. **Restoring adds new changes and never rewrites the log.** A restore syncs to every device like a normal edit and can itself be undone. Restores are computed from merged states, not from any one device's view.
 10. **Log retention is separate from the history setting.** A change is compacted only when it is behind the stable frontier and older than the history window (at least 1 day).
-11. **Guard against large changes.** If one sync cycle would change more than 20% of a group's items (minimum 10 items), the group pauses on that device and asks. The user can apply the change, or revert just the items it touched (which syncs to everyone). Changes the user already confirmed elsewhere (creating or joining a group, a restore, a duplicate cleanup, an approved large change) do not trigger the guard.
+11. **Guard against large changes.** If one sync cycle would delete, move or edit more than 20% of a group's existing items (minimum 10 items), the group pauses on that device and asks. Adding items never triggers it. The user can apply the change, or revert just the items it touched (which syncs to everyone). Changes the user already confirmed elsewhere (creating or joining a group, a restore, a duplicate cleanup, an approved large change) do not trigger the guard.
 12. **Conflict rules:**
     - An item added to or moved into a folder by a change the folder's delete had not seen survives, and the folder comes back containing only such items.
     - A delete removes exactly what the deleting device saw inside the folder at that moment. Items that were moved into the folder later, even by a later move of a parent folder, are not affected by it.
@@ -219,7 +219,7 @@ Each statement can be checked by hand or by an automated test.
 15. A batch that uploads late (after the device read newer changes) is still merged correctly by every device, including devices that started from a snapshot.
 16. Two installs linked by native sync: the warning appears, that device pauses, and after the repairs no duplicates remain in the group.
 17. A single browser with native sync as a backup never sees the warning.
-18. A sync cycle changing more than 20% of a group's items (at least 10) pauses the group and asks, and both choices leave all browsers identical.
+18. A sync cycle deleting, moving or editing more than 20% of a group's existing items (at least 10) pauses the group and asks, and both choices leave all browsers identical. Adding items never pauses it.
 19. With encryption on, files at the provider cannot be read without the passphrase. Turning encryption on or off moves every browser to the new group without losing any edit, including edits made during the migration.
 20. A group mapped to Chrome "Other bookmarks/Work" and Firefox "Bookmarks Toolbar/Work" keeps items in those folders. Moving an item out on one browser removes it on the other.
 21. Deleting a mapped folder pauses that group on that device and does not delete the group's contents elsewhere.

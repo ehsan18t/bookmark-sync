@@ -38,7 +38,7 @@ import {
   type SerializedState,
 } from '../core/replay.js';
 import { planRestoreExact } from '../core/restore.js';
-import { changedIds, childrenIndex, diffTrees, visibleTree, type Tree } from '../core/tree.js';
+import { childrenIndex, diffTrees, disturbedIds, visibleTree, type Tree } from '../core/tree.js';
 import { visibleSet } from '../core/visibility.js';
 import {
   batchPath,
@@ -634,8 +634,8 @@ export class GroupEngine {
       if (unconfirmed.length) {
         const drop = new Set(unconfirmed.map(opKey));
         const without = visibleTree(replay(this.baseState(), this.local.ops.filter((op) => !drop.has(opKey(op)))), this.roots);
-        const touched = changedIds(diffTrees(without, merged));
-        const total = Math.max(this.local.mirror.length, 1);
+        const touched = disturbedIds(diffTrees(without, merged));
+        const total = Math.max(without.nodes.size, 1);
         if (touched.size >= this.settings.guardMin && touched.size > (this.settings.guardPercent / 100) * total) {
           this.local.guard = {
             kind: 'remote',
@@ -759,7 +759,7 @@ export class GroupEngine {
     if (unconfirmed.length < this.settings.guardMin) return true;
     const drop = new Set(unconfirmed.map(opKey));
     const without = visibleTree(replay(this.baseState(), this.local.ops.filter((op) => !drop.has(opKey(op)))), this.roots);
-    const touched = changedIds(diffTrees(without, this.mergedTree()));
+    const touched = disturbedIds(diffTrees(without, this.mergedTree()));
     const total = Math.max(without.nodes.size, 1);
     if (touched.size < this.settings.guardMin || touched.size <= (this.settings.guardPercent / 100) * total) return true;
     this.local.guard = { kind: 'local', count: touched.size, total, firstHlc: unconfirmed[0]!.hlc, touched: [...touched], keys: [...drop] };

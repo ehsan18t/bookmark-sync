@@ -568,8 +568,8 @@ cycle(group):
 
 ### 9.4 Large change guard (`core/guard.ts`)
 
-- **Size:** the number of distinct nodes whose visibility, placement or fields would change, counting only changes from unconfirmed batches (on apply) or unconfirmed outbox ops (on push).
-- **Trigger:** size above `guardPercent` of `max(visible node count before, 1)`, and size of at least `guardMin`.
+- **Size:** the number of distinct existing nodes that would be removed, moved or edited, counting only changes from unconfirmed batches (on apply) or unconfirmed outbox ops (on push). Additions are not counted, so importing or creating many bookmarks never pauses a group.
+- **Trigger:** size above `guardPercent` of the visible node count without the change, and size of at least `guardMin`.
 - **On apply:** nothing is applied, the cursors stay as they are, push is blocked, and the status becomes `paused(large-remote-change)` with the counts.
 - **On push:** status becomes `paused(large-local-change)`.
 - **Choices:**

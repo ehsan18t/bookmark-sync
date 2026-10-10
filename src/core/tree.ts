@@ -110,6 +110,11 @@ export function changedIds(d: TreeDiff): Set<string> {
   return new Set([...d.creates, ...d.moves, ...d.updates, ...d.deletes].map((n) => n.id));
 }
 
+/** Existing items a change removes, moves or edits. Additions are not counted. */
+export function disturbedIds(d: TreeDiff): Set<string> {
+  return new Set([...d.moves, ...d.updates, ...d.deletes].map((n) => n.id));
+}
+
 export function canonical(t: Tree, withIds = true): unknown {
   const idx = childrenIndex(t);
   const render = (parent: string): unknown[] =>
