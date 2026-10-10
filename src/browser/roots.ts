@@ -1,6 +1,6 @@
 import { browser } from 'wxt/browser';
 import type { Excluded } from '../core/reconcile.js';
-import type { RootsPort } from '../engine/app.js';
+import { PENDING_PREFIX, type RootsPort } from '../engine/app.js';
 import type { Engine, Node } from './bookmarksPort.js';
 
 const FIREFOX = { toolbar: 'toolbar_____', menu: 'menu________', other: 'unfiled_____', mobile: 'mobile______' };
@@ -26,19 +26,33 @@ async function chromiumRoots(): Promise<{ bar: Node; other: Node; all: Node[] }>
   return { bar: pick('bookmarks-bar', 0), other: pick('other', 1), all: kids };
 }
 
+/** The Bookmarks Menu helper folder made for an earlier group, if it still sits in the other bookmarks folder. */
+async function existingHelper(otherId: string): Promise<string | null> {
+  const { menuHelperId } = (await browser.storage.local.get('menuHelperId')) as { menuHelperId?: string };
+  if (!menuHelperId) return null;
+  const found: Node[] = await browser.bookmarks.get(menuHelperId).catch(() => []);
+  const n = found[0];
+  return n && n.parentId === otherId && n.url === undefined ? n.id : null;
+}
+
 export function browserRoots(engine: Engine): RootsPort {
   return {
-    async wholeTree() {
+    async wholeTree(create) {
       if (engine === 'firefox') return { mapping: { 'root:toolbar': FIREFOX.toolbar, 'root:other': FIREFOX.other, 'root:menu': FIREFOX.menu }, excluded: [] };
       const { bar, other } = await chromiumRoots();
-      const title = message('bookmarksMenu', 'Bookmarks Menu');
-      const helper = await browser.bookmarks.create({ parentId: other.id, title });
-      const excluded: [string, Excluded][] = [[helper.id, { parent: other.id, sticky: true }]];
-      return { mapping: { 'root:toolbar': bar.id, 'root:other': other.id, 'root:menu': helper.id }, excluded };
+      let helper = await existingHelper(other.id);
+      if (!helper && create) {
+        helper = (await browser.bookmarks.create({ parentId: other.id, title: message('bookmarksMenu', 'Bookmarks Menu') })).id;
+        await browser.storage.local.set({ menuHelperId: helper });
+      }
+      const menu = helper ?? `${PENDING_PREFIX}menu`;
+      const excluded: [string, Excluded][] = [[menu, { parent: other.id, sticky: true }]];
+      return { mapping: { 'root:toolbar': bar.id, 'root:other': other.id, 'root:menu': menu }, excluded };
     },
 
-    async everythingInto(folderId) {
-      const make = async (key: MessageKey, fallback: string) => (await browser.bookmarks.create({ parentId: folderId, title: message(key, fallback) })).id;
+    async everythingInto(folderId, create) {
+      const make = async (key: MessageKey, fallback: string) =>
+        create ? (await browser.bookmarks.create({ parentId: folderId, title: message(key, fallback) })).id : `${PENDING_PREFIX}${key}`;
       return {
         mapping: { 'root:toolbar': await make('rootToolbar', 'Toolbar'), 'root:other': await make('rootOther', 'Other'), 'root:menu': await make('rootMenu', 'Menu') },
         excluded: [],

@@ -454,7 +454,15 @@ export class GroupEngine {
   }
 
   private async liveRoots(): Promise<{ groupRoot: string; live: LiveNode }[]> {
-    return Promise.all(this.roots.map(async (r) => ({ groupRoot: r, live: await this.ports.bookmarks.getSubTree(this.localRoot(r)) })));
+    return Promise.all(
+      this.roots.map(async (r) => {
+        const local = this.localRoot(r);
+        if (this.dryRun && !(await this.ports.bookmarks.exists(local))) {
+          return { groupRoot: r, live: { localId: local, kind: 'folder' as const, title: '', url: '', children: [] } };
+        }
+        return { groupRoot: r, live: await this.ports.bookmarks.getSubTree(local) };
+      }),
+    );
   }
 
   async recordLocalChanges(opts: { confirmed?: boolean } = {}): Promise<number> {

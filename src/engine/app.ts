@@ -62,11 +62,14 @@ export interface AppStore extends GroupStore {
 /** Where a group lives in this browser. */
 export type Target = { kind: 'whole' } | { kind: 'folder'; folderId: string } | { kind: 'everything-into'; folderId: string };
 
+/** Folder IDs a preview uses for helper folders that do not exist yet; they read as empty. */
+export const PENDING_PREFIX = 'pending:';
+
 export interface RootsPort {
-  /** Whole-tree mapping, creating the Bookmarks Menu helper folder on Chromium if needed. */
-  wholeTree(): Promise<{ mapping: Record<string, string>; excluded: [string, Excluded][] }>;
+  /** Whole-tree mapping. With `create`, makes (or reuses) the Bookmarks Menu helper folder on Chromium. */
+  wholeTree(create: boolean): Promise<{ mapping: Record<string, string>; excluded: [string, Excluded][] }>;
   /** Mapping for an `everything` group kept inside one folder, as three helper subfolders. */
-  everythingInto(folderId: string): Promise<{ mapping: Record<string, string>; excluded: [string, Excluded][] }>;
+  everythingInto(folderId: string, create: boolean): Promise<{ mapping: Record<string, string>; excluded: [string, Excluded][] }>;
   /** The browser's top-level folders, for scanning every bookmark. */
   topLevel(): Promise<string[]>;
   folders(): Promise<{ id: string; path: string }[]>;
@@ -184,7 +187,7 @@ export class SyncApp {
     return this.run(async () => {
       const account = this.account(input.accountId);
       const groupId = randomId(this.deps.random);
-      const { mapping, excluded } = await this.resolveTarget(input.mode, input.target);
+      const { mapping, excluded } = await this.resolveTarget(input.mode, input.target, true);
       await this.checkOverlap(mapping, input.target);
       const { encrypted: _e, ...config } = this.config(groupId, account.id, input.name, input.mode, mapping, false);
       const { engine, key } = await GroupEngine.create(this.ports(account), config, {
@@ -544,13 +547,13 @@ export class SyncApp {
     }
   }
 
-  private async resolveTarget(mode: 'everything' | 'folder', target: Target): Promise<{ mapping: Record<string, string>; excluded: [string, Excluded][] }> {
+  private async resolveTarget(mode: 'everything' | 'folder', target: Target, create: boolean): Promise<{ mapping: Record<string, string>; excluded: [string, Excluded][] }> {
     if (mode === 'folder') {
       if (target.kind !== 'folder') throw new Error('a folder group needs a folder');
       return { mapping: { 'root:group': target.folderId }, excluded: [] };
     }
-    if (target.kind === 'whole') return this.deps.roots.wholeTree();
-    if (target.kind === 'everything-into') return this.deps.roots.everythingInto(target.folderId);
+    if (target.kind === 'whole') return this.deps.roots.wholeTree(create);
+    if (target.kind === 'everything-into') return this.deps.roots.everythingInto(target.folderId, create);
     throw new Error('an everything group maps to the whole tree or into one folder');
   }
 
@@ -565,8 +568,8 @@ export class SyncApp {
       key = (await this.deps.store.getKey(input.groupId)) ?? (input.passphrase ? await unlockKey(input.passphrase, header.encryption) : null);
       if (!key) throw new Error('this group is encrypted: enter its passphrase');
     }
-    const { mapping, excluded } = await this.resolveTarget(header.mode, input.target);
-    await this.checkOverlap(mapping, input.target);
+    await this.checkOverlap((await this.resolveTarget(header.mode, input.target, false)).mapping, input.target);
+    const { mapping, excluded } = await this.resolveTarget(header.mode, input.target, !preview);
     const config = this.config(input.groupId, account.id, header.name, header.mode, mapping, !!header.encryption);
     const opts: JoinOptions = { mode: input.mode, ignoreDefaults: input.ignoreDefaults, excluded };
     return { ports: this.ports(account), config, opts, key };

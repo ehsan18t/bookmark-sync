@@ -30,8 +30,8 @@ class MemoryAppStore extends MemoryStore implements AppStore {
 function fakeRoots(bm: FakeBookmarks): RootsPort {
   return {
     wholeTree: async () => ({ mapping: { 'root:toolbar': FAKE_ROOTS.toolbar, 'root:other': FAKE_ROOTS.other, 'root:menu': FAKE_ROOTS.menu }, excluded: [] }),
-    everythingInto: async (folderId) => {
-      const make = (title: string) => bm.create({ parentId: folderId, kind: 'folder', title, url: '' });
+    everythingInto: async (folderId, create) => {
+      const make = async (title: string) => (create ? bm.create({ parentId: folderId, kind: 'folder', title, url: '' }) : `pending:${title}`);
       return { mapping: { 'root:toolbar': await make('Toolbar'), 'root:other': await make('Other'), 'root:menu': await make('Menu') }, excluded: [] };
     },
     topLevel: async () => Object.values(FAKE_ROOTS),
@@ -100,6 +100,18 @@ describe('the app layer', () => {
     expect(await titles(b.bookmarks)).toEqual(['From Chrome', 'From Firefox']);
     const [status] = await a.app.status();
     expect(status).toMatchObject({ name: 'Main', status: { state: 'active' }, pendingChanges: 0 });
+  });
+
+  it('previewing a join into a folder creates nothing', async () => {
+    const { a, b, accA, accB } = await pair();
+    await a.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'x', url: 'https://x.example/' });
+    const groupId = await a.app.createGroup({ accountId: accA, name: 'Main', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
+    const box = await b.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Synced', url: '' });
+    const input = { accountId: accB, groupId, target: { kind: 'everything-into' as const, folderId: box }, mode: 'merge' as const, ignoreDefaults: false };
+    expect(await b.app.previewJoin(input)).toMatchObject({ added: 0, groupItems: 1 });
+    expect(await titles(b.bookmarks, box)).toEqual([]);
+    await b.app.joinGroup(input);
+    expect(await titles(b.bookmarks, box)).toEqual(['Toolbar', 'Other', 'Menu']);
   });
 
   it('refuses mappings that overlap another group', async () => {
