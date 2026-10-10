@@ -1,9 +1,13 @@
-// Multi-device simulator (IMPLEMENTATION.md 15.2): runs the real engine for several devices against
-// one shared memory provider, with a fake bookmarks API per device and a shared, controllable clock.
-
 import { canonical, type Tree } from '../../src/core/tree.js';
 import type { RandomBytes } from '../../src/core/ids.js';
-import { GroupEngine, type EnginePorts, type GroupConfig, type GroupLocal, type Store } from '../../src/engine/group.js';
+import {
+  GroupEngine,
+  type EnginePorts,
+  type EngineSettings,
+  type GroupConfig,
+  type GroupLocal,
+  type GroupStore,
+} from '../../src/engine/group.js';
 import { MemoryProvider, type MemoryFaults } from '../../src/storage/memory.js';
 import { FAKE_ROOTS, FakeBookmarks } from './fakeBookmarks.js';
 
@@ -18,8 +22,8 @@ export function mulberry32(seed: number): () => number {
   };
 }
 
-class MemoryStore implements Store {
-  private readonly data = new Map<string, GroupLocal>();
+export class MemoryStore implements GroupStore {
+  data = new Map<string, GroupLocal>();
   async load(groupId: string) {
     const v = this.data.get(groupId);
     return v ? structuredClone(v) : null;
@@ -27,11 +31,16 @@ class MemoryStore implements Store {
   async save(local: GroupLocal) {
     this.data.set(local.config.groupId, structuredClone(local));
   }
+  async delete(groupId: string) {
+    this.data.delete(groupId);
+  }
 }
 
 export interface SimDevice {
   name: string;
   bookmarks: FakeBookmarks;
+  store: MemoryStore;
+  keys: Map<string, CryptoKey>;
   ports: EnginePorts;
   engine: GroupEngine;
   skew: number;
@@ -41,11 +50,15 @@ export interface SimOptions {
   devices: number;
   seed: number;
   faults?: boolean;
-  /** Maximum absolute clock skew per device in ms (kept within the 2-minute clock check). */
   maxSkew?: number;
+  settings?: Partial<EngineSettings>;
+  passphrase?: string;
+  chromiumDevices?: number[];
+  guardPolicy?: 'apply' | 'revert';
 }
 
 export const GROUP_ID = 'g0';
+export const SIM_SETTINGS: Partial<EngineSettings> = { consistentReadDelayMs: 1000, guardMin: 1_000_000 };
 
 export class Simulator {
   time = 1_800_000_000_000;
@@ -53,7 +66,6 @@ export class Simulator {
   readonly provider: MemoryProvider;
   readonly devices: SimDevice[] = [];
   readonly errors: string[] = [];
-  /** Faults start after setup, so group creation itself is not under test here. */
   private faultsOn = false;
 
   constructor(readonly options: SimOptions) {
@@ -73,33 +85,52 @@ export class Simulator {
     return out;
   };
 
-  pick<T>(items: readonly T[]): T | undefined {
-    return items.length ? items[Math.floor(this.rng() * items.length)] : undefined;
+  makeDevice(name: string, bookmarks?: FakeBookmarks, store?: MemoryStore, keys?: Map<string, CryptoKey>): SimDevice {
+    const chromium = this.options.chromiumDevices?.includes(this.devices.length) ?? false;
+    const bm = bookmarks ?? new FakeBookmarks(`${name}_`, { separators: !chromium });
+    const st = store ?? new MemoryStore();
+    const ks = keys ?? new Map<string, CryptoKey>();
+    const skew = this.options.maxSkew ? Math.floor((this.rng() * 2 - 1) * this.options.maxSkew) : 0;
+    const ports: EnginePorts = {
+      provider: this.provider.client(),
+      bookmarks: bm,
+      store: st,
+      clock: { now: () => this.time + skew },
+      random: this.randomBytes,
+      settings: { ...SIM_SETTINGS, ...this.options.settings },
+      sleep: async (ms) => this.advance(ms),
+      keyFor: async (g) => ks.get(g) ?? null,
+    };
+    return { name, bookmarks: bm, store: st, keys: ks, ports, engine: undefined as unknown as GroupEngine, skew };
+  }
+
+  config(d: SimDevice): GroupConfig {
+    return {
+      groupId: GROUP_ID,
+      accountId: 'acct',
+      deviceId: d.name,
+      deviceName: d.name,
+      browser: 'firefox',
+      mode: 'everything',
+      mapping: { 'root:toolbar': FAKE_ROOTS.toolbar, 'root:other': FAKE_ROOTS.other, 'root:menu': FAKE_ROOTS.menu },
+      name: 'Test group',
+      encrypted: !!this.options.passphrase,
+    };
   }
 
   async setup(): Promise<void> {
     for (let i = 0; i < this.options.devices; i++) {
-      const name = `dev${String.fromCharCode(97 + i)}`;
-      const bookmarks = new FakeBookmarks(`${name}_`);
-      const skew = this.options.maxSkew ? Math.floor((this.rng() * 2 - 1) * this.options.maxSkew) : 0;
-      const ports: EnginePorts = {
-        provider: this.provider.client(),
-        bookmarks,
-        store: new MemoryStore(),
-        clock: { now: () => this.time + skew },
-        random: this.randomBytes,
-      };
-      const config: GroupConfig = {
-        groupId: GROUP_ID,
-        deviceId: name,
-        deviceName: name,
-        browser: 'firefox',
-        mode: 'everything',
-        mapping: { 'root:toolbar': FAKE_ROOTS.toolbar, 'root:other': FAKE_ROOTS.other, 'root:menu': FAKE_ROOTS.menu },
-      };
-      const engine =
-        i === 0 ? await GroupEngine.createGroup(ports, config, 'Test group') : await GroupEngine.attach(ports, config);
-      this.devices.push({ name, bookmarks, ports, engine, skew });
+      const d = this.makeDevice(`dev${String.fromCharCode(97 + i)}`);
+      if (i === 0) {
+        const { encrypted: _e, ...config } = this.config(d);
+        const res = await GroupEngine.create(d.ports, config, { passphrase: this.options.passphrase, iterations: 1000 });
+        d.engine = res.engine;
+        if (res.key) d.keys.set(GROUP_ID, res.key);
+      } else {
+        if (this.options.passphrase) d.keys.set(GROUP_ID, this.devices[0]!.keys.get(GROUP_ID)!);
+        d.engine = await GroupEngine.join(d.ports, this.config(d), { mode: 'merge', ignoreDefaults: false }, d.keys.get(GROUP_ID) ?? null);
+      }
+      this.devices.push(d);
     }
     this.faultsOn = true;
   }
@@ -108,42 +139,50 @@ export class Simulator {
     this.time += ms;
   }
 
-  /** One sync cycle on a device. Provider faults surface as errors and are retried next cycle. */
   async sync(d: SimDevice): Promise<void> {
     try {
       await d.engine.cycle();
+      const st = d.engine.status;
+      if (st.state === 'paused' && (st.reason === 'large-remote-change' || st.reason === 'large-local-change') && this.options.guardPolicy) {
+        await d.engine.resolveGuard(this.options.guardPolicy);
+      }
     } catch (e) {
-      const msg = (e as Error).message;
-      if ((e as Error).name !== 'LostResponseError' && !msg.startsWith('lost response')) throw e;
-      this.errors.push(msg);
+      if (!(e as Error).message.startsWith('lost response')) throw e;
+      this.errors.push((e as Error).message);
     }
   }
 
-  /** Simulate the background worker restarting: rebuild the engine from the persisted local state. */
   async restart(d: SimDevice): Promise<void> {
-    d.engine = await GroupEngine.open(d.ports, GROUP_ID);
+    d.engine = await GroupEngine.open(d.ports, d.engine.groupId);
   }
 
-  /** Make every file visible and sync every device until nothing changes. Throws if it never settles. */
-  async quiet(maxRounds = 30): Promise<void> {
+  async cloneDevice(d: SimDevice, name: string): Promise<SimDevice> {
+    const store = new MemoryStore();
+    store.data = new Map([...d.store.data].map(([k, v]) => [k, structuredClone(v)]));
+    const copy = this.makeDevice(name, d.bookmarks.clone(`${name}_`), store, new Map(d.keys));
+    copy.engine = await GroupEngine.open(copy.ports, d.engine.groupId);
+    this.devices.push(copy);
+    return copy;
+  }
+
+  async quiet(maxRounds = 40): Promise<void> {
     this.provider.flushVisibility();
     let previous = '';
-    let stableRounds = 0;
+    let stable = 0;
     for (let round = 0; round < maxRounds; round++) {
       for (const d of this.devices) await this.sync(d);
       this.advance(1000);
       this.provider.flushVisibility();
-      const fingerprint = JSON.stringify(this.devices.map((d) => this.fingerprint(d)));
+      const fingerprint = JSON.stringify(this.devices.map((d) => [this.canonicalMirror(d), d.engine.state.ops.length, d.engine.groupId]));
       const idle = this.devices.every((d) => d.engine.state.outbox.length === 0 && !d.engine.state.pendingBatch);
       if (idle && fingerprint === previous) {
-        if (++stableRounds >= 2) return;
-      } else stableRounds = 0;
+        if (++stable >= 2) return;
+      } else stable = 0;
       previous = fingerprint;
     }
-    throw new Error('simulation did not settle');
+    throw new Error(`simulation did not settle: ${JSON.stringify(this.devices.map((d) => d.engine.status))}`);
   }
 
-  /** The device's mirror as a canonical tree with stable IDs. */
   mirrorTree(d: SimDevice): Tree {
     const m = d.engine.mirror();
     return { roots: m.roots, nodes: m.nodes };
@@ -153,24 +192,26 @@ export class Simulator {
     return canonical(this.mirrorTree(d));
   }
 
-  /** The device's live fake tree rendered with stable IDs (through its ID map), for comparing with the mirror. */
-  canonicalLive(d: SimDevice): unknown {
+  canonicalLocalMirror(d: SimDevice): unknown {
+    const m = d.engine.mirror();
+    return canonical({ roots: m.roots, nodes: new Map([...m.nodes].filter(([, n]) => n.localId !== '')) });
+  }
+
+  async canonicalLive(d: SimDevice): Promise<unknown> {
     const idmap = new Map(d.engine.state.idmap);
+    const excluded = new Set(d.engine.state.excluded.map(([l]) => l));
     const roots = [
       ['root:toolbar', FAKE_ROOTS.toolbar],
       ['root:other', FAKE_ROOTS.other],
       ['root:menu', FAKE_ROOTS.menu],
     ] as const;
-    const render = async (localId: string) => {
-      const n = await d.bookmarks.getSubTree(localId);
+    const out = [];
+    for (const [groupRoot, local] of roots) {
+      const n = await d.bookmarks.getSubTree(local);
       const walk = (x: typeof n): unknown[] =>
-        (x.children ?? []).map((c) => [idmap.get(c.localId) ?? `?${c.localId}`, c.kind, c.title, c.url, walk(c)]);
-      return walk(n);
-    };
-    return Promise.all(roots.map(async ([groupRoot, local]) => [groupRoot, await render(local)]));
-  }
-
-  private fingerprint(d: SimDevice): unknown {
-    return [this.canonicalMirror(d), d.engine.state.ops.length];
+        (x.children ?? []).filter((c) => !excluded.has(c.localId)).map((c) => [idmap.get(c.localId) ?? `?${c.localId}`, c.kind, c.title, c.url, walk(c)]);
+      out.push([groupRoot, walk(n)]);
+    }
+    return out;
   }
 }

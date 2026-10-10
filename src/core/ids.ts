@@ -1,6 +1,4 @@
-// Identifiers (IMPLEMENTATION.md 2.1).
-
-const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz'; // Crockford base32, lowercase
+const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 
 export type RandomBytes = (n: number) => Uint8Array;
 
@@ -22,8 +20,8 @@ export function base32(bytes: Uint8Array): string {
   return out;
 }
 
-export function randomId(random: RandomBytes = cryptoRandomBytes): string {
-  return base32(random(16));
+export function randomId(random: RandomBytes = cryptoRandomBytes, bytes = 16): string {
+  return base32(random(bytes));
 }
 
 export const ROOT_TOOLBAR = 'root:toolbar';
@@ -34,8 +32,19 @@ export const ROOT_GROUP = 'root:group';
 export const EVERYTHING_ROOTS = [ROOT_TOOLBAR, ROOT_OTHER, ROOT_MENU] as const;
 export const FOLDER_ROOTS = [ROOT_GROUP] as const;
 
-export function isRootId(id: string): boolean {
-  return id.startsWith('root:');
+export const isRootId = (id: string): boolean => id.startsWith('root:');
+
+export function toBase64(bytes: Uint8Array): string {
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s);
+}
+
+export function fromBase64(s: string): Uint8Array {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
 export async function sha256Hex(data: Uint8Array | string): Promise<string> {
@@ -44,7 +53,6 @@ export async function sha256Hex(data: Uint8Array | string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Join-time ID: identical inputs on two devices give the same node ID, so simultaneous joins merge. */
 export async function derivedId(
   groupId: string,
   parentStableId: string,

@@ -1,4 +1,3 @@
-// User actions for the simulator, chosen from plain numbers so fast-check can shrink failing runs.
 
 import type { SimDevice, Simulator } from './simulator.js';
 
@@ -17,7 +16,6 @@ const URLS = ['https://a.example/', 'https://b.example/x', 'https://c.example/?q
 export interface EditResult {
   kind: EditKind;
   device: SimDevice;
-  /** Local IDs involved, for the oracle to translate into stable IDs. */
   node?: string;
   parent?: string;
   index?: number;
@@ -28,7 +26,6 @@ export interface EditResult {
 export const DEFAULT_KINDS: EditKind[] = ['addBookmark', 'addBookmark', 'addFolder', 'rename', 'setUrl', 'move', 'move', 'remove'];
 export const FOLDER_HEAVY_KINDS: EditKind[] = ['addFolder', 'addFolder', 'addBookmark', 'move', 'move', 'move', 'remove', 'rename'];
 
-/** Perform one edit on a device's local tree, as a user would. Returns null if it was a no-op. */
 export async function performEdit(
   sim: Simulator,
   d: SimDevice,
@@ -48,7 +45,7 @@ export async function performEdit(
       const parent = folders[act.b % folders.length]!;
       const index = act.c % (bm.childCount(parent) + 1);
       const isFolder = kind === 'addFolder';
-      const node = await bm.create({ parentId: parent, index, kind: isFolder ? 'folder' : 'bookmark', title, url: isFolder ? '' : url });
+      const node = await bm.userCreate({ parentId: parent, index, kind: isFolder ? 'folder' : 'bookmark', title, url: isFolder ? '' : url });
       return { kind, device: d, node, parent, index, title, url: isFolder ? '' : url };
     }
     case 'rename': {

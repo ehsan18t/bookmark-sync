@@ -1,12 +1,6 @@
-// Reconcile (IMPLEMENTATION.md 8.3): compare the live bookmark tree with the mirror and record the
-// differences as op drafts. Ops come only from this comparison, never from individual events, so
-// late, repeated or reordered browser events cannot produce duplicate ops.
-//
-// v1 always compares the whole mapped tree. Narrowing it to the folders marked dirty by events is
-// a later optimization and does not change the result.
-
-import type { Kind, OpDraft, SubtreeSnapshot } from './ops.js';
+import type { Kind, OpDraft } from './ops.js';
 import { assignKeys } from './position.js';
+import { snapshot } from './restore.js';
 import { childrenIndex, type Tree, type TreeNode } from './tree.js';
 
 export interface LiveNode {
@@ -17,6 +11,7 @@ export interface LiveNode {
   children?: LiveNode[];
 }
 
+/** An empty localId means the node has no local copy (a separator on Chromium). */
 export interface MirrorNode extends TreeNode {
   localId: string;
 }
@@ -26,12 +21,16 @@ export interface Mirror {
   nodes: Map<string, MirrorNode>;
 }
 
+export interface Excluded {
+  parent: string;
+  sticky: boolean;
+}
+
 export interface ReconcileInput {
-  /** Each group root with the live local folder it is mapped to. */
   roots: { groupRoot: string; live: LiveNode }[];
   mirror: Mirror;
   idmap: Map<string, string>;
-  excluded: ReadonlySet<string>;
+  excluded: ReadonlyMap<string, Excluded>;
   newId: () => string;
 }
 
@@ -39,24 +38,27 @@ export interface ReconcileResult {
   drafts: OpDraft[];
   mirror: Mirror;
   idmap: Map<string, string>;
-}
-
-interface Placed {
-  live: LiveNode;
-  sid: string;
-  parent: string;
-  pos: string;
+  released: string[];
 }
 
 export function reconcile(input: ReconcileInput): ReconcileResult {
   const { mirror, idmap, excluded, newId } = input;
+  const released: string[] = [];
+  const isExcluded = (c: LiveNode, parentLocal: string) => {
+    const e = excluded.get(c.localId);
+    if (!e) return false;
+    if (e.sticky || e.parent === parentLocal) return true;
+    released.push(c.localId);
+    return false;
+  };
+
+  const kidsOf = new Map<LiveNode, LiveNode[]>();
   const sidOf = new Map<LiveNode, string>();
   const liveSids = new Set<string>();
-
-  // Pass 1: stable IDs for every live node (new nodes get fresh IDs).
   const assign = (n: LiveNode) => {
-    for (const c of n.children ?? []) {
-      if (excluded.has(c.localId)) continue;
+    const kids = (n.children ?? []).filter((c) => !isExcluded(c, n.localId));
+    kidsOf.set(n, kids);
+    for (const c of kids) {
       const sid = idmap.get(c.localId) ?? newId();
       sidOf.set(c, sid);
       liveSids.add(sid);
@@ -65,31 +67,29 @@ export function reconcile(input: ReconcileInput): ReconcileResult {
   };
   for (const r of input.roots) assign(r.live);
 
-  // Pass 2: position keys per folder, keeping as many existing keys as possible.
-  const placed = new Map<LiveNode, Placed>();
+  const placed = new Map<LiveNode, { sid: string; parent: string; pos: string }>();
   const placeChildren = (folder: LiveNode, folderSid: string) => {
-    const kids = (folder.children ?? []).filter((c) => !excluded.has(c.localId));
-    const current = kids.map((c) => {
-      const m = mirror.nodes.get(sidOf.get(c)!);
-      return m && m.parent === folderSid ? m.pos : null;
-    });
-    const keys = assignKeys(current);
+    const kids = kidsOf.get(folder)!;
+    const keys = assignKeys(
+      kids.map((c) => {
+        const m = mirror.nodes.get(sidOf.get(c)!);
+        return m && m.parent === folderSid ? m.pos : null;
+      }),
+    );
     kids.forEach((c, i) => {
       const sid = sidOf.get(c)!;
-      placed.set(c, { live: c, sid, parent: folderSid, pos: keys[i]! });
+      placed.set(c, { sid, parent: folderSid, pos: keys[i]! });
       if (c.kind === 'folder') placeChildren(c, sid);
     });
   };
   for (const r of input.roots) placeChildren(r.live, r.groupRoot);
 
-  // Pass 3: drafts in preorder of the live tree, so a folder is placed before anything moves into it.
   const drafts: OpDraft[] = [];
   const nextMirror = new Map<string, MirrorNode>();
   const nextIdmap = new Map<string, string>();
   const walk = (folder: LiveNode) => {
-    for (const c of folder.children ?? []) {
-      const p = placed.get(c);
-      if (!p) continue; // excluded
+    for (const c of kidsOf.get(folder)!) {
+      const p = placed.get(c)!;
       const old = mirror.nodes.get(p.sid);
       if (!old) {
         drafts.push({
@@ -102,13 +102,7 @@ export function reconcile(input: ReconcileInput): ReconcileResult {
         });
       } else {
         if (old.parent !== p.parent || old.pos !== p.pos) {
-          drafts.push({
-            type: 'move',
-            node: p.sid,
-            parent: p.parent,
-            pos: p.pos,
-            before: { parent: old.parent, pos: old.pos },
-          });
+          drafts.push({ type: 'move', node: p.sid, parent: p.parent, pos: p.pos, before: { parent: old.parent, pos: old.pos } });
         }
         const fields: { title?: string; url?: string } = {};
         const before: { title?: string; url?: string } = {};
@@ -137,25 +131,18 @@ export function reconcile(input: ReconcileInput): ReconcileResult {
   };
   for (const r of input.roots) walk(r.live);
 
-  // Pass 4: deletes for the topmost mirror nodes that are gone. A folder delete covers its contents.
-  const mirrorTree: Tree = { roots: mirror.roots, nodes: mirror.nodes };
-  const idx = childrenIndex(mirrorTree);
+  const alive = (sid: string) => liveSids.has(sid) || input.roots.some((r) => r.groupRoot === sid);
   for (const m of mirror.nodes.values()) {
-    if (liveSids.has(m.id)) continue;
-    const parent = mirror.nodes.get(m.parent);
-    if (parent && !liveSids.has(parent.id)) continue; // covered by the parent's delete
-    drafts.push({ type: 'delete', node: m.id, before: snapshotOf(m, idx) });
+    if (m.localId === '' && alive(m.parent)) nextMirror.set(m.id, m);
   }
 
-  return { drafts, mirror: { roots: mirror.roots, nodes: nextMirror }, idmap: nextIdmap };
-}
+  const idx = childrenIndex({ roots: mirror.roots, nodes: mirror.nodes } satisfies Tree);
+  for (const m of mirror.nodes.values()) {
+    if (liveSids.has(m.id) || nextMirror.has(m.id)) continue;
+    const parent = mirror.nodes.get(m.parent);
+    if (parent && !liveSids.has(parent.id) && !nextMirror.has(parent.id)) continue;
+    drafts.push({ type: 'delete', node: m.id, before: snapshot(m, idx) });
+  }
 
-function snapshotOf(n: TreeNode, idx: Map<string, TreeNode[]>): SubtreeSnapshot {
-  return {
-    id: n.id,
-    kind: n.kind,
-    title: n.title,
-    url: n.url,
-    children: (idx.get(n.id) ?? []).map((c) => snapshotOf(c, idx)),
-  };
+  return { drafts, mirror: { roots: mirror.roots, nodes: nextMirror }, idmap: nextIdmap, released };
 }

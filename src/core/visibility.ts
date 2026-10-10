@@ -1,12 +1,9 @@
-// Visibility (IMPLEMENTATION.md 4.2 and 4.3). Computed on the final replayed state, never during the fold.
-
 import { isRootId } from './ids.js';
 import type { OpRef } from './ops.js';
 import type { GroupState, NodeState } from './replay.js';
 
 export const covers = (seen: Record<string, number>, r: OpRef): boolean => r.opSeq <= (seen[r.device] ?? 0);
 
-/** Observed-remove liveness: alive if some create or undelete is not covered by any delete of this node. */
 export function ownAlive(n: NodeState): boolean {
   return n.kind !== null && n.aliveEvents.some((a) => !n.deletes.some((d) => covers(d.seen, a)));
 }
@@ -16,7 +13,6 @@ function parentOf(s: GroupState, n: NodeState): NodeState | undefined {
   return p === undefined || isRootId(p) ? undefined : s.nodes.get(p);
 }
 
-/** True if the parent chain reaches a root through known, non-stub nodes. */
 export function hasRootPath(s: GroupState, n: NodeState): boolean {
   let cur: NodeState | undefined = n;
   for (let depth = 0; depth < 10_000; depth++) {
@@ -30,8 +26,8 @@ export function hasRootPath(s: GroupState, n: NodeState): boolean {
 }
 
 /**
- * An ancestor's delete hides n only if the deleter had seen n placed in that subtree:
- * it must cover the placement op of n and of every node between n and that ancestor.
+ * An ancestor's delete hides n only if the deleter saw n placed in that subtree: the delete must
+ * cover the placement op of n and of every node between n and that ancestor.
  */
 export function hiddenByAncestor(s: GroupState, n: NodeState): boolean {
   if (!n.placement) return true;
@@ -44,12 +40,10 @@ export function hiddenByAncestor(s: GroupState, n: NodeState): boolean {
   return false;
 }
 
-/** IDs of every visible node. Roots are implicit and not included. */
 export function visibleSet(s: GroupState): Set<string> {
   const vis = new Set<string>();
   for (const n of s.nodes.values()) {
     if (!ownAlive(n) || !n.placement || !hasRootPath(s, n) || hiddenByAncestor(s, n)) continue;
-    // n qualifies on its own; revive every ancestor that is not already visible.
     for (let x: NodeState | undefined = n; x && !vis.has(x.id); x = parentOf(s, x)) vis.add(x.id);
   }
   return vis;

@@ -1,5 +1,3 @@
-// Visible trees in group terms and diffs between them (IMPLEMENTATION.md 4.4 and 4.5).
-
 import type { Kind } from './ops.js';
 import type { GroupState } from './replay.js';
 import { visibleSet } from './visibility.js';
@@ -24,9 +22,8 @@ export function compareSiblings(a: TreeNode, b: TreeNode): number {
 }
 
 export function visibleTree(s: GroupState, roots: readonly string[]): Tree {
-  const vis = visibleSet(s);
   const nodes = new Map<string, TreeNode>();
-  for (const id of vis) {
+  for (const id of visibleSet(s)) {
     const n = s.nodes.get(id)!;
     nodes.set(id, {
       id,
@@ -37,7 +34,6 @@ export function visibleTree(s: GroupState, roots: readonly string[]): Tree {
       url: n.url?.value ?? '',
     });
   }
-  // Nodes whose root is not one of this group's roots cannot be shown anywhere.
   for (const [id] of nodes) if (!roots.includes(rootOf(nodes, id))) nodes.delete(id);
   return { roots, nodes };
 }
@@ -52,7 +48,6 @@ function rootOf(nodes: Map<string, TreeNode>, id: string): string {
   return id;
 }
 
-/** Children of every folder (roots included), in group order. */
 export function childrenIndex(t: Tree): Map<string, TreeNode[]> {
   const idx = new Map<string, TreeNode[]>();
   for (const r of t.roots) idx.set(r, []);
@@ -78,13 +73,22 @@ export function preorder(t: Tree): TreeNode[] {
   return out;
 }
 
+export function pathOf(t: Tree, id: string): string {
+  const parts: string[] = [];
+  let cur = t.nodes.get(id);
+  let parent = cur?.parent ?? id;
+  while (cur) {
+    parent = cur.parent;
+    cur = t.nodes.get(parent);
+    if (cur) parts.unshift(cur.title);
+  }
+  return [parent, ...parts].join('\u0000');
+}
+
 export interface TreeDiff {
-  /** In preorder of the target tree, so parents come first. */
   creates: TreeNode[];
-  /** Nodes whose parent or position changed, in preorder of the target tree. */
   moves: TreeNode[];
   updates: TreeNode[];
-  /** In postorder of the source tree, so children come first. */
   deletes: TreeNode[];
 }
 
@@ -102,10 +106,10 @@ export function diffTrees(a: Tree, b: Tree): TreeDiff {
   return diff;
 }
 
-export const diffSize = (d: TreeDiff): number =>
-  new Set([...d.creates, ...d.moves, ...d.updates, ...d.deletes].map((n) => n.id)).size;
+export function changedIds(d: TreeDiff): Set<string> {
+  return new Set([...d.creates, ...d.moves, ...d.updates, ...d.deletes].map((n) => n.id));
+}
 
-/** A canonical, comparable rendering: nested [kind, title, url, children] by group order, IDs included. */
 export function canonical(t: Tree, withIds = true): unknown {
   const idx = childrenIndex(t);
   const render = (parent: string): unknown[] =>

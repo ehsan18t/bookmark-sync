@@ -1,11 +1,12 @@
-// Restore and revert planning (IMPLEMENTATION.md 9.3).
-// The plan turns the merged tree "now" into the merged tree "then". Placement ops are emitted in
-// preorder of "then", so a folder is always placed before anything moves into it and no restore op
-// can be skipped as a cycle.
-
 import type { OpDraft, SubtreeSnapshot } from './ops.js';
 import { childrenIndex, preorder, type Tree, type TreeNode } from './tree.js';
 
+const fieldsOf = (n: TreeNode) => (n.kind === 'bookmark' ? { title: n.title, url: n.url } : { title: n.title });
+
+/**
+ * Drafts that turn `now` into `then` (or, with `only`, just those nodes). Placement ops follow the
+ * preorder of `then`, so a folder is placed before anything moves into it and none is a cycle.
+ */
 export function planRestore(now: Tree, then: Tree, only?: ReadonlySet<string>): OpDraft[] {
   const scope = only ? closeOverParents(now, then, only) : undefined;
   const inScope = (id: string) => !scope || scope.has(id);
@@ -15,14 +16,7 @@ export function planRestore(now: Tree, then: Tree, only?: ReadonlySet<string>): 
     if (!inScope(t.id)) continue;
     const n = now.nodes.get(t.id);
     if (!n) {
-      drafts.push({
-        type: 'undelete',
-        node: t.id,
-        kind: t.kind,
-        parent: t.parent,
-        pos: t.pos,
-        fields: t.kind === 'bookmark' ? { title: t.title, url: t.url } : { title: t.title },
-      });
+      drafts.push({ type: 'undelete', node: t.id, kind: t.kind, parent: t.parent, pos: t.pos, fields: fieldsOf(t) });
       continue;
     }
     if (n.parent !== t.parent || n.pos !== t.pos) {
@@ -41,8 +35,6 @@ export function planRestore(now: Tree, then: Tree, only?: ReadonlySet<string>): 
     if (Object.keys(fields).length) drafts.push({ type: 'update', node: t.id, fields, before });
   }
 
-  // Deletes for nodes visible now but not then. Only the topmost one of each removed subtree is
-  // needed, and any node it contains that survives has already been moved out above.
   const idx = childrenIndex(now);
   for (const n of preorder(now)) {
     if (then.nodes.has(n.id) || !inScope(n.id)) continue;
@@ -54,13 +46,9 @@ export function planRestore(now: Tree, then: Tree, only?: ReadonlySet<string>): 
 }
 
 /**
- * Plan a restore and check it by simulation. Re-placing a folder (an undelete or a move) gives it a
- * new placement op that older deletes never saw, which can make descendants that were hidden only
- * through an ancestor's delete visible again. Simulating the plan finds such nodes so they get their
- * own delete, and finds anything still missing, until the result is exactly the target.
- *
- * `simulate` replays the merged state plus the drafts (stamped as if recorded now, in order) and
- * returns the resulting visible tree.
+ * Re-placing a folder gives it a placement op older deletes never saw, which can make descendants
+ * hidden only through an ancestor's delete visible again. So the plan is replayed by `simulate` and
+ * patched until the result is exactly the target.
  */
 export function planRestoreExact(
   now: Tree,
@@ -76,27 +64,18 @@ export function planRestoreExact(
     const extra = preorder(result).filter((n) => !target(n.id));
     const missing = preorder(then).filter((n) => (!scope || scope.has(n.id)) && !result.nodes.has(n.id));
     if (extra.length === 0 && missing.length === 0) return drafts;
-    const idx = childrenIndex(result);
     for (const n of missing) {
-      drafts.push({
-        type: 'undelete',
-        node: n.id,
-        kind: n.kind,
-        parent: n.parent,
-        pos: n.pos,
-        fields: n.kind === 'bookmark' ? { title: n.title, url: n.url } : { title: n.title },
-      });
+      drafts.push({ type: 'undelete', node: n.id, kind: n.kind, parent: n.parent, pos: n.pos, fields: fieldsOf(n) });
     }
+    const idx = childrenIndex(result);
     const extraIds = new Set(extra.map((n) => n.id));
     for (const n of extra) {
-      if (extraIds.has(n.parent)) continue; // the topmost delete covers it
-      drafts.push({ type: 'delete', node: n.id, before: snapshot(n, idx) });
+      if (!extraIds.has(n.parent)) drafts.push({ type: 'delete', node: n.id, before: snapshot(n, idx) });
     }
   }
   throw new Error('restore plan did not reach the target state');
 }
 
-/** A revert of a set of nodes also needs every ancestor (at "then") that is not visible now. */
 function closeOverParents(now: Tree, then: Tree, only: ReadonlySet<string>): Set<string> {
   const scope = new Set(only);
   for (const id of only) {
@@ -111,6 +90,6 @@ function closeOverParents(now: Tree, then: Tree, only: ReadonlySet<string>): Set
   return scope;
 }
 
-function snapshot(n: TreeNode, idx: Map<string, TreeNode[]>): SubtreeSnapshot {
+export function snapshot(n: TreeNode, idx: Map<string, TreeNode[]>): SubtreeSnapshot {
   return { id: n.id, kind: n.kind, title: n.title, url: n.url, children: (idx.get(n.id) ?? []).map((c) => snapshot(c, idx)) };
 }

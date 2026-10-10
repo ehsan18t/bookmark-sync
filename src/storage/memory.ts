@@ -1,19 +1,13 @@
-// In-memory storage provider for tests and the simulator (IMPLEMENTATION.md 15.2).
-// It can delay when new files become visible, lose the response of a write that succeeded, and it
-// keeps an oracle record of every write so tests can check that no batch was ever overwritten.
 
 import { bytesEqual } from '../core/codec.js';
 import type { CreateOnceResult, StorageProvider } from '../engine/ports.js';
 
 export interface MemoryFaults {
-  /** Milliseconds (of the shared clock) before a newly created file shows up in reads and listings. */
   visibilityDelay?: () => number;
-  /** Return true to throw after a createOnce has written, as if the response was lost. */
   loseCreateResponse?: () => boolean;
 }
 
 interface StoredFile {
-  /** Oldest first. Readers see the newest version that is already visible, like eventual consistency. */
   versions: { data: Uint8Array; visibleAt: number }[];
 }
 
@@ -21,7 +15,6 @@ export class LostResponseError extends Error {}
 
 export class MemoryProvider {
   private readonly files = new Map<string, StoredFile>();
-  /** Every distinct content ever written to a createOnce path. */
   readonly createLog = new Map<string, Uint8Array[]>();
 
   constructor(
@@ -29,9 +22,9 @@ export class MemoryProvider {
     private readonly faults: MemoryFaults = {},
   ) {}
 
-  /** A view of this provider for one device. Each device sees the same files. */
   client(): StorageProvider {
     return {
+      listGroups: async () => this.listGroups(),
       listDevices: async (group) => this.listDevices(group),
       get: async (path) => this.get(path),
       createOnce: async (path, data) => this.createOnce(path, data),
@@ -44,12 +37,10 @@ export class MemoryProvider {
     };
   }
 
-  /** Every createOnce path that ever held two different contents. */
   overwrittenPaths(): string[] {
     return [...this.createLog].filter(([, versions]) => versions.length > 1).map(([p]) => p);
   }
 
-  /** Make every file visible immediately, for the quiet phase of a simulation. */
   flushVisibility(): void {
     for (const f of this.files.values()) for (const v of f.versions) v.visibleAt = Math.min(v.visibleAt, this.now());
   }
@@ -62,6 +53,15 @@ export class MemoryProvider {
 
   private visible(f: StoredFile | undefined): f is StoredFile {
     return this.current(f) !== null;
+  }
+
+  private listGroups(): string[] {
+    const out = new Set<string>();
+    for (const [path, f] of this.files) {
+      const m = /^groups\/([^/]+)\/group\.json$/.exec(path);
+      if (m && this.visible(f)) out.add(m[1]!);
+    }
+    return [...out].sort();
   }
 
   private listDevices(group: string): string[] {

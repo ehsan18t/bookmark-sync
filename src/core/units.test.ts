@@ -35,7 +35,6 @@ describe('position keys', () => {
   it('keeps the longest increasing run of existing keys and fills the rest in order', () => {
     const current = ['a2', null, 'a1', 'a3', null];
     const keys = assignKeys(current);
-    // Two of the three existing keys can be kept (a2,a3 or a1,a3); either is a longest run.
     expect(keys.filter((k, i) => k === current[i]).length).toBe(2);
     expect(keys[3]).toBe('a3');
     expect([...keys].sort()).toEqual(keys); // strictly increasing in the given order
@@ -59,7 +58,7 @@ describe('reconcile', () => {
       roots: [{ groupRoot: ROOT_OTHER, live }],
       mirror,
       idmap,
-      excluded: new Set(),
+      excluded: new Map(),
       newId: () => `new${++n}`,
     });
   }

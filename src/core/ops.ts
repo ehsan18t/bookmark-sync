@@ -1,5 +1,3 @@
-// Change records (IMPLEMENTATION.md 3.1).
-
 import type { Hlc } from './hlc.js';
 
 export type Kind = 'bookmark' | 'folder' | 'separator';
@@ -14,7 +12,6 @@ export interface OpRef {
   opSeq: number;
 }
 
-/** A deleted subtree, kept on delete ops for history display. Never used for merging. */
 export interface SubtreeSnapshot {
   id: string;
   kind: Kind;
@@ -67,19 +64,19 @@ export interface UndeleteOp extends OpBase {
 
 export type Op = CreateOp | UpdateOp | MoveOp | DeleteOp | UndeleteOp;
 
-/** An op before the engine stamps it with device, opSeq, hlc and (for deletes) seen. */
+type Draft<T extends OpBase> = Omit<T, keyof OpBase> & { node: string };
+
 export type OpDraft =
-  | Omit<CreateOp, keyof OpBase | 'node'> & { node: string }
-  | Omit<UpdateOp, keyof OpBase | 'node'> & { node: string }
-  | Omit<MoveOp, keyof OpBase | 'node'> & { node: string }
-  | Omit<DeleteOp, keyof OpBase | 'node' | 'seen'> & { node: string }
-  | Omit<UndeleteOp, keyof OpBase | 'node'> & { node: string };
+  | Draft<CreateOp>
+  | Draft<UpdateOp>
+  | Draft<MoveOp>
+  | (Omit<Draft<DeleteOp>, 'seen'> & { seen?: Record<string, number> })
+  | Draft<UndeleteOp>;
 
 export const refOf = (op: Op): OpRef => ({ device: op.device, opSeq: op.opSeq });
 
 export const opKey = (op: { device: string; opSeq: number }): string => `${op.device}:${op.opSeq}`;
 
-/** Total order used by the replay fold: HLC, then op identity for exact duplicates. */
 export function compareOps(a: Op, b: Op): number {
   if (a.hlc !== b.hlc) return a.hlc < b.hlc ? -1 : 1;
   if (a.device !== b.device) return a.device < b.device ? -1 : 1;

@@ -1,6 +1,3 @@
-// Property 3 (IMPLEMENTATION.md 15.2): when every action is followed by a full sync of all devices,
-// the result must equal a plain in-memory tree that applies the same actions directly. Convergence
-// alone cannot catch rules that converge on the wrong answer; this can.
 
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';

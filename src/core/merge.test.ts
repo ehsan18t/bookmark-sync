@@ -5,7 +5,6 @@ import type { Op } from './ops.js';
 import { emptyState, replay } from './replay.js';
 import { canonical, visibleTree } from './tree.js';
 
-// A tiny op builder. Each device numbers its own ops; `t` is the wall time of the HLC.
 class Dev {
   seq = 0;
   constructor(readonly id: string) {}
@@ -27,7 +26,6 @@ class Dev {
   move(t: number, node: string, parent: string, pos = 'a0'): Op {
     return { ...this.base(t, node), type: 'move', parent, pos, before: { parent: '', pos: '' } };
   }
-  /** `seen` lists what this device had applied from each device, its own ops included automatically. */
   del(t: number, node: string, seen: Record<string, number> = {}): Op {
     const b = this.base(t, node);
     return {
@@ -61,7 +59,6 @@ describe('conflict rules (spec rule 12, IMPLEMENTATION 4.3)', () => {
     const a = new Dev('a');
     const b = new Dev('b');
     const ops = [a.folder(1, 'F'), a.bookmark(2, 'old', 'F')];
-    // b has seen a's ops 1-2 and adds a bookmark; a deletes F without seeing b's add.
     ops.push(b.bookmark(3, 'pasta', 'F', 'a1'));
     ops.push(a.del(4, 'F'));
     expect(visible(ops)).toEqual(['F', 'pasta']);
