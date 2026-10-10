@@ -131,9 +131,15 @@ export function reconcile(input: ReconcileInput): ReconcileResult {
   };
   for (const r of input.roots) walk(r.live);
 
-  const alive = (sid: string) => liveSids.has(sid) || input.roots.some((r) => r.groupRoot === sid);
-  for (const m of mirror.nodes.values()) {
-    if (m.localId === '' && alive(m.parent)) nextMirror.set(m.id, m);
+  const alive = (sid: string) => liveSids.has(sid) || nextMirror.has(sid) || input.roots.some((r) => r.groupRoot === sid);
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const m of mirror.nodes.values()) {
+      if (m.localId === '' && !nextMirror.has(m.id) && alive(m.parent)) {
+        nextMirror.set(m.id, m);
+        changed = true;
+      }
+    }
   }
 
   const idx = childrenIndex({ roots: mirror.roots, nodes: mirror.nodes } satisfies Tree);

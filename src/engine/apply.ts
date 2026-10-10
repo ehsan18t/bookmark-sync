@@ -57,20 +57,28 @@ export async function applyMerged(
     try {
       await port.update(local(n.id), n.kind === 'bookmark' ? { title: n.title, url: n.url } : { title: n.title });
     } catch {
-      const old = kept.get(n.id) ?? retried.get(n.id)!;
-      kept.set(n.id, { ...old, title: old.title, url: old.url });
+      const old = retried.get(n.id)!;
+      kept.set(n.id, { ...(kept.get(n.id) ?? { ...n, localId: old.localId }), title: old.title, url: old.url });
     }
   }
   const deleted = new Set(diff.deletes.map((n) => n.id));
+  const refusedDeletes = new Set<string>();
   for (const n of diff.deletes) {
-    const wasVirtual = virtual(n.id);
-    localOf.delete(n.id);
-    if (wasVirtual || deleted.has(retried.get(n.id)!.parent)) continue;
-    await port.removeTree(retried.get(n.id)!.localId).catch(() => {});
+    if (virtual(n.id) || deleted.has(retried.get(n.id)!.parent)) continue;
+    const localId = retried.get(n.id)!.localId;
+    try {
+      await port.removeTree(localId);
+    } catch {
+      if (await port.exists(localId)) refusedDeletes.add(n.id);
+    }
   }
+  const underRefused = (sid: string): boolean => {
+    for (let cur = retried.get(sid); cur; cur = retried.get(cur.parent)) if (refusedDeletes.has(cur.id)) return true;
+    return false;
+  };
 
   const changed = diff.creates.length + diff.moves.length + diff.updates.length + diff.deletes.length > 0;
-  if (changed) await reorder(port, merged, localOf, excluded).catch(() => {});
+  if (changed) await reorder(port, merged, localOf, excluded);
 
   const nodes = new Map<string, MirrorNode>();
   const idmap = new Map<string, string>();
@@ -79,6 +87,12 @@ export async function applyMerged(
     const k = kept.get(n.id);
     nodes.set(n.id, k ? { ...n, parent: k.parent, pos: k.pos, title: k.title, url: k.url, localId } : { ...n, localId });
     if (localId) idmap.set(localId, n.id);
+  }
+  for (const n of diff.deletes) {
+    const old = retried.get(n.id)!;
+    if (!underRefused(n.id) || !old.localId) continue;
+    nodes.set(n.id, old);
+    idmap.set(old.localId, n.id);
   }
   return { mirror: { roots: merged.roots, nodes }, idmap, changed };
 }
@@ -107,7 +121,7 @@ async function reorder(port: BookmarksPort, merged: Tree, localOf: Map<string, s
       current.splice(current.indexOf(l), 1);
       const target = j === 0 ? 0 : current.indexOf(desired[j - 1]!) + 1;
       current.splice(target, 0, l);
-      await port.move(l, { parentId: parentLocal, index: target });
+      await port.move(l, { parentId: parentLocal, index: target }).catch(() => {});
     }
   }
 }

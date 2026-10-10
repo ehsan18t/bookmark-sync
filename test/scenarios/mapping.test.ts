@@ -159,3 +159,56 @@ describe('items that failed once', () => {
     expect(await titlesIn(b.bookmarks, FAKE_ROOTS.toolbar)).toEqual(['later']);
   });
 });
+
+describe('refused folders, edits and deletes', () => {
+  it('a folder refused once does not delete its children anywhere, and is created later', async () => {
+    const sim = new Simulator({ devices: 2, seed: 67 });
+    await sim.setup();
+    const [a, b] = sim.devices as [SimDevice, SimDevice];
+    let refuse = true;
+    b.bookmarks.refuseCreate = (args) => refuse && args.kind === 'folder';
+    const f = await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.toolbar, kind: 'folder', title: 'F', url: '' });
+    await a.bookmarks.userCreate({ parentId: f, kind: 'bookmark', title: 'c1', url: 'https://c1.example/' });
+    await a.bookmarks.userCreate({ parentId: f, kind: 'bookmark', title: 'c2', url: 'https://c2.example/' });
+    await sim.quiet();
+    expect(await titlesIn(a.bookmarks, f)).toEqual(['c1', 'c2']);
+    expect(b.engine.state.ops.filter((o) => o.device === 'devb')).toEqual([]);
+    refuse = false;
+    await sim.quiet();
+    const fb = (await b.bookmarks.getSubTree(FAKE_ROOTS.toolbar)).children![0]!;
+    expect(fb.children!.map((c) => c.title)).toEqual(['c1', 'c2']);
+  });
+
+  it('a move that works while its edit is refused records no move of its own', async () => {
+    const sim = new Simulator({ devices: 2, seed: 68 });
+    await sim.setup();
+    const [a, b] = sim.devices as [SimDevice, SimDevice];
+    const g = await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.toolbar, kind: 'folder', title: 'G', url: '' });
+    const x = await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'x', url: 'https://x.example/' });
+    await sim.quiet();
+    b.bookmarks.rejectUrl = (u) => u.startsWith('javascript:');
+    await a.bookmarks.move(x, { parentId: g });
+    await a.bookmarks.update(x, { url: 'javascript:void(0)' });
+    await sim.quiet();
+    expect(b.engine.state.ops.filter((o) => o.device === 'devb')).toEqual([]);
+    const gb = (await b.bookmarks.getSubTree(FAKE_ROOTS.toolbar)).children![0]!;
+    expect(gb.children!.map((c) => c.title)).toEqual(['x']);
+  });
+
+  it('a delete refused once is retried instead of bringing the item back', async () => {
+    const sim = new Simulator({ devices: 2, seed: 69 });
+    await sim.setup();
+    const [a, b] = sim.devices as [SimDevice, SimDevice];
+    const x = await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'x', url: 'https://x.example/' });
+    await sim.quiet();
+    let refuse = true;
+    b.bookmarks.refuseRemove = () => refuse;
+    await a.bookmarks.removeTree(x);
+    await sim.quiet();
+    expect(b.engine.state.ops.filter((o) => o.device === 'devb')).toEqual([]);
+    expect(await titlesIn(a.bookmarks, FAKE_ROOTS.toolbar)).toEqual([]);
+    refuse = false;
+    await sim.quiet();
+    expect(await titlesIn(b.bookmarks, FAKE_ROOTS.toolbar)).toEqual([]);
+  });
+});

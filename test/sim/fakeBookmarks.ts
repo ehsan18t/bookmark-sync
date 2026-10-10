@@ -44,6 +44,8 @@ export class FakeBookmarks implements BookmarksPort {
 
   /** URLs this browser refuses, like Firefox with javascript: bookmarks created by extensions. */
   rejectUrl: ((url: string) => boolean) | null = null;
+  refuseCreate: ((args: { kind: Kind; title: string }) => boolean) | null = null;
+  refuseRemove: ((localId: string) => boolean) | null = null;
 
   /** Throw on the nth write from now, like a background worker being stopped mid-apply. */
   crashAfter: number | null = null;
@@ -57,6 +59,7 @@ export class FakeBookmarks implements BookmarksPort {
       throw new Error('worker stopped');
     }
     if (args.kind === 'bookmark' && this.rejectUrl?.(args.url)) throw new Error('refused URL');
+    if (this.refuseCreate?.(args)) throw new Error('refused create');
     const id = `${this.prefix}${++this.counter}`;
     this.addNode(id, args.kind, args.kind === 'separator' ? '' : args.title, args.kind === 'bookmark' ? args.url : '', args.parentId, args.index);
     return id;
@@ -84,6 +87,7 @@ export class FakeBookmarks implements BookmarksPort {
 
   async removeTree(localId: string): Promise<void> {
     this.writes++;
+    if (this.refuseRemove?.(localId)) throw new Error('refused remove');
     const n = this.must(localId);
     const p = this.must(n.parent!);
     p.children.splice(p.children.indexOf(localId), 1);
