@@ -393,8 +393,10 @@ export class GroupEngine {
     if (st.state === 'paused') this.local.status = { state: 'active' };
     try {
       if (!(await this.checkMapping())) return result;
+      const listed = await this.ports.provider.listDevices(this.groupId);
+      if (!(await this.checkClock())) return result;
       await this.recordLocalChanges();
-      result.pulled = await this.pull();
+      result.pulled = await this.pull(listed);
       if (this.paused) return result;
       const migratedTo = await this.migrationStep();
       if (migratedTo) return { ...result, migratedTo };
@@ -502,11 +504,11 @@ export class GroupEngine {
     this.local.applyInProgress = false;
   }
 
-  async pull(): Promise<number> {
+  async pull(prelisted?: string[]): Promise<number> {
     const { provider } = this.ports;
     const { groupId, deviceId } = this.local.config;
-    const listed = await provider.listDevices(groupId);
-    if (!(await this.checkClock())) return 0;
+    const listed = prelisted ?? (await provider.listDevices(groupId));
+    if (!prelisted && !(await this.checkClock())) return 0;
     const devices = [...new Set([...listed, ...Object.keys(this.local.cursors)])].filter((d) => d !== deviceId).sort();
     const known = new Set(this.local.ops.map(opKey));
     const base = this.baseState();

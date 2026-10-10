@@ -110,3 +110,23 @@ describe('leaving a group', () => {
     expect(a.engine.devices().find((d) => d.deviceId === 'devb')?.left).toBe(true);
   });
 });
+
+describe('clock far ahead', () => {
+  it('edits made while the clock is days ahead are stamped with the corrected time and pause nobody else', async () => {
+    const sim = new Simulator({ devices: 2, seed: 27 });
+    await sim.setup();
+    const [a, b] = sim.devices as [SimDevice, SimDevice];
+    await sim.quiet();
+    a.skew = 3 * 24 * 60 * 60_000;
+    await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'edited with a wrong clock', url: 'https://w.example/' });
+    await sim.sync(a);
+    expect(a.engine.status).toMatchObject({ state: 'paused', reason: 'clock-skew' });
+    expect(a.engine.state.outbox).toEqual([]);
+    a.skew = 0;
+    await sim.quiet();
+    expect(b.engine.status.state).toBe('active');
+    expect(titles(b)).toEqual(['edited with a wrong clock']);
+    const op = b.engine.state.ops.find((o) => o.device === 'deva')!;
+    expect(Number(op.hlc.slice(0, 15))).toBeLessThan(sim.time + 60_000);
+  });
+});
