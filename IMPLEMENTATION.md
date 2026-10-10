@@ -18,6 +18,12 @@ Every milestone below is implemented. Where the code ended up differing from thi
 - **The UI** talks to the background with `runtime.sendMessage` only; there is no long-lived port.
 - **The default bookmarks list** is data inside `src/core/defaults.ts`.
 - **Firefox** requires version 140 (for `data_collection_permissions`), not 128.
+- **Refused items:** apply catches failures per item. A create the browser refuses (Firefox rejects `javascript:` bookmarks from extensions) leaves the node without a local copy and is retried on later applies; a refused move or edit keeps the node's last state in the mirror.
+- **Renumbered bookmarks:** when many mirrored local IDs vanish while many unmapped items appear, the ID map is rebuilt by matching parent, kind, title and URL before reconcile; if most cannot be matched the group pauses with `needs-join`.
+- **Cursors:** a reader whose base already covers every op of a device fast-forwards its cursor, and a missing batch of a device that left or was removed makes it load the newest snapshot.
+- **Keys:** remembered keys are stored non-extractable in IndexedDB; session-only keys live as raw bytes in `storage.session`, which browsers keep in memory.
+- **Joins** publish `device.json` only once the join plan is ready, so a failed join leaves nothing behind; previews use placeholder folders and create nothing.
+- **Google Drive** treats byte-identical duplicate files (a retried upload) as one file.
 
 ## 1. Stack and repository layout
 
