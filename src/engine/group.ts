@@ -420,6 +420,7 @@ export class GroupEngine {
   }
 
   private pendingNativeSyncPause = false;
+  private leaving = false;
 
   private get paused(): boolean {
     return this.local.status.state === 'paused';
@@ -907,7 +908,7 @@ export class GroupEngine {
       frontier: this.local.baseFrontier,
       firstRetainedBatchNo: first?.batchNo ?? this.local.lastBatchNo + 1,
       firstRetainedOpSeq: first?.firstOpSeq ?? this.local.lastPublishedOpSeq + 1,
-      left: false,
+      left: this.leaving,
       frozenFor: this.local.migration?.frozen ? this.local.migration.id : null,
       markers: Object.fromEntries(Object.entries(this.local.markers).map(([k, v]) => [k, v!.version])),
       updatedAt: this.ports.provider.serverDate(),
@@ -1166,12 +1167,8 @@ export class GroupEngine {
     } catch {
       /* best effort: the group must still be left */
     }
-    const path = deviceInfoPath(this.groupId, this.deviceId);
-    const bytes = await this.ports.provider.get(path);
-    if (bytes) {
-      const info = await decode<DeviceInfo>(bytes, 'device', this.crypt(path));
-      await this.ports.provider.overwrite(path, await encode('device', { ...info, left: true }, this.crypt(path)));
-    }
+    this.leaving = true;
+    await this.publish(true);
     await this.ports.store.delete(this.groupId);
   }
 

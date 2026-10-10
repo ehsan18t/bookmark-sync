@@ -90,3 +90,23 @@ describe('interrupted apply', () => {
     for (const d of [a, b]) expect(d.engine.status.state).toBe('active');
   });
 });
+
+describe('leaving a group', () => {
+  it('edits uploaded while leaving reach the other browsers', async () => {
+    const sim = new Simulator({ devices: 2, seed: 26, visibilityDelayMs: 60_000 });
+    await sim.setup();
+    const [a, b] = sim.devices as [SimDevice, SimDevice];
+    sim.enableFaults(false);
+    await sim.quiet();
+    sim.enableFaults(true);
+    await b.bookmarks.userCreate({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'last edit', url: 'https://last.example/' });
+    await b.engine.recordLocalChanges();
+    await b.engine.leave();
+    sim.devices.splice(1, 1);
+    sim.enableFaults(false);
+    sim.advance(120_000);
+    await sim.quiet();
+    expect(titles(a)).toEqual(['last edit']);
+    expect(a.engine.devices().find((d) => d.deviceId === 'devb')?.left).toBe(true);
+  });
+});
