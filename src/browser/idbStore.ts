@@ -1,5 +1,5 @@
 import { browser } from 'wxt/browser';
-import { exportRawKey, importRawKey } from '../core/crypto.js';
+import { importRawKey, sessionBytes } from '../core/crypto.js';
 import { fromBase64, toBase64 } from '../core/ids.js';
 import type { AppMeta, AppStore } from '../engine/app.js';
 import type { GroupLocal } from '../engine/group.js';
@@ -57,8 +57,12 @@ export class IdbStore implements AppStore {
 
   /** Remembered keys are stored non-extractable in IndexedDB; others live only in storage.session, which is kept in memory. */
   async getKey(groupId: string): Promise<CryptoKey | null> {
-    const stored = (await tx<{ key: CryptoKey }>(await this.db, 'keys', 'readonly', (s) => s.get(groupId))) as { key: CryptoKey } | undefined;
-    if (stored) return stored.key;
+    const stored = (await tx<{ key: CryptoKey; session?: string }>(await this.db, 'keys', 'readonly', (s) => s.get(groupId))) as
+      | { key: CryptoKey; session?: string }
+      | undefined;
+    if (stored && stored.session !== undefined && stored.session !== 'persistent') {
+      await tx(await this.db, 'keys', 'readwrite', (s) => void s.delete(groupId));
+    } else if (stored) return stored.key;
     if (this.memoryKeys.has(groupId)) return this.memoryKeys.get(groupId)!;
     const name = `key:${groupId}`;
     const session = (await browser.storage.session.get(name)) as Record<string, string | undefined>;
@@ -67,18 +71,10 @@ export class IdbStore implements AppStore {
 
   async setKey(groupId: string, key: CryptoKey, persistent: boolean): Promise<void> {
     await this.deleteKey(groupId);
-    if (!key.extractable) {
-      if (persistent) await tx(await this.db, 'keys', 'readwrite', (s) => void s.put({ key }, groupId));
-      else this.memoryKeys.set(groupId, key);
-      return;
-    }
-    const raw = await exportRawKey(key);
-    if (persistent) {
-      const sealed = await importRawKey(raw);
-      await tx(await this.db, 'keys', 'readwrite', (s) => void s.put({ key: sealed }, groupId));
-    } else {
-      await browser.storage.session.set({ [`key:${groupId}`]: toBase64(raw) });
-    }
+    const raw = sessionBytes(key);
+    if (persistent) await tx(await this.db, 'keys', 'readwrite', (s) => void s.put({ key }, groupId));
+    else if (raw) await browser.storage.session.set({ [`key:${groupId}`]: toBase64(raw) });
+    else this.memoryKeys.set(groupId, key);
   }
 
   async deleteKey(groupId: string): Promise<void> {

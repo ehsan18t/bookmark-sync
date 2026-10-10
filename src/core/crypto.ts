@@ -16,20 +16,19 @@ export class WrongPassphraseError extends Error {
   }
 }
 
-/** Derived keys are extractable so a session-only key can be held in memory as raw bytes; stored keys are re-imported as non-extractable. */
+const rawOfKey = new WeakMap<CryptoKey, Uint8Array>();
+
+/** Keys are non-extractable; the raw bytes of a freshly derived key are kept only so a session copy can live in memory. */
 export async function deriveKey(passphrase: string, salt: Uint8Array, iterations: number): Promise<CryptoKey> {
-  const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: salt as BufferSource, iterations },
-    material,
-    { name: 'AES-GCM', length: 256 },
-    true,
-    ['encrypt', 'decrypt'],
-  );
+  const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveBits']);
+  const raw = new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: salt as BufferSource, iterations }, material, 256));
+  const key = await importRawKey(raw);
+  rawOfKey.set(key, raw);
+  return key;
 }
 
-export async function exportRawKey(key: CryptoKey): Promise<Uint8Array> {
-  return new Uint8Array(await crypto.subtle.exportKey('raw', key));
+export function sessionBytes(key: CryptoKey): Uint8Array | null {
+  return rawOfKey.get(key) ?? null;
 }
 
 export function importRawKey(raw: Uint8Array): Promise<CryptoKey> {

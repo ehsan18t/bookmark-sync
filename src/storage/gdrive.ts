@@ -48,7 +48,7 @@ export class DriveProvider implements StorageProvider {
 
   /** Byte-identical copies (a retried upload) count as one file; differing copies mean two writers. */
   async get(path: string): Promise<Uint8Array | null> {
-    const files = await this.query({ p: path });
+    const files = (await this.query({ p: path })).sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
     if (!files[0]) return null;
     const first = await this.download(files[0].id);
     for (const extra of files.slice(1)) {
