@@ -14,7 +14,7 @@ export default defineConfig({
       'https://oauth2.googleapis.com/*',
       ...(process.env.BSYNC_E2E ? ['http://127.0.0.1/*'] : []),
     ],
-    optional_host_permissions: ['https://*/*', 'http://127.0.0.1/*', 'http://localhost/*'],
+    optional_host_permissions: ['https://*/*', 'http://*/*'],
     action: { default_title: 'Bookmark Sync' },
     ...(browser === 'firefox'
       ? { browser_specific_settings: { gecko: { id: 'bookmark-sync@example.com', strict_min_version: '140.0', data_collection_permissions: { required: ['none'] } }, gecko_android: { strict_min_version: '142.0' } } }
