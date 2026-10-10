@@ -222,6 +222,12 @@ export interface EnginePorts {
 
 export class ForkError extends Error {}
 
+export class ClockSkewError extends Error {
+  constructor() {
+    super('This computer’s clock is off by more than two minutes. Fix the clock, then try again.');
+  }
+}
+
 export interface JoinOptions {
   mode: 'merge' | 'replace';
   ignoreDefaults: boolean;
@@ -395,7 +401,7 @@ export class GroupEngine {
       if (!(await this.checkMapping())) return result;
       const listed = await this.ports.provider.listDevices(this.groupId);
       if (!(await this.checkClock())) return result;
-      await this.recordLocalChanges();
+      await this.recordLocalChanges({ clockChecked: true });
       result.pulled = await this.pull(listed);
       if (this.paused) return result;
       const migratedTo = await this.migrationStep();
@@ -465,8 +471,12 @@ export class GroupEngine {
     );
   }
 
-  async recordLocalChanges(opts: { confirmed?: boolean } = {}): Promise<number> {
+  async recordLocalChanges(opts: { confirmed?: boolean; clockChecked?: boolean } = {}): Promise<number> {
     if (this.importing) return 0;
+    if (!opts.clockChecked) {
+      await this.ports.provider.listDevices(this.groupId);
+      if (!(await this.checkClock())) throw new ClockSkewError();
+    }
     if (this.local.applyInProgress) await this.adoptInterruptedApply();
     if (!(await this.rebuildIdMapIfLost())) return 0;
     const result = reconcile({

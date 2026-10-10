@@ -189,3 +189,20 @@ describe('local bookmark IDs changing', () => {
   });
 });
 
+
+describe('clock checks outside the sync cycle', () => {
+  it('a restore with the clock days ahead is refused instead of stamping future times', async () => {
+    const sim = new Simulator({ devices: 2, seed: 31 });
+    await sim.setup();
+    const [a, b] = sim.devices as [SimDevice, SimDevice];
+    await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'x', url: 'https://x.example/' });
+    await sim.quiet();
+    const t = a.engine.restorePoint();
+    sim.advance(1000);
+    a.skew = 3 * 24 * 60 * 60_000;
+    await expect(a.engine.restoreTo(t)).rejects.toThrow(/clock/);
+    a.skew = 0;
+    await sim.quiet();
+    for (const d of [a, b]) expect(d.engine.status.state).toBe('active');
+  });
+});
