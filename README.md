@@ -7,13 +7,13 @@ A browser extension that syncs bookmarks between Chromium browsers (Chrome, Edge
 
 ## Status
 
-Every milestone in the implementation plan is built: the merge engine, joins, folder mappings, history and restore, the large change guard, native sync detection, compaction, profile copy detection, encryption and switching it on or off, the duplicate finder, WebDAV and Google Drive, and the options page and popup.
+Every milestone in the implementation plan is built: the merge engine, joins, folder mappings, history and restore, the large change guard, native sync detection, compaction, profile copy detection, encryption and switching it on or off, the duplicate finder, WebDAV and Google Drive, a guided setup, a dashboard, and the popup.
 
 What has been checked:
 
 - 113 unit, property and scenario tests, including randomized runs with up to 5 simulated browsers, provider faults and clock skew, a check against a plain tree model, and scenarios for crashes, lost responses, copied profiles, departed devices and renumbered bookmarks.
 - The WebDAV provider against a real WebDAV server, and the Google Drive provider against a fake of the Drive API.
-- 2 end-to-end tests that load the built extension into two real Chromium profiles syncing through a local WebDAV server.
+- 3 end-to-end tests that load the built extension into two real Chromium profiles syncing through a local WebDAV server. One of them clicks through the setup pages in both profiles: a wrong password, then starting a sync in one and joining it from the other.
 - The Firefox package passes `web-ext lint` with no warnings.
 
 An independent code review of the finished branch found 12 bugs (lost or duplicated bookmarks in rare races, a deadlock in the encryption switch, keys written to disk, and others), and a second review of those fixes found 10 more problems in them. All are fixed, each with a test where it could be simulated.
@@ -44,30 +44,22 @@ The Chromium package lands in `.output/chrome-mv3` and the Firefox package in `.
 
 ## Using it
 
-1. Open the extension's settings (the popup has an "Open settings" button).
-2. Add a storage account. For Nextcloud the WebDAV URL looks like `https://cloud.example.com/remote.php/dav/files/USERNAME/bookmark-sync/`; use an app password. For any rclone remote, run `rclone serve webdav REMOTE:bookmark-sync --addr 127.0.0.1:8080 --user me --pass secret` and use `http://127.0.0.1:8080/`.
-3. In the first browser, create a group: the whole bookmark tree, or one folder. Encryption is optional.
-4. In every other browser, add the same account, choose "Join an existing group", preview, and join. Merge keeps both sides' bookmarks; replace takes the group's.
+Installing the extension opens its setup page. It goes one step at a time:
+
+1. **Choose storage.** Google Drive (when the build includes the Google clients, see below), or your own server. For Nextcloud the server address looks like `https://cloud.example.com/remote.php/dav/files/USERNAME/`; use an app password. For any rclone remote, run `rclone serve webdav REMOTE: --addr 127.0.0.1:8080 --user me --pass secret` and use `http://127.0.0.1:8080/`. The bookmarks go in a `Bookmark sync` folder on the server, which you can change under Advanced.
+2. **Connect.** The extension checks the sign-in before going on.
+3. **Start or join.** If the storage already holds a sync from another browser, the page suggests joining it. Otherwise this browser starts one.
+4. **Choose what to sync.** All bookmarks or one folder when starting. When joining, Combine (keeps this browser's bookmarks and adds the synced ones) or Replace (takes the synced ones, and can be undone), with a live preview of what changes. Encryption is under Advanced.
+
+After setup, the settings page is a dashboard with Overview, History, Browsers, Duplicates and Settings tabs, and the popup shows each sync's state.
 
 Turn off the browser's own bookmark sync in any browser that has the extension and shares a sync account with another browser that also has it. Using native sync as a backup for a single browser is fine.
 
 ## Google Drive setup
 
-Google sign-in needs OAuth clients from your own Google Cloud project:
+Google Drive sign-in needs two OAuth clients from a Google Cloud project, registered once by whoever publishes the extension. [docs/google-setup.md](docs/google-setup.md) walks through it step by step. In short: put the client IDs and secrets in `.env` (see `.env.example`) before building. Builds without them hide Google Drive, and `pnpm zip` refuses to build release packages without them.
 
-1. Create a project, enable the Google Drive API, and configure the OAuth consent screen with the `drive.appdata` scope. Move it to production status so sign-ins do not expire after 7 days.
-2. For Chromium browsers, create a "Web application" client with the redirect URI `https://EXTENSION_ID.chromiumapp.org/`. The extension ID is shown on the extensions page and stays the same as long as you load the package from the same folder.
-3. For Firefox, create a "Desktop app" client. Firefox signs in through `http://127.0.0.1/mozoauth2/...`.
-4. Put the IDs in a `.env` file at the project root before building:
-
-```
-WXT_GOOGLE_CLIENT_ID_CHROMIUM=...
-WXT_GOOGLE_CLIENT_SECRET_CHROMIUM=...
-WXT_GOOGLE_CLIENT_ID_FIREFOX=...
-WXT_GOOGLE_CLIENT_SECRET_FIREFOX=...
-```
-
-Google treats secrets of these client types as public, so shipping them in the package is expected. In Brave, turn on "Allow Google login for extensions" in `brave://settings/extensions`.
+The Chromium extension ID is fixed at `nmoonfocibpibidcccliemgjddogdcmc` by the `key` in `wxt.config.ts`, so the Google redirect URI stays the same wherever the package is loaded from.
 
 ## Tests
 
