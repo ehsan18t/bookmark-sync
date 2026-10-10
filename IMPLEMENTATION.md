@@ -365,7 +365,7 @@ interface StorageProvider {
 ### 7.1 WebDAV
 
 - **Permissions:** the server origin is requested with `permissions.request({ origins: [origin + '/*'] })` from the click that adds the account in the options page. Before every sync, `permissions.contains` is checked; if access was revoked, the group pauses with reason `permission`.
-- **Requests:** `fetch` with `credentials: 'omit'` (avoids Nextcloud cookie and CSRF problems) and Basic auth over HTTPS. Plain HTTP is allowed only for `127.0.0.1` and `localhost`.
+- **Requests:** `fetch` with `credentials: 'omit'` (avoids Nextcloud cookie and CSRF problems) and Basic auth. Plain HTTP is allowed for servers on the local network, after a warning that the password and bookmarks cross the network unencrypted.
 - **`listDevices` and `listFiles`:** `PROPFIND` with `Depth: 1`. Depth infinity is never used.
 - **`createOnce`:**
   1. `MKCOL` any missing parent folders (405 means it already exists).

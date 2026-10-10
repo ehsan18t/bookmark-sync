@@ -340,6 +340,9 @@ function accountsSection() {
       action(
         'Add server',
         async () => {
+          const target = new URL(url.value);
+          const local = target.hostname === 'localhost' || target.hostname === '127.0.0.1';
+          if (target.protocol === 'http:' && !local && !window.confirm('This server uses plain HTTP, so your password and bookmarks cross the network unencrypted. Turning on group encryption protects the bookmarks but not the password. Continue?')) return;
           const pattern = originPattern(url.value);
           if (!(await browser.permissions.request({ origins: [pattern] }))) throw new Error('Access to the server was not granted.');
           await send({ t: 'addAccount', account: { type: 'webdav', name: name.value.trim() || new URL(url.value).host, url: url.value, username: user.value, password: password.value } });
