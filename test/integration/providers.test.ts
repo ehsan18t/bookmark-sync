@@ -107,6 +107,23 @@ describe('google drive specifics', () => {
   });
 });
 
+describe('google drive retries', () => {
+  it('treats byte-identical copies of a file as one file and removes the extras', async () => {
+    const drive = new FakeDrive();
+    const p = new DriveProvider({ token: async () => 'good', refresh: async () => 'good' }, drive.fetch);
+    const path = 'groups/g/devices/d/batches/000000000001.json';
+    await p.createOnce(path, bytes('same'));
+    const again = new DriveProvider({ token: async () => 'good', refresh: async () => 'good' }, async (input, init) => {
+      if (init?.method === 'GET' && String(input).includes('/drive/v3/files?')) return new Response(JSON.stringify({ files: [] }), { status: 200 });
+      return drive.fetch(input, init);
+    });
+    await again.createOnce(path, bytes('same'));
+    expect([...drive.files.values()].filter((f) => f.appProperties.p === path)).toHaveLength(2);
+    expect(text(await p.get(path))).toBe('same');
+    expect([...drive.files.values()].filter((f) => f.appProperties.p === path)).toHaveLength(1);
+  });
+});
+
 describe('webdav specifics', () => {
   it('rejects bad credentials with an auth error', async () => {
     const p = new WebDavProvider({ url: `http://127.0.0.1:${port}/x/`, username: 'test', password: 'wrong' });

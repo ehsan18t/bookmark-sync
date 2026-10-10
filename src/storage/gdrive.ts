@@ -46,10 +46,17 @@ export class DriveProvider implements StorageProvider {
     return [...new Set((await this.query({ dir: d })).map((f) => f.appProperties!.p!))].sort();
   }
 
+  /** Byte-identical copies (a retried upload) count as one file; differing copies mean two writers. */
   async get(path: string): Promise<Uint8Array | null> {
     const files = await this.query({ p: path });
-    if (files.length > 1) throw new DuplicateFileError(path);
-    return files[0] ? this.download(files[0].id) : null;
+    if (!files[0]) return null;
+    const first = await this.download(files[0].id);
+    for (const extra of files.slice(1)) {
+      const data = await this.download(extra.id);
+      if (data.length !== first.length || data.some((b, i) => b !== first[i])) throw new DuplicateFileError(path);
+    }
+    for (const extra of files.slice(1)) await this.call('DELETE', `${API}/files/${extra.id}`, undefined, [404]);
+    return first;
   }
 
   async createOnce(path: string, data: Uint8Array): Promise<CreateOnceResult> {

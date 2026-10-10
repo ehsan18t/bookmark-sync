@@ -832,7 +832,7 @@ export class GroupEngine {
       }
       const pending = this.local.pendingBatch!;
       const res = await provider.createOnce(batchPath(groupId, this.deviceId, pending.batchNo), pending.bytes);
-      if (res.status === 'exists' && !(res.existing.length === 1 && bytesEqual(res.existing[0]!, pending.bytes))) {
+      if (res.status === 'exists' && !(res.existing.length > 0 && res.existing.every((e) => bytesEqual(e, pending.bytes)))) {
         await this.rotateDevice(pending.ops[0]!.opSeq, false);
         continue;
       }
