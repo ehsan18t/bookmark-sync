@@ -1124,7 +1124,7 @@ export class GroupEngine {
     this.local.excluded = [...excluded];
     const restorePoint = this.clock.tick();
     this.local.join = { created: !!opts.creating, restorePoint, nodes: plan.drafts.map((d) => d.node), local: roots };
-    this.local.restorePoints.push({ hlc: restorePoint, label: opts.creating ? 'Before creating the group' : 'Before joining', at: this.ports.clock.now() });
+    this.local.restorePoints.push({ hlc: restorePoint, label: opts.creating ? 'Before starting this sync' : 'Before joining this sync', at: this.ports.clock.now() });
     for (const n of removable) await this.ports.bookmarks.removeTree(n.localId);
     this.recordDrafts(plan.drafts, true);
     this.local.mirror = [...plan.mirror.values()];

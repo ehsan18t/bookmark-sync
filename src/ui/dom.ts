@@ -1,5 +1,6 @@
 import { browser } from 'wxt/browser';
 import type { Command, Reply } from '../messages.js';
+import { icon, type IconName } from './icons.js';
 
 export async function send<T>(cmd: Command): Promise<T> {
   const reply = (await browser.runtime.sendMessage(cmd)) as Reply<T> | undefined;
@@ -39,27 +40,46 @@ export function hlcTime(hlc: string): string {
   return new Date(Number(hlc.slice(0, 15))).toLocaleString();
 }
 
-/** Run an action from a button: disable it while running and show any error next to it. */
-export function action(label: string, run: () => Promise<unknown>, opts: { kind?: 'primary' | 'danger' | 'quiet'; confirm?: string } = {}) {
-  const status = h('span', { class: 'inline-error', role: 'status' });
-  const button = h(
-    'button',
-    {
-      class: opts.kind ?? '',
-      onclick: async () => {
-        if (opts.confirm && !window.confirm(opts.confirm)) return;
-        button.disabled = true;
-        status.textContent = '';
-        try {
-          await run();
-        } catch (e) {
-          status.textContent = e instanceof Error ? e.message : String(e);
-        } finally {
-          button.disabled = false;
-        }
-      },
-    },
-    label,
-  );
-  return h('span', { class: 'action' }, button, status);
+export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+type Kind = 'primary' | 'danger' | 'ghost' | '';
+
+/** A button that shows a spinner while its action runs and the error, if any, right under it. */
+export function action(
+  label: string,
+  run: () => Promise<unknown>,
+  opts: { kind?: Kind; confirm?: string; icon?: IconName; busy?: string; size?: 'lg'; block?: boolean } = {},
+) {
+  const error = h('div', { class: 'error', role: 'alert' });
+  const content = () => [opts.icon ? icon(opts.icon) : null, label].filter(Boolean) as (Node | string)[];
+  const button = h('button', { class: [opts.kind ?? '', opts.size ?? '', opts.block ? 'block' : ''].join(' ').trim() }, ...content());
+  button.addEventListener('click', async () => {
+    if (opts.confirm && !window.confirm(opts.confirm)) return;
+    button.disabled = true;
+    button.replaceChildren(icon('loader-2', 'spin'), opts.busy ?? label);
+    error.replaceChildren();
+    try {
+      await run();
+    } catch (e) {
+      error.replaceChildren(icon('alert-triangle'), h('span', {}, errorText(e)));
+    } finally {
+      button.disabled = false;
+      button.replaceChildren(...content());
+    }
+  });
+  return h('div', { class: `action${opts.block ? ' block' : ''}` }, button, error);
+}
+
+let fieldSeq = 0;
+
+export function field(label: string, control: HTMLElement, hint?: string) {
+  const id = control.id || `f${++fieldSeq}`;
+  control.id = id;
+  const hintEl = hint ? h('span', { class: 'hint', id: `${id}-hint` }, hint) : null;
+  if (hintEl) control.setAttribute('aria-describedby', hintEl.id);
+  return h('div', { class: 'field' }, h('label', { for: id }, label), control, hintEl);
+}
+
+export function brand() {
+  return h('div', { class: 'brand' }, icon('bookmarks'), 'Bookmark sync');
 }
