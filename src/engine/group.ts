@@ -767,6 +767,7 @@ export class GroupEngine {
     if (this.local.migration?.frozen) return 0;
     const { provider } = this.ports;
     const { groupId } = this.local.config;
+    await this.settleOldPending();
     this.restampBelow(hlcFloor(provider.serverDate() - this.settings.restampAfterMs));
     if (this.local.ownBatches.length) await this.checkOwnDuplicates();
     let pushed = 0;
@@ -782,13 +783,8 @@ export class GroupEngine {
         await this.rotateDevice(pending.ops[0]!.opSeq, false);
         continue;
       }
-      this.local.lastBatchNo = pending.batchNo;
-      this.local.lastBatchHash = pending.hash;
-      this.local.lastPublishedOpSeq = pending.ops.at(-1)!.opSeq;
-      this.local.ownBatches.push({ batchNo: pending.batchNo, firstOpSeq: pending.ops[0]!.opSeq, lastOpSeq: pending.ops.at(-1)!.opSeq });
-      this.local.pendingBatch = null;
+      await this.commitPending(pending);
       pushed++;
-      await this.persist();
     }
     return pushed;
   }
@@ -809,6 +805,24 @@ export class GroupEngine {
       }
     }
     if (earliest) await this.rotateDevice(earliest.firstOpSeq, true);
+  }
+
+  private async commitPending(pending: PendingBatch): Promise<void> {
+    this.local.lastBatchNo = pending.batchNo;
+    this.local.lastBatchHash = pending.hash;
+    this.local.lastPublishedOpSeq = pending.ops.at(-1)!.opSeq;
+    this.local.ownBatches.push({ batchNo: pending.batchNo, firstOpSeq: pending.ops[0]!.opSeq, lastOpSeq: pending.ops.at(-1)!.opSeq });
+    this.local.pendingBatch = null;
+    await this.persist();
+  }
+
+  /** A pending batch frozen long ago may already have landed (only the response was lost); then it is simply recorded as published. */
+  private async settleOldPending(): Promise<void> {
+    const pending = this.local.pendingBatch;
+    if (!pending || this.ports.clock.now() - pending.frozenAt <= this.settings.restampAfterMs) return;
+    const existing = await this.ports.provider.get(batchPath(this.groupId, this.deviceId, pending.batchNo));
+    if (existing && bytesEqual(existing, pending.bytes)) await this.commitPending(pending);
+    else if (existing) pending.frozenAt = Number.POSITIVE_INFINITY;
   }
 
   private async freezeBatch(): Promise<void> {
@@ -842,7 +856,7 @@ export class GroupEngine {
   /** Give unpublished ops older than `cut` fresh timestamps, in order, so they never land behind a compacted point. */
   private restampBelow(cut: Hlc): void {
     const pending = this.local.pendingBatch;
-    if (pending && pending.ops[0]!.hlc < cut && this.ports.clock.now() - pending.frozenAt > this.settings.restampAfterMs) {
+    if (pending && pending.ops[0]!.hlc < cut && Number.isFinite(pending.frozenAt) && this.ports.clock.now() - pending.frozenAt > this.settings.restampAfterMs) {
       this.local.outbox = [...pending.ops, ...this.local.outbox];
       this.local.pendingBatch = null;
     }

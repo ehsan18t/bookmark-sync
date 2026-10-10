@@ -130,3 +130,21 @@ describe('clock far ahead', () => {
     expect(Number(op.hlc.slice(0, 15))).toBeLessThan(sim.time + 60_000);
   });
 });
+
+describe('lost upload response', () => {
+  it('a batch that landed although its response was lost is not mistaken for a profile copy, even after 12 hours', async () => {
+    const sim = new Simulator({ devices: 2, seed: 28 });
+    await sim.setup();
+    const [a, b] = sim.devices as [SimDevice, SimDevice];
+    await sim.quiet();
+    await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'landed', url: 'https://l.example/' });
+    sim.loseNextUpload = true;
+    await sim.sync(a);
+    expect(a.engine.state.pendingBatch).not.toBeNull();
+    sim.advance(13 * 60 * 60_000);
+    await sim.quiet();
+    expect(a.engine.deviceId).toBe('deva');
+    expect(titles(b)).toEqual(['landed']);
+    expect(sim.provider.overwrittenPaths()).toEqual([]);
+  });
+});

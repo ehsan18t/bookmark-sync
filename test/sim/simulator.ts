@@ -69,17 +69,24 @@ export class Simulator {
   readonly devices: SimDevice[] = [];
   readonly errors: string[] = [];
   private faultsOn = false;
+  loseNextUpload = false;
 
   constructor(readonly options: SimOptions) {
     this.rng = mulberry32(options.seed);
-    const faults: MemoryFaults = options.visibilityDelayMs
-      ? { visibilityDelay: () => (this.faultsOn ? options.visibilityDelayMs! : 0) }
-      : options.faults
-      ? {
-          visibilityDelay: () => (this.faultsOn && this.rng() < 0.3 ? Math.floor(this.rng() * 20_000) : 0),
-          loseCreateResponse: () => this.faultsOn && this.rng() < 0.1,
+    const faults: MemoryFaults = {
+      visibilityDelay: () => {
+        if (!this.faultsOn) return 0;
+        if (options.visibilityDelayMs) return options.visibilityDelayMs;
+        return options.faults && this.rng() < 0.3 ? Math.floor(this.rng() * 20_000) : 0;
+      },
+      loseCreateResponse: () => {
+        if (this.loseNextUpload) {
+          this.loseNextUpload = false;
+          return true;
         }
-      : {};
+        return !!options.faults && this.faultsOn && this.rng() < 0.1;
+      },
+    };
     this.provider = new MemoryProvider(() => this.time, faults);
   }
 
