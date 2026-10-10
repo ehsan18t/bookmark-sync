@@ -93,3 +93,17 @@ describe('reconcile', () => {
     void ROOT_TOOLBAR;
   });
 });
+
+describe('codec', () => {
+  it('refuses a plaintext file in an encrypted group, even when locked', async () => {
+    const { encode, decode, CorruptFileError } = await import('./codec.js');
+    const { newKeyParams } = await import('./crypto.js');
+    const { key } = await newKeyParams('secret', 1000);
+    const plain = await encode('batch', { ops: [] });
+    await expect(decode(plain, 'batch', { key, path: 'p' })).rejects.toBeInstanceOf(CorruptFileError);
+    await expect(decode(plain, 'batch', { key: null, path: 'p', required: true })).rejects.toBeInstanceOf(CorruptFileError);
+    const sealed = await encode('batch', { ops: [1] }, { key, path: 'p' });
+    expect(await decode(sealed, 'batch', { key, path: 'p' })).toEqual({ ops: [1] });
+    await expect(decode(sealed, 'batch', { key, path: 'other' })).rejects.toBeInstanceOf(CorruptFileError);
+  });
+});

@@ -96,6 +96,8 @@ export class LockedError extends Error {
 export interface Crypt {
   key: CryptoKey | null;
   path: string;
+  /** The group is encrypted: plaintext files are refused even while locked. */
+  required?: boolean;
 }
 
 export async function encode(kind: FileKind, body: unknown, crypt?: Crypt): Promise<Uint8Array> {
@@ -118,7 +120,11 @@ export async function decode<B>(bytes: Uint8Array, kind: FileKind, crypt?: Crypt
   if (typeof env.v !== 'number') throw new CorruptFileError('missing format version');
   if (env.v > FORMAT_MAJOR) throw new FormatTooNewError(env.v);
   if (env.kind !== kind) throw new CorruptFileError(`expected ${kind}, found ${env.kind}`);
-  if (env.enc === null) return env.body as B;
+  if (env.enc === null) {
+    if (crypt?.key || crypt?.required) throw new CorruptFileError('unencrypted file in an encrypted group');
+    return env.body as B;
+  }
+  if (env.enc.alg !== 'A256GCM') throw new CorruptFileError(`unknown encryption ${String(env.enc.alg)}`);
   if (!crypt?.key) throw new LockedError();
   try {
     const plain = await decryptBytes(crypt.key, env.enc.iv, env.body as string, crypt.path);

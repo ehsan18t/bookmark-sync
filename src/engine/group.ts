@@ -1240,7 +1240,7 @@ export class GroupEngine {
     const seedPath = snapshotPath(g2, initiator, 'seed');
     const bytes = await this.ports.provider.get(seedPath);
     if (!bytes) return undefined;
-    const seed = await decode<Snapshot>(bytes, 'snapshot', { key: newKey, path: seedPath });
+    const seed = await decode<Snapshot>(bytes, 'snapshot', { key: newKey, path: seedPath, required: !!marker.encryption });
     const self = this.deviceId;
     const covered = m.coverage[self] ?? 0;
     const held = [
@@ -1298,7 +1298,7 @@ export class GroupEngine {
   }
 
   private crypt(path: string): Crypt {
-    return { key: this.key, path };
+    return { key: this.key, path, required: this.local.config.encrypted };
   }
 
   private localRoot(groupRoot: string): string {
