@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .output/
+.output-e2e/
 .wxt/
 coverage/
 *.log
