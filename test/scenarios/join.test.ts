@@ -118,7 +118,7 @@ describe('a failed join', () => {
     const d = sim.makeDevice('devlate');
     d.skew = 10 * 60_000;
     const { GroupEngine } = await import('../../src/engine/group.js');
-    await expect(GroupEngine.join(d.ports, sim.config(d), { mode: 'merge', ignoreDefaults: false }, null)).rejects.toThrow(/cannot join/);
+    await expect(GroupEngine.join(d.ports, sim.config(d), { mode: 'merge', ignoreDefaults: false }, null)).rejects.toThrow(/can’t be joined/);
     expect(await sim.provider.client().listDevices('g0')).toEqual(['deva']);
   });
 });

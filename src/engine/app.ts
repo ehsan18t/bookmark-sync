@@ -1,4 +1,5 @@
 import { unlockKey } from '../core/crypto.js';
+import { UserError } from '../core/errors.js';
 import { findDuplicates, type DedupeItem, type DuplicateGroup } from '../core/dedupe.js';
 import type { BrowserFamily } from '../core/defaults.js';
 import { DAY } from '../core/frontier.js';
@@ -85,6 +86,7 @@ export interface AppDeps {
   browser: BrowserFamily;
   defaultDeviceName: string;
   notify?: (groupId: string, status: GroupStatus) => void;
+  describeError?: (e: unknown) => string;
   random?: RandomBytes;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -96,6 +98,7 @@ export interface GroupSummary {
   mode: 'everything' | 'folder';
   location: string;
   encrypted: boolean;
+  bookmarks: number;
   status: GroupStatus;
   lastSyncAt: number | null;
   lastError: string | null;
@@ -112,6 +115,7 @@ export class SyncApp {
   private readonly engines = new Map<string, GroupEngine>();
   private readonly lastSyncAt = new Map<string, number>();
   private readonly lastError = new Map<string, string>();
+  private readonly rawError = new Map<string, string>();
   private readonly backoffUntil = new Map<string, number>();
   private queue: Promise<unknown> = Promise.resolve();
   private importing = false;
@@ -163,7 +167,7 @@ export class SyncApp {
 
   removeAccount(id: string): Promise<void> {
     return this.run(async () => {
-      if ([...this.engines.values()].some((e) => e.state.config.accountId === id)) throw new Error('leave the groups that use this account first');
+      if ([...this.engines.values()].some((e) => e.state.config.accountId === id)) throw new UserError('Stop the syncs that use this storage before removing it.');
       this.meta.accounts = this.meta.accounts.filter((a) => a.id !== id);
       await this.saveMeta();
     });
@@ -291,7 +295,7 @@ export class SyncApp {
       const st = e.status;
       const target = st.state === 'paused' && st.reason === 'locked' && st.detail ? st.detail : groupId;
       const header = await GroupEngine.readHeader(this.providerOf(this.account(e.state.config.accountId)), target);
-      if (!header?.encryption) throw new Error('this group is not encrypted');
+      if (!header?.encryption) throw new UserError('This sync isn’t encrypted.');
       const key = await unlockKey(passphrase, header.encryption);
       await this.deps.store.setKey(target, key, remember);
       if (target === groupId) e.setKey(key);
@@ -349,6 +353,7 @@ export class SyncApp {
           mode: c.mode,
           location: c.mode === 'folder' ? await this.deps.roots.pathOf(c.mapping['root:group']!) : 'Whole bookmark tree',
           encrypted: c.encrypted,
+          bookmarks: [...e.mirror().nodes.values()].filter((n) => n.kind === 'bookmark').length,
           status: e.status,
           lastSyncAt: this.lastSyncAt.get(c.groupId) ?? null,
           lastError: this.lastError.get(c.groupId) ?? null,
@@ -473,7 +478,7 @@ export class SyncApp {
         outbox: e.state.outbox.length,
         lastBatchNo: e.state.lastBatchNo,
         devices: Object.keys(e.state.cursors).length,
-        lastError: this.lastError.get(e.groupId) ?? null,
+        lastError: this.rawError.get(e.groupId) ?? null,
       })),
     }));
   }
@@ -488,6 +493,7 @@ export class SyncApp {
       const res = await e.cycle();
       this.lastSyncAt.set(g, this.deps.clock.now());
       this.lastError.delete(g);
+      this.rawError.delete(g);
       this.backoffUntil.delete(g);
       if (res.migratedTo) {
         this.engines.delete(g);
@@ -498,7 +504,8 @@ export class SyncApp {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.lastError.set(g, message);
+      this.rawError.set(g, message);
+      this.lastError.set(g, this.deps.describeError?.(err) ?? message);
       if (err instanceof ProviderAuthError) await e.pause('auth', message);
       else if (err instanceof PermissionMissingError) await e.pause('permission', message);
       else {
@@ -538,10 +545,10 @@ export class SyncApp {
     for (const e of this.engines.values()) {
       const theirs = e.state.config.mapping;
       const name = e.state.config.name;
-      if (target.kind === 'whole' || isWhole(theirs)) throw new Error(`overlaps with the group "${name}"`);
+      if (target.kind === 'whole' || isWhole(theirs)) throw new UserError(`That overlaps with the sync “${name}”. Pick a folder outside it.`);
       for (const m of Object.values(mapping)) {
         for (const t of Object.values(theirs)) {
-          if (m === t || (await this.isInside(m, t)) || (await this.isInside(t, m))) throw new Error(`overlaps with the group "${name}"`);
+          if (m === t || (await this.isInside(m, t)) || (await this.isInside(t, m))) throw new UserError(`That overlaps with the sync “${name}”. Pick a folder outside it.`);
         }
       }
     }
@@ -559,10 +566,10 @@ export class SyncApp {
 
   private async prepareJoin(input: JoinInput, preview: boolean) {
     const account = this.account(input.accountId);
-    if (!preview && this.engines.has(input.groupId)) throw new Error('already joined');
+    if (!preview && this.engines.has(input.groupId)) throw new UserError('This browser is already part of that sync.');
     const provider = this.providerOf(account);
     const header = await GroupEngine.readHeader(provider, input.groupId);
-    if (!header) throw new Error('group not found');
+    if (!header) throw new UserError('That sync no longer exists on this storage.');
     let key: CryptoKey | null = null;
     let newKey = false;
     if (header.encryption) {
@@ -571,7 +578,7 @@ export class SyncApp {
         key = await unlockKey(input.passphrase, header.encryption);
         newKey = true;
       }
-      if (!key) throw new Error('this group is encrypted: enter its passphrase');
+      if (!key) throw new UserError('This sync is encrypted. Enter its passphrase.');
     }
     await this.checkOverlap((await this.resolveTarget(header.mode, input.target, false)).mapping, input.target);
     const { mapping, excluded } = await this.resolveTarget(header.mode, input.target, !preview);

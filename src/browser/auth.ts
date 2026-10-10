@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import { UserError } from '../core/errors.js';
 import { base32, toBase64 } from '../core/ids.js';
 import type { Account } from '../engine/app.js';
 import type { DriveAuth } from '../storage/gdrive.js';
@@ -15,12 +16,21 @@ interface ClientConfig {
   clientSecret: string;
 }
 
-function client(engine: Engine): ClientConfig {
+function builtInClient(engine: Engine): ClientConfig | null {
   const env = import.meta.env as Record<string, string | undefined>;
   const clientId = engine === 'firefox' ? env.WXT_GOOGLE_CLIENT_ID_FIREFOX : env.WXT_GOOGLE_CLIENT_ID_CHROMIUM;
   const clientSecret = engine === 'firefox' ? env.WXT_GOOGLE_CLIENT_SECRET_FIREFOX : env.WXT_GOOGLE_CLIENT_SECRET_CHROMIUM;
-  if (!clientId) throw new Error('This build has no Google client ID. Set WXT_GOOGLE_CLIENT_ID_CHROMIUM / _FIREFOX when building.');
-  return { clientId, clientSecret: clientSecret ?? '' };
+  return clientId ? { clientId, clientSecret: clientSecret ?? '' } : null;
+}
+
+function client(engine: Engine): ClientConfig {
+  const c = builtInClient(engine);
+  if (!c) throw new UserError('Google Drive isn’t available in this version of the extension.');
+  return c;
+}
+
+export function googleAvailable(engine: Engine): boolean {
+  return builtInClient(engine) !== null;
 }
 
 /** Chromium uses https://<id>.chromiumapp.org/; Firefox uses its loopback form, which Google accepts for desktop clients. */
@@ -51,7 +61,7 @@ export function identityAvailable(): boolean {
 }
 
 export async function signInWithGoogle(engine: Engine): Promise<{ refreshToken: string; accessToken: string; expiresAt: number }> {
-  if (!identityAvailable()) throw new Error('This browser does not allow extensions to sign in to Google. In Brave, turn on "Allow Google login for extensions" in brave://settings/extensions.');
+  if (!identityAvailable()) throw new UserError('This browser doesn’t let extensions sign in to Google. In Brave, turn on “Allow Google login for extensions” in Settings, Extensions, then try again.');
   const { clientId, clientSecret } = client(engine);
   const verifier = base32(crypto.getRandomValues(new Uint8Array(48)));
   const challenge = base64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
@@ -67,11 +77,16 @@ export async function signInWithGoogle(engine: Engine): Promise<{ refreshToken: 
     access_type: 'offline',
     prompt: 'consent',
   }).toString();
-  const result = await browser.identity.launchWebAuthFlow({ url: url.href, interactive: true });
+  let result: string | undefined;
+  try {
+    result = await browser.identity.launchWebAuthFlow({ url: url.href, interactive: true });
+  } catch {
+    throw new UserError('The Google sign-in window was closed before it finished. Try again.');
+  }
   const code = result ? new URL(result).searchParams.get('code') : null;
-  if (!code) throw new Error('Google sign-in was cancelled');
+  if (!code) throw new UserError('Google didn’t give access to Drive. Try again, and choose Allow when Google asks.');
   const tokens = await tokenRequest({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirect, grant_type: 'authorization_code', code_verifier: verifier });
-  if (!tokens.refresh_token) throw new Error('Google did not return a refresh token; remove the app from your Google account permissions and try again');
+  if (!tokens.refresh_token) throw new UserError('Google didn’t finish connecting. In your Google account, open Security, Third-party connections, remove Bookmark sync, then sign in again.');
   return { refreshToken: tokens.refresh_token, accessToken: tokens.access_token, expiresAt: Date.now() + tokens.expires_in * 1000 };
 }
 

@@ -5,3 +5,7 @@ dist/
 .wxt/
 coverage/
 *.log
+.keys/
+.env
+.env.*
+!.env.example

@@ -120,7 +120,7 @@ describe('leaving a locked encrypted group', () => {
     const key = b.keys.get(GROUP_ID)!;
     b.keys.delete(GROUP_ID);
     await sim.restart(b);
-    await expect(b.engine.leave()).rejects.toThrow(/unlock/);
+    await expect(b.engine.leave()).rejects.toThrow(/Unlock/);
     await sim.sync(a);
     expect(a.engine.status.state).toBe('active');
     b.engine.setKey(key);

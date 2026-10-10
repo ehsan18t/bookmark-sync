@@ -17,6 +17,7 @@ import {
   type Snapshot,
 } from '../core/codec.js';
 import { newKeyParams, type KeyParams } from '../core/crypto.js';
+import { UserError } from '../core/errors.js';
 import { findDefaultBookmarks, type BrowserFamily } from '../core/defaults.js';
 import { compactionPoint, DAY, isStale, snapshotComplete, stableFrontier } from '../core/frontier.js';
 import { formatHlc, hlcFloor, hlcWall, HlcClock, HLC_ZERO_STATE, type Hlc, type HlcState } from '../core/hlc.js';
@@ -222,7 +223,7 @@ export interface EnginePorts {
 
 export class ForkError extends Error {}
 
-export class ClockSkewError extends Error {
+export class ClockSkewError extends UserError {
   constructor() {
     super('This computer’s clock is off by more than two minutes. Fix the clock, then try again.');
   }
@@ -1088,13 +1089,13 @@ export class GroupEngine {
 
   private async performJoin(opts: JoinOptions): Promise<JoinPreview> {
     const header = await GroupEngine.readHeader(this.ports.provider, this.groupId);
-    if (!header) throw new Error('group not found');
+    if (!header) throw new UserError('That sync no longer exists on this storage.');
     if (header.encryption && !this.key) throw new LockedError();
-    if (!(await this.waitForConsistentView())) throw new Error('the group is changing too fast to join; try again');
+    if (!(await this.waitForConsistentView())) throw new UserError('That sync is busy with changes from another browser. Try again in a minute.');
     this.observe(hlcFloor(this.ports.provider.serverDate()));
     await this.pull();
     if (await this.loadNewestSnapshot()) await this.pull();
-    if (this.paused) throw new Error(`cannot join: ${(this.local.status as { reason: string }).reason}`);
+    if (this.paused) throw new UserError(`That sync can’t be joined right now (${(this.local.status as { reason: string }).reason}). Try again in a few minutes.`);
 
     const roots = await this.liveRoots();
     const defaults = opts.ignoreDefaults ? findDefaultBookmarks(roots.map((r) => r.live), this.local.config.browser) : [];
@@ -1162,7 +1163,7 @@ export class GroupEngine {
 
   async undoJoin(): Promise<void> {
     const j = this.local.join;
-    if (!j || j.created) throw new Error('this group was not joined from this browser');
+    if (!j || j.created) throw new UserError('Only a browser that joined this sync can undo joining it.');
     await this.recordLocalChanges();
     const then = visibleTree(replay(this.baseState(), this.local.ops.filter((op) => op.hlc <= j.restorePoint)), this.roots);
     this.recordRestore(then, new Set(j.nodes));
@@ -1198,7 +1199,7 @@ export class GroupEngine {
   }
 
   async restoreTo(t: Hlc): Promise<number> {
-    if (t < this.local.baseFrontier) throw new Error('that point is older than the kept history');
+    if (t < this.local.baseFrontier) throw new UserError('That point is older than the history this sync keeps.');
     await this.recordLocalChanges();
     const then = visibleTree(replay(this.baseState(), this.local.ops.filter((op) => op.hlc <= t)), this.roots);
     const n = this.recordRestore(then);
@@ -1253,7 +1254,7 @@ export class GroupEngine {
   }
 
   async leave(): Promise<void> {
-    if (this.local.config.encrypted && !this.key) throw new Error('unlock the group before leaving it, so the other browsers can read that you left');
+    if (this.local.config.encrypted && !this.key) throw new UserError('Unlock this sync before leaving it, so the other browsers can see that you left.');
     try {
       await this.push();
     } catch {

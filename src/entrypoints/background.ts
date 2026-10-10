@@ -3,10 +3,11 @@ import { defineBackground } from 'wxt/utils/define-background';
 import type { BrowserFamily } from '../core/defaults.js';
 import { SyncApp } from '../engine/app.js';
 import type { GroupStatus } from '../engine/group.js';
-import { signInWithGoogle } from '../browser/auth.js';
+import { googleAvailable, identityAvailable, signInWithGoogle } from '../browser/auth.js';
 import { BrowserBookmarks, type Engine, type Node } from '../browser/bookmarksPort.js';
 import { IdbStore } from '../browser/idbStore.js';
 import { providerFactory } from '../browser/providers.js';
+import { friendlyError } from '../browser/friendlyError.js';
 import { browserRoots } from '../browser/roots.js';
 import type { Command, Reply } from '../messages.js';
 
@@ -61,6 +62,7 @@ export default defineBackground({
       browser: env.family,
       defaultDeviceName: `${env.name} on ${platformName()}`,
       notify: (groupId, status) => void onStatus(groupId, status),
+      describeError: friendlyError,
     });
     const ready = app.init().then(() => ensureAlarm());
 
@@ -116,6 +118,10 @@ export default defineBackground({
       void ready.then(() => app.syncAll()).then(refreshBadge);
     });
 
+    browser.runtime.onInstalled.addListener(({ reason }) => {
+      if (reason === 'install') void browser.tabs.create({ url: browser.runtime.getURL('/options.html#setup') });
+    });
+
     browser.runtime.onStartup.addListener(() => void ready.then(() => app.syncAll()));
     browser.notifications.onClicked.addListener((id) => {
       if (id.startsWith('bsync:')) void browser.runtime.openOptionsPage();
@@ -126,6 +132,8 @@ export default defineBackground({
       switch (cmd.t) {
         case 'status':
           return app.status();
+        case 'capabilities':
+          return { google: googleAvailable(env.engine) && identityAvailable(), googleBlocked: googleAvailable(env.engine) && !identityAvailable(), browser: env.name };
         case 'accounts':
           return app.accounts();
         case 'addAccount':
@@ -195,7 +203,7 @@ export default defineBackground({
     browser.runtime.onMessage.addListener((msg: unknown, _sender, sendResponse: (r: Reply) => void) => {
       handle(msg as Command)
         .then((value) => sendResponse({ ok: true, value }))
-        .catch((e: unknown) => sendResponse({ ok: false, error: e instanceof Error ? e.message : String(e) }))
+        .catch((e: unknown) => sendResponse({ ok: false, error: friendlyError(e) }))
         .finally(() => void refreshBadge());
       return true;
     });

@@ -2,6 +2,7 @@ import type { JoinInput, NewAccount, Settings, Target } from './engine/app.js';
 
 export type Command =
   | { t: 'status' }
+  | { t: 'capabilities' }
   | { t: 'accounts' }
   | { t: 'addAccount'; account: NewAccount }
   | { t: 'addGoogle'; name: string }
