@@ -38,7 +38,7 @@ import {
   type SerializedState,
 } from '../core/replay.js';
 import { planRestoreExact } from '../core/restore.js';
-import { childrenIndex, diffTrees, disturbedIds, visibleTree, type Tree } from '../core/tree.js';
+import { childrenIndex, diffTrees, disturbedIds, preorder, visibleTree, type Tree } from '../core/tree.js';
 import { visibleSet } from '../core/visibility.js';
 import {
   batchPath,
@@ -199,6 +199,8 @@ export interface GroupLocal {
   lastPublished: string;
   lastPublishAt: number;
   lastCompactAt: number;
+  /** Set while applying to the browser; after a crash, local items the apply created are adopted, not recorded as new. */
+  applyInProgress: boolean;
 }
 
 export interface GroupStore {
@@ -285,6 +287,7 @@ function freshLocal(config: GroupConfig): GroupLocal {
     lastPublished: '',
     lastPublishAt: 0,
     lastCompactAt: 0,
+    applyInProgress: false,
   };
 }
 
@@ -453,6 +456,7 @@ export class GroupEngine {
 
   async recordLocalChanges(opts: { confirmed?: boolean } = {}): Promise<number> {
     if (this.importing) return 0;
+    if (this.local.applyInProgress) await this.adoptInterruptedApply();
     const result = reconcile({
       roots: await this.liveRoots(),
       mirror: this.mirror(),
@@ -469,6 +473,32 @@ export class GroupEngine {
     if (result.released.length) this.local.excluded = this.local.excluded.filter(([l]) => !result.released.includes(l));
     await this.persist();
     return result.drafts.length;
+  }
+
+  private async adoptInterruptedApply(): Promise<void> {
+    const merged = this.mergedTree();
+    const mirror = new Map(this.local.mirror.map((m) => [m.id, m]));
+    const idmap = new Map(this.local.idmap);
+    const localOf = new Map<string, string>(this.roots.map((r) => [r, this.localRoot(r)]));
+    for (const m of mirror.values()) if (m.localId) localOf.set(m.id, m.localId);
+    const live = new Map<string, LiveNode>();
+    const index = (n: LiveNode) => {
+      live.set(n.localId, n);
+      for (const c of n.children ?? []) index(c);
+    };
+    for (const r of await this.liveRoots()) index(r.live);
+    for (const n of preorder(merged)) {
+      if (mirror.has(n.id)) continue;
+      const parent = localOf.get(n.parent);
+      const candidate = parent && live.get(parent)?.children?.find((c) => !idmap.has(c.localId) && c.kind === n.kind && c.title === n.title && (n.kind !== 'bookmark' || c.url === n.url));
+      if (!candidate) continue;
+      mirror.set(n.id, { ...n, localId: candidate.localId });
+      idmap.set(candidate.localId, n.id);
+      localOf.set(n.id, candidate.localId);
+    }
+    this.local.mirror = [...mirror.values()];
+    this.local.idmap = [...idmap];
+    this.local.applyInProgress = false;
   }
 
   async pull(): Promise<number> {
@@ -653,6 +683,8 @@ export class GroupEngine {
       }
     }
 
+    this.local.applyInProgress = true;
+    await this.persist();
     const result = await applyMerged(
       this.ports.bookmarks,
       Object.fromEntries(this.roots.map((r) => [r, this.localRoot(r)])),
@@ -660,6 +692,7 @@ export class GroupEngine {
       merged,
       new Set(this.local.excluded.map(([l]) => l)),
     );
+    this.local.applyInProgress = false;
     this.local.mirror = [...result.mirror.nodes.values()];
     this.local.idmap = [...result.idmap];
     for (const [d, c] of Object.entries(this.local.cursors)) this.local.appliedSeq[d] = c.opSeq;

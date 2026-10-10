@@ -42,8 +42,15 @@ export class FakeBookmarks implements BookmarksPort {
     return this.nodes.get(localId)?.parent ?? null;
   }
 
+  /** Throw on the nth write from now, like a background worker being stopped mid-apply. */
+  crashAfter: number | null = null;
+
   async create(args: { parentId: string; index?: number; kind: Kind; title: string; url: string }): Promise<string> {
     this.writes++;
+    if (this.crashAfter !== null && --this.crashAfter < 0) {
+      this.crashAfter = null;
+      throw new Error('worker stopped');
+    }
     const id = `${this.prefix}${++this.counter}`;
     this.addNode(id, args.kind, args.kind === 'separator' ? '' : args.title, args.kind === 'bookmark' ? args.url : '', args.parentId, args.index);
     return id;

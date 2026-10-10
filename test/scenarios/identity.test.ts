@@ -71,3 +71,22 @@ describe('device identity and clocks', () => {
     expect(a.engine.status).toMatchObject({ state: 'paused', reason: 'format-too-new' });
   });
 });
+
+describe('interrupted apply', () => {
+  it('a worker stopped halfway through applying remote changes does not duplicate bookmarks', async () => {
+    const sim = new Simulator({ devices: 2, seed: 25 });
+    await sim.setup();
+    const [a, b] = sim.devices as [SimDevice, SimDevice];
+    for (let i = 0; i < 12; i++) await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.other, kind: 'bookmark', title: `item${i}`, url: `https://i${i}.example/` });
+    await sim.sync(a);
+    b.bookmarks.crashAfter = 5;
+    await expect(b.engine.cycle()).rejects.toThrow('worker stopped');
+    await sim.restart(b);
+    await sim.quiet();
+    expect(titles(a)).toHaveLength(12);
+    expect(titles(b)).toHaveLength(12);
+    expect(((await b.bookmarks.getSubTree(FAKE_ROOTS.other)).children ?? []).length).toBe(12);
+    expect(b.engine.state.ops.filter((op) => op.device === b.engine.deviceId)).toEqual([]);
+    for (const d of [a, b]) expect(d.engine.status.state).toBe('active');
+  });
+});
