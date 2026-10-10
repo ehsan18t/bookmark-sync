@@ -18,7 +18,7 @@ import {
   type RestorePoint,
   type TimelineEntry,
 } from './group.js';
-import type { BookmarksPort, Clock, StorageProvider } from './ports.js';
+import { PermissionMissingError, type BookmarksPort, type Clock, type StorageProvider } from './ports.js';
 
 export type Account =
   | { id: string; type: 'webdav'; name: string; url: string; username: string; password: string }
@@ -495,6 +495,7 @@ export class SyncApp {
       const message = err instanceof Error ? err.message : String(err);
       this.lastError.set(g, message);
       if (err instanceof ProviderAuthError) await e.pause('auth', message);
+      else if (err instanceof PermissionMissingError) await e.pause('permission', message);
       else {
         const failures = (this.failures.get(g) ?? 0) + 1;
         this.failures.set(g, failures);

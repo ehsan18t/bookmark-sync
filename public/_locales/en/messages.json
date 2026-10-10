@@ -1,0 +1,8 @@
+{
+  "extName": { "message": "Bookmark Sync" },
+  "extDescription": { "message": "Sync bookmarks between Chromium browsers and Firefox through WebDAV or Google Drive." },
+  "bookmarksMenu": { "message": "Bookmarks Menu" },
+  "rootToolbar": { "message": "Toolbar" },
+  "rootOther": { "message": "Other" },
+  "rootMenu": { "message": "Menu" }
+}

@@ -5,6 +5,8 @@ export type CreateOnceResult = { status: 'created' } | { status: 'exists'; exist
 
 export class DuplicateFileError extends Error {}
 
+export class PermissionMissingError extends Error {}
+
 export interface StorageProvider {
   listGroups(): Promise<string[]>;
   /** Devices that have published a device.json in this group. */

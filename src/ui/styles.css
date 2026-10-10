@@ -1,0 +1,235 @@
+:root {
+  --bg: #f7f6f3;
+  --panel: #ffffff;
+  --text: #1d1c1a;
+  --muted: #6b6760;
+  --line: #e4e1da;
+  --accent: #2f5d50;
+  --accent-text: #ffffff;
+  --warn-bg: #fff4e5;
+  --warn-line: #f0c27a;
+  --danger: #b42318;
+  --ok: #2f7d4f;
+  --radius: 10px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #171716;
+    --panel: #212120;
+    --text: #ecebe8;
+    --muted: #a19d95;
+    --line: #34332f;
+    --accent: #7fb8a4;
+    --accent-text: #10201b;
+    --warn-bg: #3a2c16;
+    --warn-line: #7a5a26;
+    --danger: #f08b80;
+    --ok: #7fc79a;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+
+h2 {
+  font-size: 16px;
+  margin: 32px 0 12px;
+}
+
+h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.spread {
+  justify-content: space-between;
+}
+
+.stack > * + * {
+  margin-top: 10px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 500;
+}
+
+label.check {
+  flex-direction: row;
+  align-items: center;
+  font-weight: 400;
+}
+
+input[type='text'],
+input[type='url'],
+input[type='password'],
+input[type='number'],
+select {
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  min-width: 0;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--muted);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+button.danger {
+  color: var(--danger);
+}
+
+button.quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inline-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.pill {
+  display: inline-block;
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.pill.ok {
+  color: var(--ok);
+  border-color: currentColor;
+}
+
+.pill.warn {
+  color: #b45309;
+  border-color: currentColor;
+}
+
+.banner {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 12px;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.list li {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.list li:first-child {
+  border-top: 0;
+}
+
+details > summary {
+  cursor: pointer;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.tabs button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.url {
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+body.popup main {
+  width: 340px;
+  padding: 14px;
+}
