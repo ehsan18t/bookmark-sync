@@ -213,9 +213,9 @@ export class SyncApp {
 
   joinGroup(input: JoinInput): Promise<void> {
     return this.run(async () => {
-      const { ports, config, opts, key } = await this.prepareJoin(input, false);
+      const { ports, config, opts, key, newKey } = await this.prepareJoin(input, false);
       const engine = await GroupEngine.join(ports, config, opts, key);
-      if (key) await this.deps.store.setKey(config.groupId, key, input.rememberKey ?? false);
+      if (key && newKey) await this.deps.store.setKey(config.groupId, key, input.rememberKey ?? false);
       this.engines.set(config.groupId, engine);
       this.meta.groups.push(config.groupId);
       await this.saveMeta();
@@ -564,15 +564,20 @@ export class SyncApp {
     const header = await GroupEngine.readHeader(provider, input.groupId);
     if (!header) throw new Error('group not found');
     let key: CryptoKey | null = null;
+    let newKey = false;
     if (header.encryption) {
-      key = (await this.deps.store.getKey(input.groupId)) ?? (input.passphrase ? await unlockKey(input.passphrase, header.encryption) : null);
+      key = await this.deps.store.getKey(input.groupId);
+      if (!key && input.passphrase) {
+        key = await unlockKey(input.passphrase, header.encryption);
+        newKey = true;
+      }
       if (!key) throw new Error('this group is encrypted: enter its passphrase');
     }
     await this.checkOverlap((await this.resolveTarget(header.mode, input.target, false)).mapping, input.target);
     const { mapping, excluded } = await this.resolveTarget(header.mode, input.target, !preview);
     const config = this.config(input.groupId, account.id, header.name, header.mode, mapping, !!header.encryption);
     const opts: JoinOptions = { mode: input.mode, ignoreDefaults: input.ignoreDefaults, excluded };
-    return { ports: this.ports(account), config, opts, key };
+    return { ports: this.ports(account), config, opts, key, newKey };
   }
 
   private config(groupId: string, accountId: string, name: string, mode: 'everything' | 'folder', mapping: Record<string, string>, encrypted: boolean): GroupConfig {

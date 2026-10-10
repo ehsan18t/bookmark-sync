@@ -179,7 +179,7 @@ Bookmarks a device brings into a group at join time get IDs derived from their g
 
 - AES-GCM 256 via WebCrypto. The key comes from a passphrase via PBKDF2-SHA256 (600,000 iterations).
 - `group.json` stores the salt, KDF parameters and an encrypted key check, so a wrong passphrase is detected immediately.
-- The passphrase is asked once per browser session; until then the group is locked. "Remember on this device" keeps the key across restarts, which means the key is stored on disk.
+- The passphrase is asked once per browser session; until then the group is locked. The key is kept in memory only. "Remember on this device" keeps it across restarts, which means the key is stored on disk.
 - File names and sizes stay visible to the provider. Contents do not.
 - **Turning encryption on or off:**
   1. The device announces a migration.

@@ -16,15 +16,24 @@ export class WrongPassphraseError extends Error {
   }
 }
 
+/** Derived keys are extractable so a session-only key can be held in memory as raw bytes; stored keys are re-imported as non-extractable. */
 export async function deriveKey(passphrase: string, salt: Uint8Array, iterations: number): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
     { name: 'PBKDF2', hash: 'SHA-256', salt: salt as BufferSource, iterations },
     material,
     { name: 'AES-GCM', length: 256 },
-    false,
+    true,
     ['encrypt', 'decrypt'],
   );
+}
+
+export async function exportRawKey(key: CryptoKey): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.exportKey('raw', key));
+}
+
+export function importRawKey(raw: Uint8Array): Promise<CryptoKey> {
+  return crypto.subtle.importKey('raw', raw as BufferSource, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
 }
 
 export async function encryptBytes(key: CryptoKey, plain: Uint8Array, aad: string): Promise<{ iv: string; data: string }> {
