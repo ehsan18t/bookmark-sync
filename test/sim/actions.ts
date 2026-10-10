@@ -8,7 +8,7 @@ export interface Action {
   c: number;
 }
 
-export type EditKind = 'addBookmark' | 'addFolder' | 'rename' | 'setUrl' | 'move' | 'remove';
+export type EditKind = 'addBookmark' | 'addFolder' | 'addSeparator' | 'rename' | 'setUrl' | 'move' | 'remove';
 
 const TITLES = ['News', 'Docs', 'Recipes', 'Work', 'Music', 'Docs'];
 const URLS = ['https://a.example/', 'https://b.example/x', 'https://c.example/?q=1', 'https://a.example/'];
@@ -24,6 +24,7 @@ export interface EditResult {
 }
 
 export const DEFAULT_KINDS: EditKind[] = ['addBookmark', 'addBookmark', 'addFolder', 'rename', 'setUrl', 'move', 'move', 'remove'];
+export const WITH_SEPARATORS: EditKind[] = [...['addBookmark', 'addBookmark', 'addFolder', 'rename', 'setUrl', 'move', 'move', 'remove'] as EditKind[], 'addSeparator'];
 export const FOLDER_HEAVY_KINDS: EditKind[] = ['addFolder', 'addFolder', 'addBookmark', 'move', 'move', 'move', 'remove', 'rename'];
 
 export async function performEdit(
@@ -47,6 +48,13 @@ export async function performEdit(
       const isFolder = kind === 'addFolder';
       const node = await bm.userCreate({ parentId: parent, index, kind: isFolder ? 'folder' : 'bookmark', title, url: isFolder ? '' : url });
       return { kind, device: d, node, parent, index, title, url: isFolder ? '' : url };
+    }
+    case 'addSeparator': {
+      if (!bm.supportsSeparators) return null;
+      const parent = folders[act.b % folders.length]!;
+      const index = act.c % (bm.childCount(parent) + 1);
+      const node = await bm.userCreate({ parentId: parent, index, kind: 'separator', title: '', url: '' });
+      return { kind, device: d, node, parent, index };
     }
     case 'rename': {
       const n = nodes[act.b % Math.max(nodes.length, 1)];

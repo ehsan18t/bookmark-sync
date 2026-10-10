@@ -146,18 +146,20 @@ export class Simulator {
     fill: (bm: FakeBookmarks) => Promise<void>,
     how: { create: true; ignoreDefaults?: boolean } | { create?: false; join: JoinOptions },
     browser: GroupConfig['browser'] = 'firefox',
+    override: Partial<GroupConfig> & { bookmarks?: FakeBookmarks } = {},
   ): Promise<SimDevice> {
-    const d = this.makeDevice(name);
+    const { bookmarks, ...configOverride } = override;
+    const d = this.makeDevice(name, bookmarks);
     await fill(d.bookmarks);
-    const config = { ...this.config(d), browser };
+    const config = { ...this.config(d), browser, ...configOverride };
     if (how.create) {
       const { encrypted: _e, ...rest } = config;
       const res = await GroupEngine.create(d.ports, rest, { passphrase: this.options.passphrase, iterations: 1000, ignoreDefaults: how.ignoreDefaults ?? false });
       d.engine = res.engine;
-      if (res.key) d.keys.set(GROUP_ID, res.key);
+      if (res.key) d.keys.set(config.groupId, res.key);
     } else {
-      if (this.options.passphrase) d.keys.set(GROUP_ID, this.devices[0]!.keys.get(GROUP_ID)!);
-      d.engine = await GroupEngine.join(d.ports, config, how.join, d.keys.get(GROUP_ID) ?? null);
+      if (this.options.passphrase) d.keys.set(config.groupId, this.devices[0]!.keys.get(config.groupId)!);
+      d.engine = await GroupEngine.join(d.ports, config, how.join, d.keys.get(config.groupId) ?? null);
     }
     this.devices.push(d);
     return d;
@@ -238,18 +240,14 @@ export class Simulator {
   async canonicalLive(d: SimDevice): Promise<unknown> {
     const idmap = new Map(d.engine.state.idmap);
     const excluded = new Set(d.engine.state.excluded.map(([l]) => l));
-    const roots = [
-      ['root:toolbar', FAKE_ROOTS.toolbar],
-      ['root:other', FAKE_ROOTS.other],
-      ['root:menu', FAKE_ROOTS.menu],
-    ] as const;
     const out = [];
-    for (const [groupRoot, local] of roots) {
-      const n = await d.bookmarks.getSubTree(local);
+    for (const groupRoot of d.engine.roots) {
+      const n = await d.bookmarks.getSubTree(d.engine.state.config.mapping[groupRoot]!);
       const walk = (x: typeof n): unknown[] =>
         (x.children ?? []).filter((c) => !excluded.has(c.localId)).map((c) => [idmap.get(c.localId) ?? `?${c.localId}`, c.kind, c.title, c.url, walk(c)]);
       out.push([groupRoot, walk(n)]);
     }
     return out;
   }
+
 }
