@@ -24,6 +24,9 @@ importers:
       vitest:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@26.6.5)(vite@8.3.4(@types/node@26.6.5))
+      webdav-server:
+        specifier: ^2.6.3
+        version: 2.6.3
 
 packages:
 
@@ -406,6 +409,14 @@ packages:
   magic-string@1.4.3:
     resolution: {integrity: sha512-z12OxmaPGE0F4xlpGdjuAUckipLpQlTAuAmyGhNoD7ODpYUzvDfvtxUbjM/jwznyP178oju/KDdyi220wNJ0RQ==}
 
+  mime-db@1.52.0:
+    resolution: {integrity: sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg==}
+    engines: {node: '>= 0.6'}
+
+  mime-types@2.1.35:
+    resolution: {integrity: sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw==}
+    engines: {node: '>= 0.6'}
+
   nanoid@3.3.20:
     resolution: {integrity: sha512-uKdg2G3GNCKQn9byYOpxbGqrT2fGO5KRt5J/8b3pok8rT6qxGWF6hxMyJiEYtAf+FVyYuD9hRaDqX5uPFYJ4ZQ==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
@@ -433,6 +444,10 @@ packages:
     resolution: {integrity: sha512-/5apOkwWxtACcQtZ5WlrAsKS4JwXVThQPJZ3RqIruRY9UG9M8e0VlXN068xum/JRKA4aIUoJ13ghe/kGCvidiQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
+
+  sax@1.6.1:
+    resolution: {integrity: sha512-42tBVwLWnaQvW5zc4HbZrTuWccECCZfBi92FDuwtqxasH+JbPB3/FOKb1m222K42R4WxuxzzMsTswfzgtSu64Q==}
+    engines: {node: '>=11.0.0'}
 
   source-map-js@1.2.2:
     resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
@@ -545,9 +560,21 @@ packages:
       jsdom:
         optional: true
 
+  webdav-server@2.6.3:
+    resolution: {integrity: sha512-cazrR8udZFHc0dyeug5Wp7ztdX0DagsEazeu9Aayk/988jh9U6pVdOJ71dtXlLWoEQ8NNGlaKfeif5rDcRw+ew==}
+    engines: {node: '>= 4'}
+
   why-is-node-running@3.2.1:
     resolution: {integrity: sha512-Tb2FUhB4vUsGQlfSquQLYkApkuPAFQXGFzxWKHHumVz2dK+X1RUm/HnID4+TfIGYJ1kTcwOaCk/buYCEJr6YjQ==}
     engines: {node: '>=20.11'}
+    hasBin: true
+
+  xml-js-builder@1.0.3:
+    resolution: {integrity: sha512-BoLgG/glT45M0jK5PGh9h+iGrQxa8jJk9ofR63GroRifl2tbGB3/yYiVY3wQWHrZgWWfl9+7fhEB/VoD9mWnSg==}
+    engines: {node: '>= 4'}
+
+  xml-js@1.6.11:
+    resolution: {integrity: sha512-7rVi2KMfwfWFl+GpPg6m80IVMWXLRjO+PxTq7V2CDhoGak0wzYzFgUY2m4XJ47OGdXd8eLE8EmwfAmdjw7lC1g==}
     hasBin: true
 
 snapshots:
@@ -774,6 +801,12 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
 
+  mime-db@1.52.0: {}
+
+  mime-types@2.1.35:
+    dependencies:
+      mime-db: 1.52.0
+
   nanoid@3.3.20: {}
 
   obug@2.2.1: {}
@@ -810,6 +843,8 @@ snapshots:
       '@rolldown/binding-openharmony-arm64': 1.2.13
       '@rolldown/binding-win32-arm64-msvc': 1.2.13
       '@rolldown/binding-win32-x64-msvc': 1.2.13
+
+  sax@1.6.1: {}
 
   source-map-js@1.2.2: {}
 
@@ -881,4 +916,17 @@ snapshots:
     transitivePeerDependencies:
       - msw
 
+  webdav-server@2.6.3:
+    dependencies:
+      mime-types: 2.1.35
+      xml-js-builder: 1.0.3
+
   why-is-node-running@3.2.1: {}
+
+  xml-js-builder@1.0.3:
+    dependencies:
+      xml-js: 1.6.11
+
+  xml-js@1.6.11:
+    dependencies:
+      sax: 1.6.1
