@@ -1085,6 +1085,16 @@ export class GroupEngine {
     return n;
   }
 
+  previewRestore(t: Hlc): { restored: number; removed: number; changed: number } {
+    const then = visibleTree(replay(this.baseState(), this.local.ops.filter((op) => op.hlc <= t)), this.roots);
+    const d = diffTrees(this.mergedTree(), then);
+    return { restored: d.creates.length, removed: d.deletes.length, changed: new Set([...d.moves, ...d.updates].map((n) => n.id)).size };
+  }
+
+  get oldestRestorable(): Hlc {
+    return this.local.baseFrontier;
+  }
+
   private recordRestore(then: Tree, only?: ReadonlySet<string>): number {
     const now = this.mergedTree();
     const base = this.baseState();
