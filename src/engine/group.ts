@@ -521,10 +521,17 @@ export class GroupEngine {
       cursor.info = info;
       await this.readMarkers(d, info, cursor);
       if (this.local.forked[d] !== undefined) continue;
+      if (info.lastBatchNo > cursor.batchNo && (base.coverage[d] ?? 0) >= info.lastOpSeq) {
+        cursor.batchNo = info.lastBatchNo;
+        cursor.hash = info.lastBatchHash;
+        cursor.opSeq = info.lastOpSeq;
+        continue;
+      }
       if (info.lastBatchNo > cursor.batchNo && info.firstRetainedOpSeq > cursor.opSeq + 1) {
         needSnapshot = true;
         continue;
       }
+      const gone = info.left || this.removedSet().has(d);
       for (let b = cursor.batchNo + 1; b <= info.lastBatchNo; b++) {
         const path = batchPath(groupId, d, b);
         let bytes: Uint8Array | null;
@@ -535,7 +542,11 @@ export class GroupEngine {
           this.local.forked[d] = b;
           break;
         }
-        if (!bytes) break;
+        if (!bytes) {
+          // A device that left or was removed never updates its device.json, so a batch compacted away shows up only as missing.
+          if (gone) needSnapshot = true;
+          break;
+        }
         const batch = await decode<Batch>(bytes, 'batch', this.crypt(path));
         if (cursor.hash !== null && batch.prevHash !== cursor.hash) {
           this.local.forked[d] = b;
@@ -634,7 +645,11 @@ export class GroupEngine {
     this.local.ops = this.local.ops.filter((op) => !coveredBy(coverage, op));
     for (const [d, info] of infos) {
       const c = this.local.cursors[d]!;
-      if (c.batchNo < info.firstRetainedBatchNo - 1) {
+      if ((coverage[d] ?? 0) >= info.lastOpSeq && c.batchNo < info.lastBatchNo) {
+        c.batchNo = info.lastBatchNo;
+        c.hash = info.lastBatchHash;
+        c.opSeq = info.lastOpSeq;
+      } else if (c.batchNo < info.firstRetainedBatchNo - 1) {
         c.batchNo = info.firstRetainedBatchNo - 1;
         c.hash = null;
         c.opSeq = Math.max(c.opSeq, coverage[d] ?? 0);

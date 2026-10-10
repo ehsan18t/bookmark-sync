@@ -131,3 +131,56 @@ describe('compaction and snapshots', () => {
     expect([...c.engine.mirror().nodes.values()].length).toBe(5);
   });
 });
+
+describe('devices that left', () => {
+  it('a device that was behind still gets the last edits of a device that left, after its batches were compacted away', async () => {
+    const sim = new Simulator({ devices: 3, seed: 14, settings: COMPACTING, visibilityDelayMs: 10 * 60_000 });
+    await sim.setup();
+    const [a, c, e] = sim.devices as [SimDevice, SimDevice, SimDevice];
+    sim.enableFaults(false);
+    await sim.quiet();
+    sim.enableFaults(true);
+    await c.bookmarks.userCreate({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'from c', url: 'https://c.example/' });
+    await sim.sync(c);
+    await c.engine.leave();
+    sim.devices.splice(1, 1);
+    sim.advance(1000);
+    await sim.sync(e);
+    await e.engine.publish(true);
+    sim.enableFaults(false);
+    sim.advance(20 * 60_000);
+    for (let day = 0; day < 4; day++) {
+      await sim.sync(a);
+      sim.advance(DAY + 1000);
+    }
+    expect((await sim.provider.client().listFiles(`groups/${GROUP_ID}/devices/devb/batches`)).length).toBe(0);
+    await sim.quiet();
+    expect([...e.engine.mirror().nodes.values()].map((n) => n.title)).toEqual(['from c']);
+    await expectConverged(sim);
+  });
+
+  it('a browser joining after a departed device was compacted can still compact', async () => {
+    const sim = new Simulator({ devices: 2, seed: 15, settings: COMPACTING });
+    await sim.setup();
+    const [a, b] = sim.devices as [SimDevice, SimDevice];
+    await b.bookmarks.userCreate({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'b', url: 'https://b.example/' });
+    await sim.quiet();
+    await b.engine.leave();
+    sim.devices.splice(1, 1);
+    for (let day = 0; day < 3; day++) {
+      await a.bookmarks.userCreate({ parentId: FAKE_ROOTS.other, kind: 'bookmark', title: `a${day}`, url: `https://a${day}.example/` });
+      await sim.sync(a);
+      sim.advance(DAY + 1000);
+    }
+    const j = await sim.addDevice('devj', async () => {}, { join: { mode: 'merge', ignoreDefaults: false } });
+    for (let day = 0; day < 3; day++) {
+      await j.bookmarks.userCreate({ parentId: FAKE_ROOTS.menu, kind: 'bookmark', title: `j${day}`, url: `https://j${day}.example/` });
+      await sim.quiet();
+      sim.advance(DAY + 1000);
+    }
+    await sim.quiet();
+    expect(j.engine.state.baseFrontier > a.engine.state.baseFrontier || j.engine.state.lastCompactAt > 0).toBe(true);
+    expect(j.engine.state.lastCompactAt).toBeGreaterThan(0);
+    await expectConverged(sim);
+  });
+});
