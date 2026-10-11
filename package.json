@@ -13,6 +13,7 @@
     "postinstall": "wxt prepare",
     "extension-id": "node scripts/extension-id.mjs",
     "make-key": "node scripts/make-key.mjs",
+    "site": "node scripts/build-site.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

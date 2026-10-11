@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{APP_NAME}}: your bookmarks, the same in every browser</title>
+    <meta name="description" content="{{APP_DESCRIPTION}}" />
+    <link rel="icon" href="icon.png" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="top">
+        <a class="brand" href="./">{{ICON}}{{APP_NAME}}</a>
+        <nav class="links">
+          <a href="#features">Features</a>
+          <a href="#how">How it works</a>
+          <a href="privacy.html">Privacy</a>
+          <!-- if SOURCE_URL --><a href="{{SOURCE_URL}}">Source code</a><!-- end SOURCE_URL -->
+        </nav>
+      </header>
+
+      <main>
+        <div class="hero">
+          <h1>Your bookmarks, the same in every browser</h1>
+          <p>{{APP_NAME}} keeps bookmarks in sync between Chrome, Edge, Brave, Vivaldi and Firefox. They're stored in your own Google Drive or on your own server, never on ours.</p>
+          <div class="buttons">
+            <!-- if CHROME_STORE_URL --><a class="btn primary" href="{{CHROME_STORE_URL}}">Add to Chrome</a><!-- end CHROME_STORE_URL -->
+            <!-- if EDGE_STORE_URL --><a class="btn" href="{{EDGE_STORE_URL}}">Add to Edge</a><!-- end EDGE_STORE_URL -->
+            <!-- if FIREFOX_STORE_URL --><a class="btn" href="{{FIREFOX_STORE_URL}}">Add to Firefox</a><!-- end FIREFOX_STORE_URL -->
+            <!-- if !STORE_URLS --><!-- if SOURCE_URL --><a class="btn primary" href="{{SOURCE_URL}}">Get it from the source code</a><!-- end SOURCE_URL --><!-- end !STORE_URLS -->
+          </div>
+          <!-- if !STORE_URLS --><p class="note">Coming soon to the Chrome Web Store, Edge Add-ons and Firefox Add-ons.</p><!-- end !STORE_URLS -->
+          <p class="note">Free and open source. No account with us, no tracking.</p>
+        </div>
+
+        <div class="shots">
+          <img src="images/setup.png" alt="The setup page asking where to store bookmarks, with Google Drive recommended and your own server as the other option." />
+          <img src="images/join.png" alt="Joining a sync from a second browser, choosing to combine its bookmarks with the synced ones, with a preview of what will change." />
+        </div>
+
+        <section id="features">
+          <h2>What it does</h2>
+          <p class="lead">Add, move or rename a bookmark in one browser, and it shows up in the others within moments.</p>
+          <div class="grid">
+            <div class="card">
+              <h3>Syncs as you go</h3>
+              <p>Each change is recorded the moment you make it and sent to your other browsers, like the browser's own sync, but across different browsers.</p>
+            </div>
+            <div class="card">
+              <h3>Storage you choose</h3>
+              <p>Google Drive, or your own server: Nextcloud, ownCloud, Synology, any WebDAV server, or any cloud that rclone supports.</p>
+            </div>
+            <div class="card">
+              <h3>Merges without surprises</h3>
+              <p>Changes made in two browsers at once are combined by clear rules, so bookmarks aren't lost or duplicated. Big changes ask you first.</p>
+            </div>
+            <div class="card">
+              <h3>History and undo</h3>
+              <p>Go back to how your bookmarks were at any point in the last days, in every browser at once. Going back can be undone too.</p>
+            </div>
+            <div class="card">
+              <h3>Optional encryption</h3>
+              <p>Turn on a passphrase and your storage only sees scrambled data. You can switch it on or off later without losing anything.</p>
+            </div>
+            <div class="card">
+              <h3>Duplicate finder</h3>
+              <p>Finds bookmarks that point to the same page and lets you pick which to keep. Nothing is removed until you choose.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="how">
+          <h2>How it works</h2>
+          <p class="lead">Setup takes about a minute in each browser.</p>
+          <ol class="steps">
+            <li><div><b>Choose where to store your bookmarks.</b> Sign in with Google, or enter your server's address.</div></li>
+            <li><div><b>Start a sync in your first browser.</b> Sync all your bookmarks, or just one folder.</div></li>
+            <li><div><b>Join it from your other browsers.</b> Pick the same storage and the extension finds your sync. Keep the bookmarks already there, or replace them.</div></li>
+          </ol>
+        </section>
+
+        <section id="privacy">
+          <h2>Your data stays yours</h2>
+          <p class="lead">There's no {{APP_NAME}} server. Your bookmarks go only to the storage you pick, and nothing is collected, tracked or shared. With Google Drive, the extension can only see the files it creates in a hidden app folder, not the rest of your Drive. <a href="privacy.html">Read the privacy policy</a>.</p>
+        </section>
+      </main>
+
+      <footer>
+        <span>{{APP_NAME}}</span>
+        <nav>
+          <a href="privacy.html">Privacy policy</a>
+          <!-- if SUPPORT_EMAIL --><a href="mailto:{{SUPPORT_EMAIL}}">Contact</a><!-- end SUPPORT_EMAIL -->
+          <!-- if SOURCE_URL --><a href="{{SOURCE_URL}}">Source code</a><!-- end SOURCE_URL -->
+        </nav>
+      </footer>
+    </div>
+  </body>
+</html>

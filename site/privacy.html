@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy policy · {{APP_NAME}}</title>
+    <meta name="description" content="How {{APP_NAME}} handles your bookmarks and your Google data." />
+    <link rel="icon" href="icon.png" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="top">
+        <a class="brand" href="./">{{ICON}}{{APP_NAME}}</a>
+      </header>
+
+      <article class="policy">
+        <h1>Privacy policy</h1>
+        <p class="updated">Last updated {{PRIVACY_UPDATED}}</p>
+
+        <div class="summary">
+          <b>The short version</b>
+          <ul>
+            <li>{{APP_NAME}} has no server. Your bookmarks go only to the storage you choose: your Google Drive or your own server.</li>
+            <li>We don't collect, track, sell or share anything. There are no analytics and no ads.</li>
+            <li>With Google Drive, the extension can only see the files it creates in a hidden app folder, never your other files.</li>
+          </ul>
+        </div>
+
+        <h2>What the extension handles</h2>
+        <table>
+          <tr><th>What</th><th>Where it goes</th><th>Why</th></tr>
+          <tr><td>Your bookmarks: titles, addresses, folders and their order, and a record of changes to them</td><td>The storage you choose</td><td>To keep your browsers in sync and let you go back to earlier versions</td></tr>
+          <tr><td>A name for each browser (for example "Chrome on Windows") and its browser type</td><td>The storage you choose</td><td>So your browsers can recognize each other</td></tr>
+          <tr><td>Sign-in details for your storage: a server address, username and password, or a Google sign-in token</td><td>Stays in this browser's local storage</td><td>To reach your storage</td></tr>
+          <tr><td>Your encryption passphrase, if you use one</td><td>Never stored. A key made from it is kept in memory, or in this browser if you choose Remember</td><td>To encrypt and decrypt your bookmarks</td></tr>
+          <tr><td>Your settings</td><td>Stays in this browser</td><td>To remember your choices</td></tr>
+        </table>
+        <p>Nothing on this list is sent to us or to anyone other than the storage you choose. We can't see your bookmarks, your storage, or how you use the extension.</p>
+
+        <h2>Google user data</h2>
+        <p>If you connect Google Drive, the extension asks Google for one permission: <code>drive.appdata</code>, shown by Google as "See, create, and delete its own configuration data in your Google Drive". This gives it a hidden app folder in your Drive that only it can use.</p>
+        <ul>
+          <li><b>What it accesses:</b> only the files it created in that app folder. It can't see, read or change any other file in your Drive.</li>
+          <li><b>How it uses them:</b> to store and read your bookmarks and their history, so your browsers stay in sync. Nothing else.</li>
+          <li><b>Sharing:</b> the data isn't transferred to us or to anyone else, isn't used for advertising, and isn't read by people.</li>
+          <li><b>Removing access:</b> remove {{APP_NAME}} in your Google Account under Security, Third-party connections. To delete its files, open Google Drive, Settings, Manage apps, and choose Delete hidden app data for {{APP_NAME}}.</li>
+        </ul>
+        <p>{{APP_NAME}}'s use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+
+        <h2>Your own server</h2>
+        <p>If you use your own server (WebDAV, Nextcloud, rclone and others), your bookmarks are stored there and handled under that server's terms. If the server's address starts with http instead of https, your password and bookmarks travel unencrypted, and the extension warns you before connecting.</p>
+
+        <h2>Encryption</h2>
+        <p>Encryption is off unless you turn it on. Without it, whoever runs your storage (Google, or your server's operator) could read your bookmarks, as with any file you store there. With it, they only see scrambled data. The passphrase can't be recovered if you lose it.</p>
+
+        <h2>Browser permissions</h2>
+        <table>
+          <tr><th>Permission</th><th>Used for</th></tr>
+          <tr><td>Bookmarks</td><td>Reading and changing your bookmarks to keep them in sync</td></tr>
+          <tr><td>Storage and unlimited storage</td><td>Keeping settings, sign-in details and sync state in this browser</td></tr>
+          <tr><td>Alarms</td><td>Checking for changes from your other browsers every few minutes</td></tr>
+          <tr><td>Notifications</td><td>Telling you when syncing pauses and needs you</td></tr>
+          <tr><td>Identity</td><td>Opening Google's sign-in window</td></tr>
+          <tr><td>Access to googleapis.com</td><td>Talking to Google Drive and Google sign-in</td></tr>
+          <tr><td>Access to servers you add</td><td>Talking to your own server. The browser asks you when you add one.</td></tr>
+        </table>
+
+        <h2>Keeping and deleting data</h2>
+        <ul>
+          <li>The history of changes is kept for 7 days by default. You can change this, or turn it off, in Settings.</li>
+          <li>Records of deleted bookmarks stay in the sync files until the sync is deleted, so every browser can apply the deletion.</li>
+          <li><b>Delete this sync</b> removes the bookmarks and history from your storage for every browser. A few small files naming the sync and its browsers stay, so the others learn it was deleted; you can delete the folder yourself.</li>
+          <li><b>Stop syncing here</b> leaves your storage as it is.</li>
+          <li>Uninstalling the extension removes everything it kept in that browser.</li>
+        </ul>
+
+        <h2>Diagnostics</h2>
+        <p>Export diagnostics in Settings creates a file on your computer with technical sync details, for reporting a problem. It contains no bookmarks, passwords or passphrases, and it goes nowhere unless you send it to someone.</p>
+
+        <h2>Children</h2>
+        <p>{{APP_NAME}} isn't directed at children under 13 and doesn't knowingly collect information from anyone.</p>
+
+        <h2>Changes to this policy</h2>
+        <p>If this policy changes, the new version is posted on this page with a new date. A change that would collect or share data in a new way would be announced before it takes effect.</p>
+
+        <h2>Contact</h2>
+        <!-- if SUPPORT_EMAIL --><p>Questions about privacy: <a href="mailto:{{SUPPORT_EMAIL}}">{{SUPPORT_EMAIL}}</a>.</p><!-- end SUPPORT_EMAIL -->
+        <!-- if SOURCE_URL --><p>The source code is public, so you can check all of this yourself: <a href="{{SOURCE_URL}}">{{SOURCE_URL}}</a>.</p><!-- end SOURCE_URL -->
+      </article>
+
+      <footer>
+        <span>{{APP_NAME}}</span>
+        <nav>
+          <a href="./">Home</a>
+          <!-- if SUPPORT_EMAIL --><a href="mailto:{{SUPPORT_EMAIL}}">Contact</a><!-- end SUPPORT_EMAIL -->
+        </nav>
+      </footer>
+    </div>
+  </body>
+</html>
