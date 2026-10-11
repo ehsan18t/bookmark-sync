@@ -61,9 +61,13 @@ Google Drive sign-in needs two OAuth clients from a Google Cloud project, regist
 
 The Chromium extension ID is fixed by `WXT_CHROMIUM_KEY`, so the Google redirect URI stays the same wherever the package is loaded from. `pnpm extension-id` prints the ID and redirect URI, and `pnpm make-key` makes a new key.
 
+## Website
+
+`site/` holds the homepage and privacy policy that Google's consent screen and the stores need. `pnpm site` builds them from `.env` into `.output/site`, and a GitHub Actions workflow publishes them to GitHub Pages. [docs/website.md](docs/website.md) covers publishing, using a subdomain of your own domain, and verifying it for Google.
+
 ## Go-live settings
 
-Every value to change before going live is in `.env`, and nothing else needs editing: the name and description, the homepage, privacy policy and support email (shown in Settings when set), the Firefox add-on ID, the Chromium key, the default server folder, and the Google client IDs. The Google client secrets go in `.env.local`, which git ignores (see `.env.local.example`). `pnpm zip` refuses to build release packages while the Google clients, homepage or privacy policy are missing, or while the Firefox ID is still the `example.com` placeholder.
+Every value to change before going live is in `.env`, and nothing else needs editing: the name and description, the homepage, privacy policy and support email (shown in Settings when set), the website's store and source links, the Firefox add-on ID, the Chromium key, the default server folder, and the Google client IDs. The Google client secrets go in `.env.local`, which git ignores (see `.env.local.example`). `pnpm zip` refuses to build release packages while the Google clients, homepage or privacy policy are missing, or while the Firefox ID is still the `example.com` placeholder.
 
 ## Tests
 
