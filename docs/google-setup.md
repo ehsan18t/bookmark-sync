@@ -25,13 +25,13 @@ If Google asks you to verify the app, follow its prompts. Until it's verified, p
 
 1. Open **Clients** (or **Credentials**), then **Create client**.
 2. Application type: **Web application**. Name: `Bookmark sync (Chromium)`.
-3. Under **Authorized redirect URIs**, add:
+3. Under **Authorized redirect URIs**, add the address this prints:
 
-   ```
-   https://nmoonfocibpibidcccliemgjddogdcmc.chromiumapp.org/
+   ```bash
+   pnpm extension-id
    ```
 
-   This is the extension's fixed ID for unpacked builds. The `key` in `wxt.config.ts` keeps it the same on every computer and from every folder.
+   It's `https://EXTENSION-ID.chromiumapp.org/`, where the ID comes from `WXT_CHROMIUM_KEY` in `.env`. That key keeps the ID the same on every computer and from every folder.
 4. Create it, and copy the **Client ID** and **Client secret**.
 
 When you publish to the Chrome Web Store or Edge Add-ons, each store gives the extension its own ID. Add `https://STORE-ID.chromiumapp.org/` for each one to the same client, next to the first URI.
@@ -44,16 +44,21 @@ When you publish to the Chrome Web Store or Edge Add-ons, each store gives the e
 
 ## 5. Build with the clients
 
-Copy `.env.example` to `.env` in the project folder and fill it in:
+Put the two client IDs in `.env`, which holds every value to set before going live:
 
 ```
 WXT_GOOGLE_CLIENT_ID_CHROMIUM=1234-abc.apps.googleusercontent.com
-WXT_GOOGLE_CLIENT_SECRET_CHROMIUM=GOCSPX-...
 WXT_GOOGLE_CLIENT_ID_FIREFOX=5678-def.apps.googleusercontent.com
+```
+
+Copy `.env.local.example` to `.env.local` and put the two secrets there. Git ignores `.env.local`:
+
+```
+WXT_GOOGLE_CLIENT_SECRET_CHROMIUM=GOCSPX-...
 WXT_GOOGLE_CLIENT_SECRET_FIREFOX=GOCSPX-...
 ```
 
-`.env` is ignored by git. Then build as usual:
+Then build as usual:
 
 ```bash
 pnpm build
@@ -69,10 +74,12 @@ A build without the clients still works, but it hides Google Drive and offers on
 
 ## If sign-in fails
 
-- **"redirect_uri_mismatch":** the redirect URI in step 3 doesn't match the extension's ID. Open `chrome://extensions`, compare the ID shown under Bookmark sync, and add `https://THAT-ID.chromiumapp.org/` to the client.
+- **"redirect_uri_mismatch":** the redirect URI in step 3 doesn't match the extension's ID. Open `chrome://extensions`, compare the ID shown under the extension with the one `pnpm extension-id` prints, and add `https://THAT-ID.chromiumapp.org/` to the client.
 - **"access_denied" or "app is blocked":** the consent screen is still in Testing and the account isn't a test user. Publish the app (step 2.4), or add the account under **Audience**, **Test users**.
 - **Brave:** sign-in is off for extensions by default. Turn on "Allow Google login for extensions" in `brave://settings/extensions`. The setup page tells users this.
 
 ## The extension's private key
 
-`.keys/extension-key.pem` (ignored by git) is the private half of the key that fixes the extension ID. You only need it to pack a signed `.crx` with the same ID yourself. Keep a copy somewhere safe; if it's lost, unpacked builds keep the same ID anyway, because only the public half in `wxt.config.ts` is used for that.
+`.keys/extension-key.pem` (ignored by git) is the private half of the key that fixes the extension ID. You only need it to pack a signed `.crx` with the same ID yourself. Keep a copy somewhere safe; if it's lost, unpacked builds keep the same ID anyway, because only the public half in `WXT_CHROMIUM_KEY` is used for that.
+
+To start over with a new ID, run `pnpm make-key`, put the line it prints in `.env`, and update the redirect URI in step 3.

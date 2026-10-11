@@ -46,7 +46,7 @@ The Chromium package lands in `.output/chrome-mv3` and the Firefox package in `.
 
 Installing the extension opens its setup page. It goes one step at a time:
 
-1. **Choose storage.** Google Drive (when the build includes the Google clients, see below), or your own server. For Nextcloud the server address looks like `https://cloud.example.com/remote.php/dav/files/USERNAME/`; use an app password. For any rclone remote, run `rclone serve webdav REMOTE: --addr 127.0.0.1:8080 --user me --pass secret` and use `http://127.0.0.1:8080/`. The bookmarks go in a `Bookmark sync` folder on the server, which you can change under Advanced.
+1. **Choose storage.** Google Drive (when the build includes the Google clients, see below), or your own server. For Nextcloud the server address looks like `https://cloud.example.com/remote.php/dav/files/USERNAME/`; use an app password. For any rclone remote, run `rclone serve webdav REMOTE: --addr 127.0.0.1:8080 --user me --pass secret` and use `http://127.0.0.1:8080/`. The bookmarks go in a folder on the server (`WXT_SERVER_FOLDER` in `.env`), which users can change under Advanced.
 2. **Connect.** The extension checks the sign-in before going on.
 3. **Start or join.** If the storage already holds a sync from another browser, the page suggests joining it. Otherwise this browser starts one.
 4. **Choose what to sync.** All bookmarks or one folder when starting. When joining, Combine (keeps this browser's bookmarks and adds the synced ones) or Replace (takes the synced ones, and can be undone), with a live preview of what changes. Encryption is under Advanced.
@@ -57,9 +57,13 @@ Turn off the browser's own bookmark sync in any browser that has the extension a
 
 ## Google Drive setup
 
-Google Drive sign-in needs two OAuth clients from a Google Cloud project, registered once by whoever publishes the extension. [docs/google-setup.md](docs/google-setup.md) walks through it step by step. In short: put the client IDs and secrets in `.env` (see `.env.example`) before building. Builds without them hide Google Drive, and `pnpm zip` refuses to build release packages without them.
+Google Drive sign-in needs two OAuth clients from a Google Cloud project, registered once by whoever publishes the extension. [docs/google-setup.md](docs/google-setup.md) walks through it step by step. In short: put the client IDs in `.env` and the secrets in `.env.local` before building. Builds without them hide Google Drive, and `pnpm zip` refuses to build release packages without them.
 
-The Chromium extension ID is fixed at `nmoonfocibpibidcccliemgjddogdcmc` by the `key` in `wxt.config.ts`, so the Google redirect URI stays the same wherever the package is loaded from.
+The Chromium extension ID is fixed by `WXT_CHROMIUM_KEY`, so the Google redirect URI stays the same wherever the package is loaded from. `pnpm extension-id` prints the ID and redirect URI, and `pnpm make-key` makes a new key.
+
+## Go-live settings
+
+Every value to change before going live is in `.env`, and nothing else needs editing: the name and description, the homepage, privacy policy and support email (shown in Settings when set), the Firefox add-on ID, the Chromium key, the default server folder, and the Google client IDs. The Google client secrets go in `.env.local`, which git ignores (see `.env.local.example`). `pnpm zip` refuses to build release packages while the Google clients, homepage or privacy policy are missing, or while the Firefox ID is still the `example.com` placeholder.
 
 ## Tests
 
@@ -86,7 +90,7 @@ pnpm test:e2e
 
 - Firefox, Edge, Brave and Vivaldi have only been built and linted, not run. Vivaldi's Trash is recognized by its title, which is a guess.
 - Google sign-in has not been tried against a real Google account. Whether Google accepts Firefox's loopback redirect without a port is unconfirmed; if it does not, Firefox needs a small redirect page on a domain you control.
-- The Firefox add-on ID is `bookmark-sync@example.com`; change it in `wxt.config.ts` before publishing.
+- The Firefox add-on ID is still the `bookmark-sync@example.com` placeholder; set `WXT_GECKO_ID` in `.env` before publishing.
 - If a Chromium browser renumbers all its bookmarks, the IDs of mapped folders change too, and the group pauses because its folder is missing; leave the group and join it again in merge mode.
 - Deleted items are never dropped from snapshots, costing about 200 bytes each.
 - Restores cannot reach back past an encryption switch.
