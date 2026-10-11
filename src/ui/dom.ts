@@ -1,5 +1,6 @@
 import { browser } from 'wxt/browser';
 import type { Command, Reply } from '../messages.js';
+import { APP_NAME } from '../config.js';
 import { icon, type IconName } from './icons.js';
 
 export async function send<T>(cmd: Command): Promise<T> {
@@ -81,5 +82,5 @@ export function field(label: string, control: HTMLElement, hint?: string) {
 }
 
 export function brand() {
-  return h('div', { class: 'brand' }, icon('bookmarks'), 'Bookmark sync');
+  return h('div', { class: 'brand' }, icon('bookmarks'), APP_NAME);
 }

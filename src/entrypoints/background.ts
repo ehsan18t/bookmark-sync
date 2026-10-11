@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
 import type { BrowserFamily } from '../core/defaults.js';
+import { APP_NAME } from '../config.js';
 import { SyncApp } from '../engine/app.js';
 import type { GroupStatus } from '../engine/group.js';
 import { googleAvailable, identityAvailable, signInWithGoogle } from '../browser/auth.js';
@@ -82,7 +83,7 @@ export default defineBackground({
     async function onStatus(groupId: string, status: GroupStatus) {
       await refreshBadge();
       if (status.state !== 'paused' || status.reason === 'migration') return;
-      const name = (await app.status()).find((g) => g.groupId === groupId)?.name ?? 'Bookmark sync';
+      const name = (await app.status()).find((g) => g.groupId === groupId)?.name ?? APP_NAME;
       await browser.notifications.create(`bsync:${groupId}`, {
         type: 'basic',
         iconUrl: browser.runtime.getURL('/icon/128.png'),

@@ -2,6 +2,7 @@ import { browser } from 'wxt/browser';
 import type { GroupSummary, Target } from '../../engine/app.js';
 import type { JoinPreview } from '../../engine/group.js';
 import { originPattern } from '../../browser/providers.js';
+import { APP_NAME, SERVER_FOLDER } from '../../config.js';
 import { action, brand, errorText, field, h, send } from '../../ui/dom.js';
 import { icon, type IconName } from '../../ui/icons.js';
 import { load, otherBookmarksId, state, storageLabel, type FoundSync, type PublicAccount } from './shared.js';
@@ -117,7 +118,7 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
     const url = h('input', { type: 'url', placeholder: 'https://cloud.example.com/remote.php/dav/files/alex/', autocomplete: 'url', spellcheck: 'false' });
     const user = h('input', { type: 'text', placeholder: 'alex', autocomplete: 'username' });
     const password = h('input', { type: 'password', autocomplete: 'current-password' });
-    const folder = h('input', { type: 'text', value: 'Bookmark sync' });
+    const folder = h('input', { type: 'text', value: SERVER_FOLDER });
     const warning = h('div');
     let insecureOk = false;
     url.addEventListener('input', () => {
@@ -404,7 +405,7 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
       h(
         'div',
         { class: 'card stack', style: 'text-align:left;width:100%' },
-        h('div', { class: 'row' }, icon('devices', 'lg'), h('div', { class: 'grow' }, h('b', {}, step.joined ? 'Add more browsers the same way' : 'Next, set up your other browsers'), h('p', { class: 'muted small' }, `Install Bookmark sync in each browser and connect ${storageLabel(step.account)}. They find “${g?.name ?? 'Bookmarks'}” and join it.`))),
+        h('div', { class: 'row' }, icon('devices', 'lg'), h('div', { class: 'grow' }, h('b', {}, step.joined ? 'Add more browsers the same way' : 'Next, set up your other browsers'), h('p', { class: 'muted small' }, `Install ${APP_NAME} in each browser and connect ${storageLabel(step.account)}. They find “${g?.name ?? 'Bookmarks'}” and join it.`))),
       ),
       h('button', { class: 'primary lg', onclick: finish }, 'Open the dashboard'),
     );

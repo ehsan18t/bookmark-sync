@@ -11,6 +11,8 @@
     "build:firefox": "wxt build -b firefox",
     "zip": "cross-env BSYNC_RELEASE=1 wxt zip && cross-env BSYNC_RELEASE=1 wxt zip -b firefox",
     "postinstall": "wxt prepare",
+    "extension-id": "node scripts/extension-id.mjs",
+    "make-key": "node scripts/make-key.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import { APP_NAME } from '../../config.js';
 import type { GroupSummary } from '../../engine/app.js';
 import { SHORT_REASON } from '../options/shared.js';
 import { action, brand, errorText, h, relativeTime, send } from '../../ui/dom.js';
@@ -6,6 +7,7 @@ import { icon } from '../../ui/icons.js';
 import '../../ui/styles.css';
 
 const app = document.getElementById('app')!;
+document.title = APP_NAME;
 
 const open = (hash: string) => async () => {
   await browser.tabs.create({ url: browser.runtime.getURL(`/options.html#${hash}`) });

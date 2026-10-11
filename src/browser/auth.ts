@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import { APP_NAME } from '../config.js';
 import { UserError } from '../core/errors.js';
 import { base32, toBase64 } from '../core/ids.js';
 import type { Account } from '../engine/app.js';
@@ -86,7 +87,7 @@ export async function signInWithGoogle(engine: Engine): Promise<{ refreshToken: 
   const code = result ? new URL(result).searchParams.get('code') : null;
   if (!code) throw new UserError('Google didn’t give access to Drive. Try again, and choose Allow when Google asks.');
   const tokens = await tokenRequest({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirect, grant_type: 'authorization_code', code_verifier: verifier });
-  if (!tokens.refresh_token) throw new UserError('Google didn’t finish connecting. In your Google account, open Security, Third-party connections, remove Bookmark sync, then sign in again.');
+  if (!tokens.refresh_token) throw new UserError(`Google didn’t finish connecting. In your Google account, open Security, Third-party connections, remove ${APP_NAME}, then sign in again.`);
   return { refreshToken: tokens.refresh_token, accessToken: tokens.access_token, expiresAt: Date.now() + tokens.expires_in * 1000 };
 }
 

@@ -3,6 +3,7 @@ import type { DuplicateGroup } from '../../core/dedupe.js';
 import type { GroupSummary, Settings } from '../../engine/app.js';
 import type { TimelineEntry } from '../../engine/group.js';
 import { originPattern } from '../../browser/providers.js';
+import { APP_NAME, HOMEPAGE_URL, PRIVACY_URL, SUPPORT_EMAIL } from '../../config.js';
 import { action, brand, errorText, field, h, hlcTime, relativeTime, send } from '../../ui/dom.js';
 import { icon, type IconName } from '../../ui/icons.js';
 import { load, REASON_TEXT, state, storageLabel } from './shared.js';
@@ -384,5 +385,16 @@ async function settings(panel: HTMLElement, refresh: () => Promise<void>) {
         : emptyState('cloud', 'No storage connected', 'Connect Google Drive or your own server to start syncing.'),
     ),
     h('div', { class: 'stack' }, h('h3', {}, 'Troubleshooting'), h('div', { class: 'card flush' }, setting('Diagnostics', 'A file with sync details for reporting a problem. It contains no bookmarks, passwords, or passphrases.', action('Export', exportDiagnostics)))),
+    about(setting) ?? '',
   );
+}
+
+function about(setting: (title: string, hint: string, control: Node) => HTMLElement) {
+  const link = (href: string, label: string) => h('a', { href, target: '_blank', rel: 'noopener', class: 'btn' }, label, icon('external-link'));
+  const rows = [
+    HOMEPAGE_URL ? setting('Website', `News, help, and how ${APP_NAME} works.`, link(HOMEPAGE_URL, 'Open')) : null,
+    PRIVACY_URL ? setting('Privacy policy', 'What happens to your data.', link(PRIVACY_URL, 'Read')) : null,
+    SUPPORT_EMAIL ? setting('Support', SUPPORT_EMAIL, link(`mailto:${SUPPORT_EMAIL}`, 'Email')) : null,
+  ].filter((r): r is HTMLElement => r !== null);
+  return rows.length ? h('div', { class: 'stack' }, h('h3', {}, 'About'), h('div', { class: 'card flush' }, ...rows)) : null;
 }
