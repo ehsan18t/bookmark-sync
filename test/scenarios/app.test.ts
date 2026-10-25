@@ -150,6 +150,31 @@ describe('the app layer', () => {
     expect(await titles(a.bookmarks, java)).toEqual(['jdk']);
   });
 
+  it('never places a folder inside a folder another sync holds, including folders still to be made', async () => {
+    const { a, b, accA, accB } = await pair();
+    const java = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Java', url: '' });
+    const groupId = await a.app.createGroup({ accountId: accA, name: 'Picked', mode: 'folder', target: { kind: 'folders', folderIds: [java] }, ignoreDefaults: false });
+    await b.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'bookmark', title: 'private', url: 'https://private.example/' });
+    await b.app.createGroup({ accountId: accB, name: 'Mine', mode: 'folder', target: { kind: 'folders', folderIds: [FAKE_ROOTS.other] }, ignoreDefaults: false });
+
+    const [top] = (await b.app.groupFolders({ accountId: accB, groupId })).folders;
+    const join = { accountId: accB, groupId, mode: 'merge' as const, ignoreDefaults: false };
+    await expect(b.app.joinGroup({ ...join, target: { kind: 'parts', parts: [{ part: top!.id, hint: top!.hint! }], followTops: true } })).rejects.toThrow(/overlaps with the sync “Mine”/);
+    const javaB = await b.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'folder', title: 'Java', url: '' });
+    await b.app.joinGroup({ ...join, target: { kind: 'parts', parts: [{ part: top!.id, folderId: javaB }], followTops: true } });
+
+    const recipes = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Recipes', url: '' });
+    await a.app.addTops(groupId, [recipes]);
+    await b.app.syncAll();
+    const picked = (await b.app.status()).find((s) => s.name === 'Picked')!;
+    expect(picked.parts.map((p) => p.path)).toEqual(['toolbar_____ / Java']);
+    expect(picked.notices.map((n) => n.text)).toEqual([expect.stringContaining('already synced by another folder')]);
+    expect(await titles(b.bookmarks, FAKE_ROOTS.other)).toEqual(['private']);
+    await a.app.syncAll();
+    expect(await titles(a.bookmarks, FAKE_ROOTS.other)).toEqual(['Java', 'Recipes']);
+    expect(await titles(a.bookmarks, recipes)).toEqual([]);
+  });
+
   it('joins an encrypted group only with the right passphrase, and unlocks after a restart', async () => {
     const { a, b, accA, accB } = await pair();
     const groupId = await a.app.createGroup({ accountId: accA, name: 'Secret', mode: 'everything', target: { kind: 'whole' }, passphrase: 'pw', iterations: 1000, ignoreDefaults: false });

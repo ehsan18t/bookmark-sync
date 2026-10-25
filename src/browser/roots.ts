@@ -1,7 +1,7 @@
 import { browser } from 'wxt/browser';
 import type { Excluded } from '../core/reconcile.js';
 import type { RootType } from '../core/ids.js';
-import { PENDING_PREFIX, type LocalFolder, type RootsPort } from '../engine/app.js';
+import { PENDING_PREFIX, pendingAt, type LocalFolder, type RootsPort } from '../engine/app.js';
 import type { Engine, Node } from './bookmarksPort.js';
 
 const FIREFOX = { toolbar: 'toolbar_____', menu: 'menu________', other: 'unfiled_____', mobile: 'mobile______' };
@@ -134,7 +134,7 @@ export function browserRoots(engine: Engine): RootsPort {
         const kids = (await browser.bookmarks.getChildren(parent)) as Node[];
         const found = kids.find((k) => k.url === undefined && k.type !== 'separator' && k.title === title);
         if (found) parent = found.id;
-        else if (!create) return `${PENDING_PREFIX}${path.slice(i).join('/')}`;
+        else if (!create) return pendingAt(parent, path.slice(i));
         else parent = (await browser.bookmarks.create({ parentId: parent, title })).id;
       }
       return parent;

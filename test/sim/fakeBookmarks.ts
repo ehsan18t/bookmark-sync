@@ -1,6 +1,6 @@
 import type { RootType } from '../../src/core/ids.js';
 import type { Kind } from '../../src/core/ops.js';
-import { PENDING_PREFIX, type RootsPort } from '../../src/engine/app.js';
+import { PENDING_PREFIX, pendingAt, type RootsPort } from '../../src/engine/app.js';
 import type { LiveNode } from '../../src/core/reconcile.js';
 import type { BookmarksPort } from '../../src/engine/ports.js';
 
@@ -49,7 +49,7 @@ export function fakeRoots(bm: FakeBookmarks): RootsPort {
       for (const [i, title] of hint.path.entries()) {
         const found = ((await bm.getSubTree(cur)).children ?? []).find((c) => c.kind === 'folder' && c.title === title);
         if (found) cur = found.localId;
-        else if (!create) return `${PENDING_PREFIX}${hint.path.slice(i).join('/')}`;
+        else if (!create) return pendingAt(cur, hint.path.slice(i));
         else cur = await bm.create({ parentId: cur, kind: 'folder', title, url: '' });
       }
       return cur;

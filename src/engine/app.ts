@@ -83,6 +83,14 @@ export type Target =
 /** Folder IDs a preview uses for helper folders that do not exist yet; they read as empty. */
 export const PENDING_PREFIX = 'pending:';
 
+/** A folder still to be made below `existing`; overlap checks test `existing` in its place. */
+export const pendingAt = (existing: string, rest: string[]) => `${PENDING_PREFIX}${existing}:${rest.join('/')}`;
+
+function pendingAnchor(id: string): string | null {
+  const end = id.indexOf(':', PENDING_PREFIX.length);
+  return id.startsWith(PENDING_PREFIX) && end > 0 ? id.slice(PENDING_PREFIX.length, end) : null;
+}
+
 export interface LocalFolder {
   id: string;
   parentId: string | null;
@@ -672,8 +680,17 @@ export class SyncApp {
 
   /** `ownPairs` also rejects folders of this mapping that sit inside each other; `except` skips that group's current mapping. */
   private async checkOverlap(mapping: Record<string, string>, ownPairs: boolean, except?: string): Promise<void> {
-    const mine = Object.values(mapping).filter((l) => !l.startsWith(PENDING_PREFIX));
-    const nested = async (a: string, b: string) => a === b || (await this.isInside(a, b)) || (await this.isInside(b, a));
+    const mine = Object.values(mapping).filter((l) => !l.startsWith(PENDING_PREFIX) || pendingAnchor(l));
+    // A folder still to be made is empty and sits below its anchor, so only the anchor being inside the other folder counts.
+    const nested = async (a: string, b: string): Promise<boolean> => {
+      if (a === b) return true;
+      const anchorA = pendingAnchor(a);
+      const anchorB = pendingAnchor(b);
+      if (anchorA && anchorB) return false;
+      if (anchorA) return anchorA === b || (await this.isInside(anchorA, b));
+      if (anchorB) return anchorB === a || (await this.isInside(anchorB, a));
+      return (await this.isInside(a, b)) || (await this.isInside(b, a));
+    };
     if (ownPairs) {
       for (const [i, a] of mine.entries()) {
         for (const b of mine.slice(i + 1)) if (await nested(a, b)) throw new UserError('Two of the folders are inside each other. Pick only the outer one.');
@@ -688,6 +705,18 @@ export class SyncApp {
         }
       }
     }
+  }
+
+  /** Where a top another browser added goes here, or null when that place overlaps a folder already synced. */
+  private async placeTop(hint: PlaceHint, groupId: string): Promise<string | null> {
+    const own = this.engines.get(groupId)?.state.config.mapping ?? {};
+    try {
+      await this.checkOverlap({ ...own, new: await this.deps.roots.resolve(hint, false) }, true, groupId);
+    } catch (e) {
+      if (e instanceof UserError) return null;
+      throw e;
+    }
+    return this.deps.roots.resolve(hint, true);
   }
 
   private async resolveTarget(mode: 'everything' | 'folder', target: Target, create: boolean): Promise<{ mapping: Record<string, string>; excluded: [string, Excluded][] }> {
@@ -764,7 +793,7 @@ export class SyncApp {
       random: this.deps.random,
       sleep: this.deps.sleep,
       keyFor: (g) => this.deps.store.getKey(g),
-      place: (hint) => this.deps.roots.resolve(hint, true),
+      place: (hint, groupId) => this.placeTop(hint, groupId),
       settings: { historyMs: s.historyDays * DAY, guardPercent: s.guardPercent, guardMin: s.guardMin },
     };
   }
