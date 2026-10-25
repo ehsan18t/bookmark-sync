@@ -70,12 +70,13 @@ pnpm build:firefox
 
 Google treats the secrets of these two client types as public, because they ship inside every copy of an app, so this is expected.
 
-A build without the clients still works, but it hides Google Drive and offers only your own server. `pnpm zip`, which makes the packages you publish, stops with an error if any of the four values is missing, so a release can't ship without Google Drive by mistake.
+A build without the clients still works, but it hides Google Drive and offers only your own server. Setting a client ID without its secret stops the build, because Google rejects every sign-in without the secret. `pnpm zip`, which makes the packages you publish, stops with an error if any of the four values is missing, so a release can't ship without Google Drive by mistake.
 
 ## If sign-in fails
 
 - **"redirect_uri_mismatch":** the redirect URI in step 3 doesn't match the extension's ID. Open `chrome://extensions`, compare the ID shown under the extension with the one `pnpm extension-id` prints, and add `https://THAT-ID.chromiumapp.org/` to the client.
 - **"access_denied" or "app is blocked":** the consent screen is still in Testing and the account isn't a test user. Publish the app (step 2.4), or add the account under **Audience**, **Test users**.
+- **"Google didn't accept this version of the extension":** Google answered `invalid_client`, so the client ID or secret in `.env` is wrong. Copy both again from the client's page in step 3 or 4, then rebuild.
 - **Brave:** sign-in is off for extensions by default. Turn on "Allow Google login for extensions" in `brave://settings/extensions`. The setup page tells users this.
 
 ## The extension's private key

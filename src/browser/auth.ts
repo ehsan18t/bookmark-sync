@@ -3,8 +3,7 @@ import { APP_NAME } from '../config.js';
 import { UserError } from '../core/errors.js';
 import { base32, toBase64 } from '../core/ids.js';
 import type { Account } from '../engine/app.js';
-import type { DriveAuth } from '../storage/gdrive.js';
-import { ProviderAuthError } from '../storage/webdav.js';
+import { GoogleAuthError, type DriveAuth } from '../storage/gdrive.js';
 import type { Engine } from './bookmarksPort.js';
 
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -27,6 +26,7 @@ function builtInClient(engine: Engine): ClientConfig | null {
 function client(engine: Engine): ClientConfig {
   const c = builtInClient(engine);
   if (!c) throw new UserError('Google Drive isn’t available in this version of the extension.');
+  if (!c.clientSecret) throw new UserError('This version of the extension has a Google client ID but no client secret, so Google sign-in can’t work. See docs/google-setup.md.');
   return c;
 }
 
@@ -53,8 +53,20 @@ interface TokenResponse {
 
 async function tokenRequest(params: Record<string, string>): Promise<TokenResponse> {
   const res = await fetch(TOKEN_URL, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(params) });
-  if (!res.ok) throw new ProviderAuthError(`Google sign-in failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new GoogleAuthError(`Google sign-in failed: ${res.status} ${text}`, oauthErrorCode(text));
+  }
   return (await res.json()) as TokenResponse;
+}
+
+function oauthErrorCode(body: string): string | undefined {
+  try {
+    const { error } = JSON.parse(body) as { error?: unknown };
+    return typeof error === 'string' ? error : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function identityAvailable(): boolean {

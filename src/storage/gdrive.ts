@@ -1,6 +1,16 @@
 import { DuplicateFileError, type CreateOnceResult, type StorageProvider } from '../engine/ports.js';
 import { ProviderAuthError, ProviderError } from './webdav.js';
 
+/** `code` is the OAuth `error` field from Google's token endpoint, absent for Drive API rejections. */
+export class GoogleAuthError extends ProviderAuthError {
+  constructor(
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message);
+  }
+}
+
 export interface DriveAuth {
   token(): Promise<string>;
   /** Called after a 401; returns a fresh token or throws if sign-in is needed again. */
@@ -136,7 +146,7 @@ export class DriveProvider implements StorageProvider {
     if (date && !Number.isNaN(Date.parse(date))) this.lastServerDate = Date.parse(date);
     if (res.ok || okStatuses.includes(res.status)) return res;
     if (res.status === 401 && !retried) return this.call(method, url, init, okStatuses, true);
-    if (res.status === 401 || res.status === 403) throw new ProviderAuthError(`${method} ${url}: ${res.status}`);
+    if (res.status === 401 || res.status === 403) throw new GoogleAuthError(`${method} ${url}: ${res.status}`);
     throw new ProviderError(`${method} ${url}: ${res.status} ${await res.text()}`, res.status);
   }
 }

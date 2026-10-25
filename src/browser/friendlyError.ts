@@ -2,6 +2,7 @@ import { WrongPassphraseError } from '../core/crypto.js';
 import { LockedError } from '../core/codec.js';
 import { UserError } from '../core/errors.js';
 import { PermissionMissingError } from '../engine/ports.js';
+import { GoogleAuthError } from '../storage/gdrive.js';
 import { ProviderAuthError, ProviderError } from '../storage/webdav.js';
 
 /** Turns any error into one sentence a person can act on; the raw error goes to the console for diagnostics. */
@@ -10,6 +11,7 @@ export function friendlyError(e: unknown): string {
   console.error(e);
   if (e instanceof WrongPassphraseError) return 'That passphrase isn’t right. Check it and try again.';
   if (e instanceof LockedError) return 'This sync is encrypted. Enter its passphrase first.';
+  if (e instanceof GoogleAuthError) return googleAuthMessage(e.code);
   if (e instanceof ProviderAuthError) return 'The storage didn’t accept the sign-in. Check the username and password, or sign in again.';
   if (e instanceof PermissionMissingError) return 'The extension needs permission to reach this storage. Allow access when the browser asks.';
   if (e instanceof ProviderError) {
@@ -22,4 +24,11 @@ export function friendlyError(e: unknown): string {
   }
   if (e instanceof TypeError && /fetch|network/i.test(e.message)) return 'Couldn’t reach the storage. Check the address and your internet connection.';
   return 'Something went wrong. Try again, and if it keeps happening, export diagnostics from Settings.';
+}
+
+function googleAuthMessage(code: string | undefined): string {
+  if (code === 'invalid_client' || code === 'unauthorized_client') return 'Google didn’t accept this version of the extension. Its Google client ID or secret is wrong; see docs/google-setup.md.';
+  if (code === 'invalid_grant') return 'Google’s sign-in expired or was removed. Sign in with Google again.';
+  if (code) return 'Google sign-in didn’t finish. Try signing in with Google again.';
+  return 'Google Drive didn’t accept the sign-in. Sign in with Google again.';
 }

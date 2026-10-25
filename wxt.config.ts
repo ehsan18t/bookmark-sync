@@ -5,9 +5,13 @@ function env(name: string): string {
   return process.env[name]?.trim() ?? '';
 }
 
-function checkEnv() {
+function checkEnv(browser: string) {
   const missing = ['WXT_APP_NAME', 'WXT_APP_DESCRIPTION', 'WXT_GECKO_ID', 'WXT_CHROMIUM_KEY', 'WXT_SERVER_FOLDER'].filter((n) => !env(n));
   if (missing.length) throw new Error(`.env is missing ${missing.join(', ')}.`);
+  const engine = browser === 'firefox' ? 'FIREFOX' : 'CHROMIUM';
+  if (env(`WXT_GOOGLE_CLIENT_ID_${engine}`) && !env(`WXT_GOOGLE_CLIENT_SECRET_${engine}`)) {
+    throw new Error(`.env sets WXT_GOOGLE_CLIENT_ID_${engine} but not WXT_GOOGLE_CLIENT_SECRET_${engine}. Google rejects sign-in without it. See docs/google-setup.md.`);
+  }
   if (!process.env.BSYNC_RELEASE) return;
   const release = [
     'WXT_GOOGLE_CLIENT_ID_CHROMIUM',
@@ -26,7 +30,7 @@ export default defineConfig({
   outDir: process.env.BSYNC_E2E ? '.output-e2e' : '.output',
   manifestVersion: 3,
   manifest: ({ browser }) => {
-    checkEnv();
+    checkEnv(browser);
     return {
       name: env('WXT_APP_NAME'),
       description: env('WXT_APP_DESCRIPTION'),
