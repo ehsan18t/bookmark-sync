@@ -8,9 +8,10 @@ import {
   type GroupLocal,
   type GroupStore,
   type JoinOptions,
+  type NewTop,
 } from '../../src/engine/group.js';
 import { MemoryProvider, type MemoryFaults } from '../../src/storage/memory.js';
-import { FAKE_ROOTS, FakeBookmarks } from './fakeBookmarks.js';
+import { FAKE_ROOTS, FakeBookmarks, fakeRoots } from './fakeBookmarks.js';
 
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -114,6 +115,7 @@ export class Simulator {
       settings: { ...SIM_SETTINGS, ...this.options.settings },
       sleep: async (ms) => this.advance(ms),
       keyFor: async (g) => ks.get(g) ?? null,
+      place: (hint) => fakeRoots(bm).resolve(hint, true),
     };
     return Object.assign(device, { name, bookmarks: bm, store: st, keys: ks, ports, engine: undefined as unknown as GroupEngine });
   }
@@ -153,7 +155,7 @@ export class Simulator {
   async addDevice(
     name: string,
     fill: (bm: FakeBookmarks) => Promise<void>,
-    how: { create: true; ignoreDefaults?: boolean } | { create?: false; join: JoinOptions },
+    how: { create: true; ignoreDefaults?: boolean; tops?: NewTop[] } | { create?: false; join: JoinOptions },
     browser: GroupConfig['browser'] = 'firefox',
     override: Partial<GroupConfig> & { bookmarks?: FakeBookmarks } = {},
   ): Promise<SimDevice> {
@@ -163,7 +165,7 @@ export class Simulator {
     const config = { ...this.config(d), browser, ...configOverride };
     if (how.create) {
       const { encrypted: _e, ...rest } = config;
-      const res = await GroupEngine.create(d.ports, rest, { passphrase: this.options.passphrase, iterations: 1000, ignoreDefaults: how.ignoreDefaults ?? false });
+      const res = await GroupEngine.create(d.ports, rest, { passphrase: this.options.passphrase, iterations: 1000, ignoreDefaults: how.ignoreDefaults ?? false, tops: how.tops });
       d.engine = res.engine;
       if (res.key) d.keys.set(config.groupId, res.key);
     } else {

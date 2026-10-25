@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { WrongPassphraseError } from '../../src/core/crypto.js';
-import { SyncApp, type AppMeta, type AppStore, type RootsPort } from '../../src/engine/app.js';
+import { SyncApp, type AppMeta, type AppStore } from '../../src/engine/app.js';
 import type { StorageProvider } from '../../src/engine/ports.js';
 import { MemoryProvider } from '../../src/storage/memory.js';
 import { ProviderAuthError } from '../../src/storage/webdav.js';
-import { FAKE_ROOTS, FakeBookmarks } from '../sim/fakeBookmarks.js';
+import { FAKE_ROOTS, FakeBookmarks, fakeRoots } from '../sim/fakeBookmarks.js';
 import { MemoryStore } from '../sim/simulator.js';
 
 class MemoryAppStore extends MemoryStore implements AppStore {
@@ -25,19 +25,6 @@ class MemoryAppStore extends MemoryStore implements AppStore {
   async deleteKey(g: string) {
     this.keys.delete(g);
   }
-}
-
-function fakeRoots(bm: FakeBookmarks): RootsPort {
-  return {
-    wholeTree: async () => ({ mapping: { 'root:toolbar': FAKE_ROOTS.toolbar, 'root:other': FAKE_ROOTS.other, 'root:menu': FAKE_ROOTS.menu }, excluded: [] }),
-    everythingInto: async (folderId, create) => {
-      const make = async (title: string) => (create ? bm.create({ parentId: folderId, kind: 'folder', title, url: '' }) : `pending:${title}`);
-      return { mapping: { 'root:toolbar': await make('Toolbar'), 'root:other': await make('Other'), 'root:menu': await make('Menu') }, excluded: [] };
-    },
-    topLevel: async () => Object.values(FAKE_ROOTS),
-    folders: async () => bm.folders().map((id) => ({ id, path: [...bm.pathTitles(id), bm.node(id).title].join(' / ') })),
-    pathOf: async (id) => [...bm.pathTitles(id), bm.node(id).title].join(' / '),
-  };
 }
 
 let now = 1_800_000_000_000;
@@ -118,12 +105,49 @@ describe('the app layer', () => {
     const { a, accA } = await pair();
     const work = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Work', url: '' });
     const inner = await a.bookmarks.create({ parentId: work, kind: 'folder', title: 'Inner', url: '' });
-    await a.app.createGroup({ accountId: accA, name: 'Work', mode: 'folder', target: { kind: 'folder', folderId: work }, ignoreDefaults: false });
-    await expect(a.app.createGroup({ accountId: accA, name: 'Inner', mode: 'folder', target: { kind: 'folder', folderId: inner }, ignoreDefaults: false })).rejects.toThrow(/overlaps/);
+    await a.app.createGroup({ accountId: accA, name: 'Work', mode: 'folder', target: { kind: 'folders', folderIds: [work] }, ignoreDefaults: false });
+    await expect(a.app.createGroup({ accountId: accA, name: 'Inner', mode: 'folder', target: { kind: 'folders', folderIds: [inner] }, ignoreDefaults: false })).rejects.toThrow(/overlaps/);
     await expect(a.app.createGroup({ accountId: accA, name: 'All', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false })).rejects.toThrow(/overlaps/);
     const home = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Home', url: '' });
-    await a.app.createGroup({ accountId: accA, name: 'Home', mode: 'folder', target: { kind: 'folder', folderId: home }, ignoreDefaults: false });
+    await a.app.createGroup({ accountId: accA, name: 'Home', mode: 'folder', target: { kind: 'folders', folderIds: [home] }, ignoreDefaults: false });
     expect((await a.app.status()).map((s) => s.location).sort()).toEqual(['unfiled_____ / Home', 'unfiled_____ / Work']);
+  });
+
+  it('starts a group from several folders; another browser joins one by path, adds another, and re-points a lost one', async () => {
+    const { a, b, accA, accB } = await pair();
+    const games = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Games', url: '' });
+    const inner = await a.bookmarks.create({ parentId: games, kind: 'folder', title: 'Inner', url: '' });
+    const java = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Java', url: '' });
+    await a.bookmarks.create({ parentId: java, kind: 'bookmark', title: 'jdk', url: 'https://jdk.example/' });
+    const nested = { accountId: accA, name: 'Picked', mode: 'folder' as const, target: { kind: 'folders' as const, folderIds: [games, inner] }, ignoreDefaults: false };
+    await expect(a.app.createGroup(nested)).rejects.toThrow(/inside each other/);
+    const groupId = await a.app.createGroup({ ...nested, target: { kind: 'folders', folderIds: [games, java] } });
+
+    const { mode, folders } = await b.app.groupFolders({ accountId: accB, groupId });
+    expect(mode).toBe('folder');
+    const tops = folders.filter((f) => f.parent === 'root:group');
+    expect(tops.map((t) => [t.title, t.hint])).toEqual([
+      ['Games', { root: 'other', path: ['Games'] }],
+      ['Java', { root: 'other', path: ['Java'] }],
+    ]);
+    const [gamesTop, javaTop] = tops as [(typeof tops)[0], (typeof tops)[0]];
+    await b.app.joinGroup({ accountId: accB, groupId, target: { kind: 'parts', parts: [{ part: javaTop.id, hint: javaTop.hint! }] }, mode: 'merge', ignoreDefaults: false });
+    expect(await titles(b.bookmarks, FAKE_ROOTS.other)).toEqual(['Java']);
+    expect((await b.app.status())[0]).toMatchObject({ location: 'unfiled_____ / Java', parts: [{ part: javaTop.id, top: true }] });
+
+    await b.app.addParts(groupId, [{ part: gamesTop.id, hint: gamesTop.hint! }]);
+    expect(await titles(b.bookmarks, FAKE_ROOTS.other)).toEqual(['Java', 'Games']);
+
+    const javaB = (await b.bookmarks.getSubTree(FAKE_ROOTS.other)).children![0]!.localId;
+    await b.bookmarks.removeTree(javaB);
+    await b.app.syncAll();
+    expect((await b.app.status())[0]!.status).toMatchObject({ state: 'paused', reason: 'mapped-folder-missing', detail: javaTop.id });
+    const again = await b.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'folder', title: 'Java again', url: '' });
+    await b.app.movePart(groupId, javaTop.id, again);
+    expect((await b.app.status())[0]!.status.state).toBe('active');
+    expect(await titles(b.bookmarks, again)).toEqual(['jdk']);
+    await a.app.syncAll();
+    expect(await titles(a.bookmarks, java)).toEqual(['jdk']);
   });
 
   it('joins an encrypted group only with the right passphrase, and unlocks after a restart', async () => {
@@ -150,9 +174,10 @@ describe('the app layer', () => {
     await a.bookmarks.create({ parentId: work, kind: 'bookmark', title: 'Doc', url: 'https://doc.example/' });
     await a.bookmarks.create({ parentId: work, kind: 'bookmark', title: 'Doc again', url: 'https://doc.example' });
     const loose = await a.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'Doc loose', url: 'https://doc.example/#top' });
-    const groupId = await a.app.createGroup({ accountId: accA, name: 'Work', mode: 'folder', target: { kind: 'folder', folderId: work }, ignoreDefaults: false });
+    const groupId = await a.app.createGroup({ accountId: accA, name: 'Work', mode: 'folder', target: { kind: 'folders', folderIds: [work] }, ignoreDefaults: false });
     const workB = await b.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'folder', title: 'Work', url: '' });
-    await b.app.joinGroup({ accountId: accB, groupId, target: { kind: 'folder', folderId: workB }, mode: 'merge', ignoreDefaults: false });
+    const [top] = (await b.app.groupFolders({ accountId: accB, groupId })).folders;
+    await b.app.joinGroup({ accountId: accB, groupId, target: { kind: 'parts', parts: [{ part: top!.id, folderId: workB }], followTops: true }, mode: 'merge', ignoreDefaults: false });
 
     const groups = await a.app.scanDuplicates();
     expect(groups).toHaveLength(1);

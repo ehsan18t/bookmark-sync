@@ -21,11 +21,12 @@ export function compareSiblings(a: TreeNode, b: TreeNode): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
+/** `roots` may be fixed roots or ordinary group folders a browser holds; a node belongs to its nearest listed ancestor. */
 export function visibleTree(s: GroupState, roots: readonly string[]): Tree {
-  const nodes = new Map<string, TreeNode>();
+  const all = new Map<string, TreeNode>();
   for (const id of visibleSet(s)) {
     const n = s.nodes.get(id)!;
-    nodes.set(id, {
+    all.set(id, {
       id,
       kind: n.kind!,
       parent: n.placement!.parent,
@@ -34,18 +35,17 @@ export function visibleTree(s: GroupState, roots: readonly string[]): Tree {
       url: n.url?.value ?? '',
     });
   }
-  for (const [id] of nodes) if (!roots.includes(rootOf(nodes, id))) nodes.delete(id);
+  const listed = new Set(roots);
+  const nodes = new Map<string, TreeNode>();
+  for (const [id, n] of all) if (!listed.has(id) && rootOf(all, id, listed)) nodes.set(id, n);
   return { roots, nodes };
 }
 
-function rootOf(nodes: Map<string, TreeNode>, id: string): string {
-  let cur = nodes.get(id);
-  while (cur) {
-    const p = nodes.get(cur.parent);
-    if (!p) return cur.parent;
-    cur = p;
+function rootOf(nodes: Map<string, TreeNode>, id: string, listed: ReadonlySet<string>): string | undefined {
+  for (let cur = nodes.get(id), depth = 0; cur && depth < 10_000; cur = nodes.get(cur.parent), depth++) {
+    if (listed.has(cur.parent)) return cur.parent;
   }
-  return id;
+  return undefined;
 }
 
 export function childrenIndex(t: Tree): Map<string, TreeNode[]> {

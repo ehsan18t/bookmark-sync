@@ -1,9 +1,8 @@
-import { browser } from 'wxt/browser';
-import type { Account, GroupSummary } from '../../engine/app.js';
+import type { Account, GroupSummary, LocalFolder } from '../../engine/app.js';
 import { send } from '../../ui/dom.js';
 
 export type PublicAccount = Pick<Account, 'id' | 'type' | 'name'> & { url?: string; username?: string };
-export type Folder = { id: string; path: string };
+export type Folder = LocalFolder;
 export type Capabilities = { google: boolean; googleBlocked: boolean; browser: string };
 export type FoundSync = { groupId: string; name: string; mode: 'everything' | 'folder'; encrypted: boolean; joined: boolean };
 
@@ -34,7 +33,8 @@ export const REASON_TEXT: Record<string, string> = {
   'clock-skew': 'This computer’s clock is off by more than two minutes. Set the clock to the right time; syncing resumes by itself.',
   auth: 'The storage stopped accepting the sign-in. Remove the storage in Settings and connect it again.',
   permission: 'The extension no longer has permission to reach the storage server.',
-  'mapped-folder-missing': 'The folder this sync uses was deleted or moved. Put it back and resume, or stop syncing here.',
+  'mapped-folder-missing': 'A folder this sync uses here was deleted. Put it back and resume, pick another folder for it, or stop syncing it here.',
+  'nothing-held': 'This browser no longer syncs any folder of this sync. Add a folder under More options, or stop syncing here.',
   'root-changed': 'The browser’s main bookmark folders changed. Stop syncing here, then set it up again.',
   'mapping-overlap': 'Two synced folders now overlap. Move one of them, then resume.',
   'group-deleted': 'This sync was deleted from another browser. Stop syncing here; your bookmarks stay as they are.',
@@ -53,14 +53,8 @@ export const SHORT_REASON: Record<string, string> = {
   auth: 'Sign in again',
   permission: 'Needs permission',
   'mapped-folder-missing': 'Folder missing',
+  'nothing-held': 'No folders here',
   'group-deleted': 'Deleted elsewhere',
   'format-too-new': 'Update needed',
   migration: 'Switching encryption',
 };
-
-/** Where a new folder for a folder sync goes: Other Bookmarks, which every browser has. */
-export async function otherBookmarksId(): Promise<string> {
-  const [root] = await browser.bookmarks.getTree();
-  const tops = root?.children ?? [];
-  return (tops.find((c) => c.id === 'unfiled_____') ?? tops[1] ?? tops[0])!.id;
-}

@@ -23,8 +23,10 @@ Status: personal project first, public open source release later. Date: 2026-10-
 - **Account**: a configured storage provider login (a WebDAV server or a Google account). Several groups can use one account.
 - **Group**: one synced bookmark collection stored in one place at the provider. A browser can belong to several groups, each mapped to a different local folder.
 - **Device**: one browser profile with the extension installed, identified by a device ID. A copied or restored profile is detected when its uploads diverge from the original's, and the copies then get new device IDs.
-- **Mapping**: which local bookmark folder on a device holds a group's contents. Different devices can map the same group to different folders.
-- **Group mode**: `everything` (the group holds the whole bookmark tree, using the root folder mapping) or `folder` (the group holds the contents of one folder).
+- **Mapping**: which local bookmark folders on a device hold which parts of a group. Different devices can map the same group to different folders.
+- **Group mode**: `everything` (the group holds the whole bookmark tree, using the root folder mapping) or `folder` (the group holds the folders picked when it was started, its tops).
+- **Top**: a top-level folder of a `folder` group. It remembers where it sat in the browser that added it (the kind of root folder, then the folder path), so other browsers can put it at the same place.
+- **Part**: a group folder a device holds: a fixed root, a top, or any folder deeper in the group. A device holds one or more parts, each in a local folder of its choice. A part's own name is local to each device and does not sync; everything inside it does.
 - **Excluded items**: bookmarks or folders inside a mapped folder that never sync, such as ignored browser default bookmarks and the helper folder that holds the Bookmarks Menu on Chromium.
 - **Stable ID**: the extension's own ID for a bookmark or folder, shared across all devices. Browser-local IDs are mapped to it per device. Group roots have fixed, well-known stable IDs.
 - **Change**: one recorded edit of one item, with an HLC timestamp. Types: create, update, move, delete, undelete.
@@ -70,7 +72,7 @@ Status: personal project first, public open source release later. Date: 2026-10-
     - Two devices joining at the same time end up with one copy of each shared bookmark, not two.
     - Undoing a join removes what it added to the group, puts this browser's own bookmarks back, and leaves the group.
 14. **Providers:** Google Drive and WebDAV in v1. WebDAV also covers Nextcloud, ownCloud, Synology, Koofr and any rclone remote via `rclone serve webdav`. Dropbox and OneDrive next, Mega last.
-15. **Folder selection is in v1**, Floccus-style: each device maps each group to its whole tree or to one chosen folder. See "Folder mapping".
+15. **Folder selection is in v1**, Floccus-style: a group holds all bookmarks or the folders ticked when it was started, and each device chooses which parts of the group it holds and where each one goes. Folders are picked from a folder tree with tick boxes. See "Folder mapping".
 16. **Duplicate finder is in v1.** It uses cleaned-up URLs, is separate from sync identity, and every cleanup can be undone.
 17. **A device with a badly wrong clock pauses.** If the device clock differs from the provider's clock by more than 2 minutes, the group pauses with a message to fix the clock.
 
@@ -116,11 +118,15 @@ groups/<group-id>/
 
 ### Folder mapping
 
-- A group is created in `everything` mode or `folder` mode.
-- A device maps an `everything` group either to its whole tree (using the root folder mapping) or into one chosen folder.
-- A device maps a `folder` group to one chosen folder only.
+- A group is created in `everything` mode or `folder` mode. A `folder` group starts with one top per ticked folder; ticking a folder includes everything inside it. A ticked root folder (bookmarks bar, other bookmarks, bookmarks menu) is matched by kind on every browser, never by name.
+- A device maps an `everything` group to its whole tree (using the root folder mapping), into one chosen folder, or holds only chosen parts of it.
+- A device joining a `folder` group holds all of its tops by default, or only the parts it ticks. A device holding all tops also places tops other browsers add later, at the same path (created if missing), and says so. A device holding only some parts ignores new tops.
+- Each part goes at the same path as in the other browsers by default, created if missing, or in any local folder the user picks. Bookmarks outside the parts a device holds are never uploaded or changed.
+- A part's own name is local: renaming the folder that holds it changes nothing elsewhere, and renames from other browsers don't apply to it.
+- Later, a device can hold more parts or stop holding one (keeping its copy), and in a `folder` group anyone can add a top or remove one for every browser. A removed top stops syncing everywhere and every browser keeps its copy.
+- If a part a device holds is deleted in another browser, that device stops syncing it, keeps its copy and shows a notice. A device left holding nothing pauses until a part is added.
 - The same group can map to different folders on different devices.
-- One device can belong to several groups. Mappings on one device cannot overlap; if a user moves one mapped folder inside another, both groups pause and ask.
+- One device can belong to several groups. Mappings on one device cannot overlap, within a group or across groups. If a user moves one mapped folder inside another, or another browser moves one held part inside another in the group, the groups involved pause and ask.
 - Moving an item out of the mapped folder removes it from the group, and other devices delete it (restorable from history). Moving an item in adds it. Moving an item from one group's folder to another's removes it from the first and adds it to the second.
 - Excluded items stay in this browser only. Moving an excluded item to a different folder inside the mapping makes it a normal synced item.
 - Deleting or losing the mapped folder itself does not propagate. The group pauses on that device and asks the user to pick a folder again or leave the group.
@@ -135,7 +141,7 @@ groups/<group-id>/
 ### Join flow
 
 1. Pick the account, then pick an existing group.
-2. Pick the mapping (whole tree or one folder, and which root copy if Chromium has two).
+2. Pick what this browser holds from the group's own folder tree (everything is ticked by default), and where each part goes (the same path by default, and which root copy if Chromium has two).
 3. Pick merge (default) or replace, with "ignore browser default bookmarks" on by default.
 4. The extension reads the group until it has a complete, consistent view (two listings in a row that agree).
 5. Show a preview, for example "120 will be added to the group, 180 matched, 0 removed".

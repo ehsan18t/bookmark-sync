@@ -1,4 +1,6 @@
+import type { RootType } from '../../src/core/ids.js';
 import type { Kind } from '../../src/core/ops.js';
+import { PENDING_PREFIX, type RootsPort } from '../../src/engine/app.js';
 import type { LiveNode } from '../../src/core/reconcile.js';
 import type { BookmarksPort } from '../../src/engine/ports.js';
 
@@ -13,6 +15,47 @@ interface FakeNode {
 
 export const FAKE_ROOTS = { toolbar: 'toolbar_____', menu: 'menu________', other: 'unfiled_____' } as const;
 export const FAKE_TOP = 'root________';
+
+const ROOT_TYPE: Record<string, RootType> = { [FAKE_ROOTS.toolbar]: 'toolbar', [FAKE_ROOTS.other]: 'other', [FAKE_ROOTS.menu]: 'menu' };
+
+/** Roots port over fake bookmarks, laid out like Firefox. */
+export function fakeRoots(bm: FakeBookmarks): RootsPort {
+  const path = (id: string) => [...bm.pathTitles(id), bm.node(id).title].join(' / ');
+  const chain = (id: string) => {
+    const out: string[] = [];
+    for (let cur: string | null = id; cur && cur !== FAKE_TOP; cur = bm.node(cur).parent) out.unshift(cur);
+    return out;
+  };
+  return {
+    wholeTree: async () => ({ mapping: { 'root:toolbar': FAKE_ROOTS.toolbar, 'root:other': FAKE_ROOTS.other, 'root:menu': FAKE_ROOTS.menu }, excluded: [] }),
+    everythingInto: async (folderId, create) => {
+      const make = async (title: string) => (create ? bm.create({ parentId: folderId, kind: 'folder', title, url: '' }) : `${PENDING_PREFIX}${title}`);
+      return { mapping: { 'root:toolbar': await make('Toolbar'), 'root:other': await make('Other'), 'root:menu': await make('Menu') }, excluded: [] };
+    },
+    topLevel: async () => Object.values(FAKE_ROOTS),
+    folders: async () =>
+      bm.folders().map((id) => {
+        const parent = bm.node(id).parent;
+        return { id, parentId: parent === FAKE_TOP ? null : parent, title: bm.node(id).title, path: path(id), ...(ROOT_TYPE[id] ? { root: ROOT_TYPE[id] } : {}) };
+      }),
+    pathOf: async (id) => path(id),
+    describe: async (id) => {
+      const [top, ...rest] = chain(id);
+      const root = top ? ROOT_TYPE[top] : undefined;
+      return { title: bm.node(id).title, hint: root ? { root, path: rest.map((x) => bm.node(x).title) } : null };
+    },
+    resolve: async (hint, create) => {
+      let cur: string = { toolbar: FAKE_ROOTS.toolbar, other: FAKE_ROOTS.other, menu: FAKE_ROOTS.menu, mobile: FAKE_ROOTS.other }[hint.root];
+      for (const [i, title] of hint.path.entries()) {
+        const found = ((await bm.getSubTree(cur)).children ?? []).find((c) => c.kind === 'folder' && c.title === title);
+        if (found) cur = found.localId;
+        else if (!create) return `${PENDING_PREFIX}${hint.path.slice(i).join('/')}`;
+        else cur = await bm.create({ parentId: cur, kind: 'folder', title, url: '' });
+      }
+      return cur;
+    },
+  };
+}
 
 export class FakeBookmarks implements BookmarksPort {
   readonly supportsSeparators: boolean;

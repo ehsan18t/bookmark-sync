@@ -1,8 +1,9 @@
 
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { canonical } from '../../src/core/tree.js';
+import { canonical, type Tree } from '../../src/core/tree.js';
 import { performEdit, type Action } from '../sim/actions.js';
+import { FAKE_ROOTS, FakeBookmarks } from '../sim/fakeBookmarks.js';
 import { Simulator } from '../sim/simulator.js';
 
 const action = fc.record({ k: fc.nat(99), a: fc.nat(1000), b: fc.nat(1000), c: fc.nat(1000) });
@@ -42,7 +43,62 @@ async function checkConverged(sim: Simulator) {
   expect(sim.provider.overwrittenPaths()).toEqual([]);
 }
 
+function subtree(t: Tree, root: string): Tree {
+  const under = (id: string) => {
+    for (let cur = t.nodes.get(id); cur; cur = t.nodes.get(cur.parent)) if (cur.parent === root) return true;
+    return false;
+  };
+  return { roots: [root], nodes: new Map([...t.nodes].filter(([id]) => under(id))) };
+}
+
+/** Two full browsers plus one that holds only the folder "Shared" of the group, in a folder of its own. */
+async function runWithPartialHolder(seed: number, actions: Action[]) {
+  const sim = new Simulator({ devices: 2, seed, faults: true, maxSkew: 60_000 });
+  await sim.setup();
+  const a = sim.devices[0]!;
+  const shared = await a.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'folder', title: 'Shared', url: '' });
+  await a.bookmarks.create({ parentId: shared, kind: 'bookmark', title: 'seed', url: 'https://seed.example/' });
+  await sim.quiet();
+  const part = new Map(a.engine.state.idmap).get(shared)!;
+  const bm = new FakeBookmarks('p_');
+  const mine = await bm.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Mine', url: '' });
+  await bm.create({ parentId: mine, kind: 'bookmark', title: 'own', url: 'https://own.example/' });
+  sim.enableFaults(false);
+  const p = await sim.addDevice('devp', async () => {}, { join: { mode: 'merge', ignoreDefaults: false } }, 'firefox', { bookmarks: bm, mapping: { [part]: mine } });
+  sim.enableFaults(true);
+  for (const act of actions) {
+    const d = sim.devices[act.a % sim.devices.length]!;
+    if (act.k < 55) await performEdit(sim, d, act);
+    else if (act.k < 80) await sim.sync(d);
+    else if (act.k < 90) sim.advance((act.b % 120) * 1000);
+    else await sim.restart(d);
+  }
+  await sim.quiet();
+  return { sim, p, part };
+}
+
 describe('convergence (properties 1, 2, 5)', () => {
+  it('a browser holding one folder of the group matches that folder in the full browsers', async () => {
+    let checked = 0;
+    await fc.assert(
+      fc.asyncProperty(fc.integer({ min: 1, max: 1e9 }), fc.array(action, { maxLength: 60 }), async (seed, actions) => {
+        const { sim, p, part } = await runWithPartialHolder(seed, actions);
+        const full = sim.devices.filter((d) => d !== p);
+        const reference = sim.canonicalMirror(full[0]!);
+        for (const d of full) {
+          expect(sim.canonicalMirror(d)).toEqual(reference);
+          expect(await sim.canonicalLive(d)).toEqual(sim.canonicalLocalMirror(d));
+        }
+        if (p.engine.status.state !== 'active' || !(part in p.engine.state.config.mapping)) return;
+        checked++;
+        expect(sim.canonicalMirror(p)).toEqual(canonical(subtree(sim.mirrorTree(full[0]!), part)));
+        expect(await sim.canonicalLive(p)).toEqual(sim.canonicalLocalMirror(p));
+      }),
+      { numRuns: 40 },
+    );
+    expect(checked).toBeGreaterThan(10);
+  });
+
   it('long fixed runs build real trees and still converge', async () => {
     let total = 0;
     for (let seed = 1; seed <= 5; seed++) {

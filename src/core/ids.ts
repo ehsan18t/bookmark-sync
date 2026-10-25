@@ -30,9 +30,30 @@ export const ROOT_MENU = 'root:menu';
 export const ROOT_GROUP = 'root:group';
 
 export const EVERYTHING_ROOTS = [ROOT_TOOLBAR, ROOT_OTHER, ROOT_MENU] as const;
-export const FOLDER_ROOTS = [ROOT_GROUP] as const;
 
 export const isRootId = (id: string): boolean => id.startsWith('root:');
+
+export type RootType = 'toolbar' | 'other' | 'menu' | 'mobile';
+
+/** Where a top folder sits in the browser that added it: a browser root found by type, then folder titles. */
+export interface PlaceHint {
+  root: RootType;
+  path: string[];
+}
+
+const HINT_PREFIX = 'top:';
+const ROOT_TYPES: readonly string[] = ['toolbar', 'other', 'menu', 'mobile'];
+
+/** Tops carry their hint in the url field; folders have no url of their own. */
+export function encodeHint(h: PlaceHint): string {
+  return HINT_PREFIX + [h.root, ...h.path].map(encodeURIComponent).join('/');
+}
+
+export function decodeHint(url: string): PlaceHint | null {
+  if (!url.startsWith(HINT_PREFIX)) return null;
+  const [root, ...path] = url.slice(HINT_PREFIX.length).split('/').map(decodeURIComponent);
+  return root && ROOT_TYPES.includes(root) ? { root: root as RootType, path } : null;
+}
 
 export function toBase64(bytes: Uint8Array): string {
   let s = '';

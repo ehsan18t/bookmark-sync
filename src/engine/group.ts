@@ -21,7 +21,7 @@ import { UserError } from '../core/errors.js';
 import { findDefaultBookmarks, type BrowserFamily } from '../core/defaults.js';
 import { compactionPoint, DAY, isStale, snapshotComplete, stableFrontier } from '../core/frontier.js';
 import { formatHlc, hlcFloor, hlcWall, HlcClock, HLC_ZERO_STATE, type Hlc, type HlcState } from '../core/hlc.js';
-import { cryptoRandomBytes, EVERYTHING_ROOTS, FOLDER_ROOTS, randomId, type RandomBytes } from '../core/ids.js';
+import { cryptoRandomBytes, decodeHint, encodeHint, EVERYTHING_ROOTS, isRootId, randomId, ROOT_GROUP, type PlaceHint, type RandomBytes } from '../core/ids.js';
 import { planJoin } from '../core/join.js';
 import { findDuplicatePairs, type RecentCreate } from '../core/nativeSync.js';
 import { compareOps, opKey, type CreateOp, type Op, type OpDraft } from '../core/ops.js';
@@ -38,7 +38,7 @@ import {
   type GroupState,
   type SerializedState,
 } from '../core/replay.js';
-import { planRestoreExact } from '../core/restore.js';
+import { planRestoreExact, snapshot } from '../core/restore.js';
 import { childrenIndex, diffTrees, disturbedIds, preorder, visibleTree, type Tree } from '../core/tree.js';
 import { visibleSet } from '../core/visibility.js';
 import {
@@ -70,7 +70,8 @@ export type PauseReason =
   | 'native-sync'
   | 'migration'
   | 'needs-join'
-  | 'group-deleted';
+  | 'group-deleted'
+  | 'nothing-held';
 
 export type GroupStatus = { state: 'active' } | { state: 'paused'; reason: PauseReason; detail?: string };
 
@@ -113,9 +114,33 @@ export interface GroupConfig {
   deviceName: string;
   browser: BrowserFamily;
   mode: 'everything' | 'folder';
+  /** Group folder (a fixed root or any group folder) to the local folder that holds it on this device. */
   mapping: Record<string, string>;
   name: string;
   encrypted: boolean;
+  /** Folder mode: tops other devices add are placed here automatically, except `declined` ones. */
+  followTops?: boolean;
+  declined?: string[];
+}
+
+export interface Notice {
+  at: number;
+  text: string;
+}
+
+/** A top-level folder of a folder-mode group. */
+export interface NewTop {
+  id: string;
+  title: string;
+  hint: PlaceHint;
+}
+
+/** One folder of the group's own tree, for choosing what a device holds. */
+export interface GroupFolder {
+  id: string;
+  parent: string;
+  title: string;
+  hint: PlaceHint | null;
 }
 
 interface Cursor {
@@ -202,6 +227,7 @@ export interface GroupLocal {
   lastCompactAt: number;
   /** Set while applying to the browser; after a crash, local items the apply created are adopted, not recorded as new. */
   applyInProgress: boolean;
+  notices?: Notice[];
 }
 
 export interface GroupStore {
@@ -219,6 +245,8 @@ export interface EnginePorts {
   settings?: Partial<EngineSettings>;
   sleep?: (ms: number) => Promise<void>;
   keyFor?: (groupId: string) => Promise<CryptoKey | null>;
+  /** The local folder for a top another device added, created at the hinted path when missing. */
+  place?: (hint: PlaceHint) => Promise<string>;
 }
 
 export class ForkError extends Error {}
@@ -295,6 +323,7 @@ function freshLocal(config: GroupConfig): GroupLocal {
     lastPublishAt: 0,
     lastCompactAt: 0,
     applyInProgress: false,
+    notices: [],
   };
 }
 
@@ -326,7 +355,7 @@ export class GroupEngine {
   static async create(
     ports: EnginePorts,
     config: Omit<GroupConfig, 'encrypted'>,
-    opts: { passphrase?: string; iterations?: number; ignoreDefaults?: boolean; excluded?: [string, Excluded][] } = {},
+    opts: { passphrase?: string; iterations?: number; ignoreDefaults?: boolean; excluded?: [string, Excluded][]; tops?: NewTop[] } = {},
   ): Promise<{ engine: GroupEngine; key: CryptoKey | null }> {
     let encryption: KeyParams | null = null;
     let key: CryptoKey | null = null;
@@ -342,6 +371,7 @@ export class GroupEngine {
     const res = await ports.provider.createOnce(groupHeaderPath(config.groupId), await encode('group', header));
     if (res.status !== 'created') throw new Error('a group with this ID already exists');
     const engine = new GroupEngine(ports, freshLocal({ ...config, encrypted: !!encryption }), key);
+    if (opts.tops?.length) engine.recordDrafts(engine.topDrafts(opts.tops), true);
     await engine.performJoin({ mode: 'merge', ignoreDefaults: opts.ignoreDefaults ?? false, excluded: opts.excluded ?? [], creating: true });
     return { engine, key };
   }
@@ -356,6 +386,27 @@ export class GroupEngine {
     const engine = new GroupEngine({ ...ports, store: scratch }, freshLocal(config), key);
     engine.dryRun = true;
     return engine.performJoin(opts);
+  }
+
+  /** The group's folders as stored, read without joining. */
+  static async readFolders(ports: EnginePorts, config: GroupConfig, key: CryptoKey | null): Promise<GroupFolder[]> {
+    if (config.encrypted && !key) throw new LockedError();
+    const scratch: GroupStore = { load: async () => null, save: async () => {}, delete: async () => {} };
+    const engine = new GroupEngine({ ...ports, store: scratch }, freshLocal(config), key);
+    engine.dryRun = true;
+    engine.observe(hlcFloor(ports.provider.serverDate()));
+    await engine.pull();
+    if (await engine.loadNewestSnapshot()) await engine.pull();
+    if (engine.paused) throw new UserError(`That sync can’t be read right now (${(engine.local.status as { reason: string }).reason}). Try again in a few minutes.`);
+    return engine.folders();
+  }
+
+  /** Every folder of the group below its fixed roots, in tree order. */
+  folders(): GroupFolder[] {
+    const t = visibleTree(replay(this.baseState(), this.local.ops), this.local.config.mode === 'everything' ? EVERYTHING_ROOTS : [ROOT_GROUP]);
+    return preorder(t)
+      .filter((n) => n.kind === 'folder')
+      .map((n) => ({ id: n.id, parent: n.parent, title: n.title, hint: n.parent === ROOT_GROUP ? decodeHint(n.url) : null }));
   }
 
   static async join(ports: EnginePorts, config: GroupConfig, opts: JoinOptions, key: CryptoKey | null): Promise<GroupEngine> {
@@ -377,7 +428,16 @@ export class GroupEngine {
   }
 
   get roots(): readonly string[] {
-    return this.local.config.mode === 'everything' ? EVERYTHING_ROOTS : FOLDER_ROOTS;
+    return Object.keys(this.local.config.mapping);
+  }
+
+  get notices(): readonly Notice[] {
+    return this.local.notices ?? [];
+  }
+
+  async dismissNotices(): Promise<void> {
+    this.local.notices = [];
+    await this.persist();
   }
 
   get status(): GroupStatus {
@@ -405,6 +465,7 @@ export class GroupEngine {
       await this.recordLocalChanges({ clockChecked: true });
       result.pulled = await this.pull(listed);
       if (this.paused) return result;
+      if (!(await this.reviewParts())) return result;
       const migratedTo = await this.migrationStep();
       if (migratedTo) return { ...result, migratedTo };
       if (this.paused && !this.inMigration) return result;
@@ -450,14 +511,172 @@ export class GroupEngine {
   }
 
   private async checkMapping(): Promise<boolean> {
+    if (!this.roots.length) {
+      await this.pause('nothing-held');
+      return false;
+    }
     for (const r of this.roots) {
       const local = this.local.config.mapping[r];
       if (!local || !(await this.ports.bookmarks.exists(local))) {
-        await this.pause(this.local.config.mode === 'folder' ? 'mapped-folder-missing' : 'root-changed', r);
+        await this.pause(this.local.config.mode === 'everything' && isRootId(r) ? 'root-changed' : 'mapped-folder-missing', r);
         return false;
       }
     }
     return true;
+  }
+
+  /**
+   * Runs after a pull, before anything is applied: held parts deleted elsewhere are let go (the local copy
+   * stays), parts moved inside one another pause the group, and new tops are placed when following them.
+   */
+  private async reviewParts(): Promise<boolean> {
+    const state = replay(this.baseState(), this.local.ops);
+    const visible = visibleSet(state);
+    for (const r of this.roots.filter((x) => !isRootId(x) && !visible.has(x))) {
+      const local = this.localRoot(r);
+      const title = (await this.ports.bookmarks.exists(local)) ? (await this.ports.bookmarks.getSubTree(local)).title : '';
+      this.unmap(r);
+      this.notice(`“${title}” was removed from this sync in another browser. The copy here stays as it is but no longer syncs.`);
+    }
+    const held = new Set(this.roots);
+    for (const r of held) {
+      if (isRootId(r)) continue;
+      for (let p = state.nodes.get(r)?.placement?.parent, depth = 0; p && !isRootId(p) && depth < 10_000; p = state.nodes.get(p)?.placement?.parent, depth++) {
+        if (!held.has(p)) continue;
+        await this.pause('mapping-overlap', state.nodes.get(r)?.title?.value ?? '');
+        return false;
+      }
+    }
+    const { config } = this.local;
+    if (config.mode === 'folder' && config.followTops && this.ports.place) {
+      const declined = new Set(config.declined ?? []);
+      const parts: { part: string; localId: string }[] = [];
+      for (const id of visible) {
+        const n = state.nodes.get(id)!;
+        if (n.placement?.parent !== ROOT_GROUP || held.has(id) || declined.has(id)) continue;
+        const title = n.title?.value ?? '';
+        parts.push({ part: id, localId: await this.ports.place(decodeHint(n.url?.value ?? '') ?? { root: 'other', path: [title] }) });
+        this.notice(`“${title}” was added to this sync in another browser and now syncs here too.`);
+      }
+      if (parts.length) await this.attachParts(parts);
+    }
+    if (!this.roots.length) {
+      await this.pause('nothing-held');
+      return false;
+    }
+    return true;
+  }
+
+  private notice(text: string): void {
+    this.local.notices = [...(this.local.notices ?? []), { at: this.ports.clock.now(), text }].slice(-20);
+  }
+
+  /** Stops holding `part` here; its local folder and contents stay as they are. */
+  private unmap(part: string): void {
+    const mirror = new Map(this.local.mirror.map((m) => [m.id, m]));
+    const under = (id: string): boolean => {
+      for (let cur = mirror.get(id), depth = 0; cur && depth < 10_000; cur = mirror.get(cur.parent), depth++) if (cur.parent === part) return true;
+      return false;
+    };
+    const dropped = new Set(this.local.mirror.filter((m) => under(m.id)).map((m) => m.id));
+    this.local.mirror = this.local.mirror.filter((m) => !dropped.has(m.id));
+    this.local.idmap = this.local.idmap.filter(([, sid]) => !dropped.has(sid));
+    const { [part]: _gone, ...rest } = this.local.config.mapping;
+    this.local.config.mapping = rest;
+  }
+
+  /** Starts holding group folders in local folders, merging what those local folders already contain. */
+  private async attachParts(parts: { part: string; localId: string }[]): Promise<void> {
+    for (const p of parts) this.local.config.mapping[p.part] = p.localId;
+    const live = await Promise.all(parts.map(async (p) => ({ groupRoot: p.part, live: await this.ports.bookmarks.getSubTree(p.localId) })));
+    const merged = visibleTree(replay(this.baseState(), this.local.ops), parts.map((p) => p.part));
+    const plan = await planJoin(merged, live, this.groupId, new Map(this.local.excluded));
+    this.recordDrafts(plan.drafts, true);
+    this.local.mirror = [...this.local.mirror, ...plan.mirror.values()];
+    this.local.idmap = [...this.local.idmap, ...plan.idmap];
+  }
+
+  private topDrafts(tops: NewTop[]): OpDraft[] {
+    const existing = childrenIndex(visibleTree(replay(this.baseState(), this.local.ops), [ROOT_GROUP])).get(ROOT_GROUP) ?? [];
+    let last = existing.at(-1)?.pos ?? null;
+    return tops.map((t): OpDraft => {
+      const pos = keyBetween(last, null);
+      last = pos;
+      return { type: 'create', node: t.id, kind: 'folder', parent: ROOT_GROUP, pos, fields: { title: t.title, url: encodeHint(t.hint) } };
+    });
+  }
+
+  /** Holds more of the group here. Each part's local folder is merged with the group's copy. */
+  async addParts(parts: { part: string; localId: string }[]): Promise<void> {
+    await this.recordLocalChanges();
+    await this.pull();
+    const visible = visibleSet(replay(this.baseState(), this.local.ops));
+    if (parts.some((p) => !isRootId(p.part) && !visible.has(p.part))) throw new UserError('That folder is no longer in this sync.');
+    const { config } = this.local;
+    if (config.declined) config.declined = config.declined.filter((d) => !parts.some((p) => p.part === d));
+    await this.attachParts(parts);
+    this.clearNothingHeld();
+    await this.applyAndPush();
+  }
+
+  /** Adds local folders to a folder-mode group as new tops, for every device. */
+  async addTops(tops: (NewTop & { localId: string })[]): Promise<void> {
+    if (this.local.config.mode !== 'folder') throw new Error('only folder groups have tops');
+    await this.recordLocalChanges();
+    await this.pull();
+    this.recordDrafts(this.topDrafts(tops), true);
+    await this.attachParts(tops.map((t) => ({ part: t.id, localId: t.localId })));
+    this.clearNothingHeld();
+    await this.applyAndPush();
+  }
+
+  /** Stops holding `part` here, or with `everywhere` removes the top from the group for every device. Local copies stay. */
+  async removePart(part: string, everywhere: boolean): Promise<void> {
+    if (!(part in this.local.config.mapping)) throw new UserError('That folder isn’t synced in this browser.');
+    const present = await Promise.all(this.roots.map((r) => this.ports.bookmarks.exists(this.localRoot(r))));
+    if (present.every(Boolean)) await this.recordLocalChanges();
+    const { config } = this.local;
+    const isTop = config.mode === 'folder' && this.folders().some((f) => f.id === part && f.parent === ROOT_GROUP);
+    if (everywhere) {
+      if (!isTop) throw new UserError('Only a top folder of this sync can be removed for every browser.');
+      const t = visibleTree(replay(this.baseState(), this.local.ops), [ROOT_GROUP]);
+      this.recordDrafts([{ type: 'delete', node: part, before: snapshot(t.nodes.get(part)!, childrenIndex(t)) }], true);
+    } else if (isTop && config.followTops) {
+      config.declined = [...new Set([...(config.declined ?? []), part])];
+    }
+    this.unmap(part);
+    if (!this.roots.length) this.local.status = { state: 'paused', reason: 'nothing-held' };
+    await this.persist();
+    if (everywhere) {
+      await this.push();
+      await this.publish(false);
+      await this.persist();
+    }
+  }
+
+  /** Points a held part at a different local folder, for example after its folder went missing. */
+  async movePart(part: string, localId: string): Promise<void> {
+    if (!(part in this.local.config.mapping)) throw new UserError('That folder isn’t synced in this browser.');
+    this.unmap(part);
+    await this.attachParts([{ part, localId }]);
+    this.local.status = { state: 'active' };
+    await this.persist();
+  }
+
+  private clearNothingHeld(): void {
+    if (this.local.status.state === 'paused' && this.local.status.reason === 'nothing-held') this.local.status = { state: 'active' };
+  }
+
+  private async applyAndPush(): Promise<void> {
+    this.guardBypass = true;
+    try {
+      await this.applyMergedState();
+      await this.push();
+    } finally {
+      this.guardBypass = false;
+    }
+    await this.publish(false);
+    await this.persist();
   }
 
   private async liveRoots(): Promise<{ groupRoot: string; live: LiveNode }[]> {
@@ -1176,6 +1395,7 @@ export class GroupEngine {
     }
     await this.publish(true);
     for (const r of j.local) {
+      if (!(r.groupRoot in this.local.config.mapping)) continue;
       const folder = this.localRoot(r.groupRoot);
       const live = await this.ports.bookmarks.getSubTree(folder);
       for (const c of live.children ?? []) {

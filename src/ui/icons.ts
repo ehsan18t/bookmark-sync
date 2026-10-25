@@ -2,6 +2,7 @@ import brandGoogleDrive from '@tabler/icons/outline/brand-google-drive.svg?raw';
 import server from '@tabler/icons/outline/server.svg?raw';
 import bookmarks from '@tabler/icons/outline/bookmarks.svg?raw';
 import chevronRight from '@tabler/icons/outline/chevron-right.svg?raw';
+import chevronDown from '@tabler/icons/outline/chevron-down.svg?raw';
 import check from '@tabler/icons/outline/check.svg?raw';
 import cloudUpload from '@tabler/icons/outline/cloud-upload.svg?raw';
 import refresh from '@tabler/icons/outline/refresh.svg?raw';
@@ -31,7 +32,7 @@ import clock from '@tabler/icons/outline/clock.svg?raw';
 import x from '@tabler/icons/outline/x.svg?raw';
 import world from '@tabler/icons/outline/world.svg?raw';
 
-const icons = { 'brand-google-drive': brandGoogleDrive, server, bookmarks, 'chevron-right': chevronRight, check, 'cloud-upload': cloudUpload, refresh, 'alert-triangle': alertTriangle, lock, history, devices, copy, settings, 'layout-dashboard': layoutDashboard, folder, folders, 'arrow-left': arrowLeft, plus, 'circle-check': circleCheck, 'player-pause': playerPause, cloud, 'shield-lock': shieldLock, 'external-link': externalLink, trash, logout, 'loader-2': loader2, 'info-circle': infoCircle, 'git-merge': gitMerge, replace, clock, x, world };
+const icons = { 'brand-google-drive': brandGoogleDrive, server, bookmarks, 'chevron-right': chevronRight, 'chevron-down': chevronDown, check, 'cloud-upload': cloudUpload, refresh, 'alert-triangle': alertTriangle, lock, history, devices, copy, settings, 'layout-dashboard': layoutDashboard, folder, folders, 'arrow-left': arrowLeft, plus, 'circle-check': circleCheck, 'player-pause': playerPause, cloud, 'shield-lock': shieldLock, 'external-link': externalLink, trash, logout, 'loader-2': loader2, 'info-circle': infoCircle, 'git-merge': gitMerge, replace, clock, x, world };
 
 export type IconName = keyof typeof icons;
 

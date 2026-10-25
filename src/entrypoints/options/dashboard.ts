@@ -1,11 +1,12 @@
 import { browser } from 'wxt/browser';
 import type { DuplicateGroup } from '../../core/dedupe.js';
 import type { GroupSummary, Settings } from '../../engine/app.js';
-import type { TimelineEntry } from '../../engine/group.js';
+import type { GroupFolder, TimelineEntry } from '../../engine/group.js';
 import { originPattern } from '../../browser/providers.js';
 import { APP_NAME, HOMEPAGE_URL, PRIVACY_URL, SUPPORT_EMAIL } from '../../config.js';
 import { action, brand, errorText, field, h, hlcTime, relativeTime, send } from '../../ui/dom.js';
 import { icon, type IconName } from '../../ui/icons.js';
+import { folderTree, groupItems, localItems, placements } from './folderTree.js';
 import { load, REASON_TEXT, state, storageLabel } from './shared.js';
 
 type Tab = 'overview' | 'history' | 'browsers' | 'duplicates' | 'settings';
@@ -71,6 +72,14 @@ function syncCard(g: GroupSummary, refresh: () => Promise<void>) {
       h('div', { class: 'stat' }, h('b', {}, String(g.pendingChanges)), h('span', {}, 'changes waiting to upload')),
     ),
     pauseBanner(g, refresh),
+    g.notices.length
+      ? h(
+          'div',
+          { class: 'banner info' },
+          icon('info-circle'),
+          h('div', { class: 'body' }, ...g.notices.map((n) => h('span', {}, n.text)), h('div', { class: 'row' }, action('Got it', async () => (await send({ t: 'dismissNotices', groupId: g.groupId }), refresh())))),
+        )
+      : null,
     g.status.state === 'active' && g.lastError ? h('div', { class: 'banner' }, icon('alert-triangle'), h('div', { class: 'body' }, h('span', {}, `The last sync didn’t finish: ${g.lastError} It retries by itself.`))) : null,
     h(
       'details',
@@ -82,6 +91,7 @@ function syncCard(g: GroupSummary, refresh: () => Promise<void>) {
         h(
           'div',
           { class: 'row' },
+          g.parts.length || g.mode === 'folder' ? h('button', { onclick: () => more.replaceChildren(foldersPanel(g, refresh)) }, icon('folders'), 'Folders synced here') : null,
           h('button', { onclick: () => more.replaceChildren(encryptionPanel(g, refresh)) }, icon('shield-lock'), g.encrypted ? 'Turn off encryption' : 'Turn on encryption'),
           g.canUndoJoin
             ? action('Undo joining', async () => (await send({ t: 'undoJoin', groupId: g.groupId }), refresh()), {
@@ -99,6 +109,82 @@ function syncCard(g: GroupSummary, refresh: () => Promise<void>) {
         more,
       ),
     ),
+  );
+}
+
+/** The folders this browser holds, with ways to add more or stop syncing some. */
+function foldersPanel(g: GroupSummary, refresh: () => Promise<void>) {
+  const adder = h('div', { class: 'stack' });
+  const addLocal = () => {
+    const tree = folderTree(localItems(state.folders, state.groups), { multi: true, label: 'Folders to add' });
+    adder.replaceChildren(
+      h('p', { class: 'muted small' }, 'Each ticked folder is added to the sync for every browser.'),
+      tree.el,
+      h('div', { class: 'row' }, action('Add to the sync', async () => {
+        if (!tree.value().length) throw new Error('Tick at least one folder.');
+        await send({ t: 'addTops', groupId: g.groupId, folderIds: tree.value() });
+        await refresh();
+      }, { kind: 'primary' }), h('button', { class: 'ghost', onclick: () => adder.replaceChildren() }, 'Cancel')),
+    );
+  };
+  const addFromSync = async () => {
+    adder.replaceChildren(h('p', { class: 'muted' }, 'Reading the folders in this sync…'));
+    try {
+      const r = await send<{ mode: 'everything' | 'folder'; folders: GroupFolder[] }>({ t: 'groupFolders', accountId: g.accountId, groupId: g.groupId });
+      const items = groupItems(r.mode, r.folders, state.folders).map((i) => (g.parts.some((p) => p.part === i.id) ? { ...i, blocked: 'Synced here' } : i));
+      const place = placements({ mode: r.mode, groupFolders: r.folders, items, local: state.folders, localTree: () => localItems(state.folders, state.groups), onchange: () => {} });
+      const tree = folderTree(items, { multi: true, label: 'Folders of this sync', onchange: (ids) => place.set(ids) });
+      adder.replaceChildren(
+        tree.el,
+        place.el,
+        h('div', { class: 'row' }, action('Sync them here', async () => {
+          if (!tree.value().length) throw new Error('Tick at least one folder.');
+          await send({ t: 'addParts', groupId: g.groupId, parts: place.choices() });
+          await refresh();
+        }, { kind: 'primary' }), h('button', { class: 'ghost', onclick: () => adder.replaceChildren() }, 'Cancel')),
+      );
+    } catch (e) {
+      adder.replaceChildren(h('div', { class: 'error' }, icon('alert-triangle'), h('span', {}, errorText(e))));
+    }
+  };
+  return h(
+    'div',
+    { class: 'card stack' },
+    h('h3', {}, 'Folders synced in this browser'),
+    g.parts.length
+      ? h(
+          'div',
+          { class: 'part-list' },
+          ...g.parts.map((p) =>
+            h(
+              'div',
+              { class: 'row spread part' },
+              h('span', { class: 'row' }, icon('folder'), p.path),
+              h(
+                'div',
+                { class: 'row' },
+                action('Stop syncing it here', async () => (await send({ t: 'removePart', groupId: g.groupId, part: p.part, everywhere: false }), refresh()), {
+                  kind: 'ghost',
+                  confirm: 'Stop syncing this folder in this browser? It stays here as it is, and other browsers keep syncing it.',
+                }),
+                p.top
+                  ? action('Remove for every browser', async () => (await send({ t: 'removePart', groupId: g.groupId, part: p.part, everywhere: true }), refresh()), {
+                      kind: 'danger',
+                      confirm: 'Remove this folder from the sync for every browser? Each browser keeps its copy, but it no longer syncs anywhere.',
+                    })
+                  : null,
+              ),
+            ),
+          ),
+        )
+      : h('p', { class: 'muted' }, 'No folders of this sync are synced here.'),
+    h(
+      'div',
+      { class: 'row' },
+      g.mode === 'folder' ? h('button', { onclick: addLocal }, icon('plus'), 'Add a folder from this browser') : null,
+      h('button', { onclick: () => void addFromSync() }, icon('folders'), 'Sync another folder of this sync here'),
+    ),
+    adder,
   );
 }
 
@@ -133,6 +219,24 @@ function pauseBanner(g: GroupSummary, refresh: () => Promise<void>) {
       }, { kind: 'primary' }));
   } else if (reason === 'auth') {
     buttons.append(h('button', { onclick: () => (location.hash = 'settings') }, 'Open Settings'));
+  } else if (reason === 'mapped-folder-missing' && g.status.detail && g.status.detail in Object.fromEntries(g.parts.map((p) => [p.part, 1]))) {
+    const part = g.status.detail;
+    const box = h('div', { class: 'stack' });
+    buttons.append(
+      action('Resume syncing', resolve('resume'), { kind: 'primary' }),
+      h('button', { onclick: () => {
+        const tree = folderTree(localItems(state.folders, state.groups, g.groupId), { multi: false, label: 'New folder for it' });
+        box.replaceChildren(tree.el, action('Use this folder', async () => {
+          if (!tree.value()[0]) throw new Error('Pick a folder.');
+          await send({ t: 'movePart', groupId: g.groupId, part, folderId: tree.value()[0]! });
+          await refresh();
+        }, { kind: 'primary' }));
+      } }, 'Pick another folder'),
+      action('Stop syncing it here', async () => (await send({ t: 'removePart', groupId: g.groupId, part, everywhere: false }), await send({ t: 'resolve', groupId: g.groupId, choice: 'resume' }), refresh())),
+    );
+    return h('div', { class: 'banner' }, icon('player-pause'), h('div', { class: 'body' }, h('span', {}, text), buttons, box));
+  } else if (reason === 'nothing-held') {
+    buttons.append(h('button', { onclick: (e) => (e.currentTarget as HTMLElement).closest('.card')?.querySelector('details')?.setAttribute('open', '') }, 'Add folders'));
   } else if (reason !== 'group-deleted' && reason !== 'format-too-new') {
     buttons.append(action('Resume syncing', resolve('resume'), { kind: 'primary' }));
   }

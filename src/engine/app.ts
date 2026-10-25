@@ -3,7 +3,7 @@ import { UserError } from '../core/errors.js';
 import { findDuplicates, type DedupeItem, type DuplicateGroup } from '../core/dedupe.js';
 import type { BrowserFamily } from '../core/defaults.js';
 import { DAY } from '../core/frontier.js';
-import { randomId, type RandomBytes } from '../core/ids.js';
+import { EVERYTHING_ROOTS, randomId, ROOT_GROUP, type PlaceHint, type RandomBytes, type RootType } from '../core/ids.js';
 import type { Kind } from '../core/ops.js';
 import type { Excluded, LiveNode } from '../core/reconcile.js';
 import { ProviderAuthError } from '../storage/webdav.js';
@@ -11,7 +11,10 @@ import {
   GroupEngine,
   type EnginePorts,
   type GroupConfig,
+  type GroupFolder,
   type GroupStatus,
+  type NewTop,
+  type Notice,
   type GroupStore,
   type JoinOptions,
   type JoinPreview,
@@ -60,11 +63,34 @@ export interface AppStore extends GroupStore {
   deleteKey(groupId: string): Promise<void>;
 }
 
-/** Where a group lives in this browser. */
-export type Target = { kind: 'whole' } | { kind: 'folder'; folderId: string } | { kind: 'everything-into'; folderId: string };
+/** A group folder this browser holds, and the local folder for it. Without `folderId`, it goes at `hint`. */
+export interface PartChoice {
+  part: string;
+  folderId?: string;
+  hint?: PlaceHint;
+}
+
+/**
+ * Where a group lives in this browser. `folders` starts a folder group with those local folders as its
+ * tops; `parts` holds chosen group folders, and `followTops` also places tops other browsers add later.
+ */
+export type Target =
+  | { kind: 'whole' }
+  | { kind: 'everything-into'; folderId: string }
+  | { kind: 'folders'; folderIds: string[] }
+  | { kind: 'parts'; parts: PartChoice[]; followTops?: boolean };
 
 /** Folder IDs a preview uses for helper folders that do not exist yet; they read as empty. */
 export const PENDING_PREFIX = 'pending:';
+
+export interface LocalFolder {
+  id: string;
+  parentId: string | null;
+  title: string;
+  path: string;
+  /** Set on the browser's own top-level folders. */
+  root?: RootType;
+}
 
 export interface RootsPort {
   /** Whole-tree mapping. With `create`, makes (or reuses) the Bookmarks Menu helper folder on Chromium. */
@@ -73,8 +99,19 @@ export interface RootsPort {
   everythingInto(folderId: string, create: boolean): Promise<{ mapping: Record<string, string>; excluded: [string, Excluded][] }>;
   /** The browser's top-level folders, for scanning every bookmark. */
   topLevel(): Promise<string[]>;
-  folders(): Promise<{ id: string; path: string }[]>;
+  folders(): Promise<LocalFolder[]>;
   pathOf(localId: string): Promise<string>;
+  /** Where a local folder sits, as a hint other browsers can follow. Null outside the synced root folders. */
+  describe(localId: string): Promise<{ title: string; hint: PlaceHint | null }>;
+  /** The folder at `hint`. Missing folders are created with `create`, or read as a pending ID without it. */
+  resolve(hint: PlaceHint, create: boolean): Promise<string>;
+}
+
+export interface GroupPart {
+  part: string;
+  path: string;
+  /** A top of a folder group, which can be removed for every browser. */
+  top: boolean;
 }
 
 export interface AppDeps {
@@ -97,6 +134,10 @@ export interface GroupSummary {
   accountId: string;
   mode: 'everything' | 'folder';
   location: string;
+  parts: GroupPart[];
+  /** Local folders this group holds here. */
+  held: string[];
+  notices: Notice[];
   encrypted: boolean;
   bookmarks: number;
   status: GroupStatus;
@@ -191,14 +232,26 @@ export class SyncApp {
     return this.run(async () => {
       const account = this.account(input.accountId);
       const groupId = randomId(this.deps.random);
-      const { mapping, excluded } = await this.resolveTarget(input.mode, input.target, true);
-      await this.checkOverlap(mapping, input.target);
-      const { encrypted: _e, ...config } = this.config(groupId, account.id, input.name, input.mode, mapping, false);
-      const { engine, key } = await GroupEngine.create(this.ports(account), config, {
+      let resolved: { mapping: Record<string, string>; excluded: [string, Excluded][]; tops?: NewTop[] };
+      if (input.mode === 'folder') {
+        if (input.target.kind !== 'folders' || !input.target.folderIds.length) throw new UserError('Pick at least one folder to sync.');
+        const tops: NewTop[] = [];
+        for (const folderId of input.target.folderIds) {
+          const { title, hint } = await this.deps.roots.describe(folderId);
+          tops.push({ id: randomId(this.deps.random), title, hint: hint ?? { root: 'other', path: [title] } });
+        }
+        resolved = { mapping: Object.fromEntries(tops.map((t, i) => [t.id, input.target.kind === 'folders' ? input.target.folderIds[i]! : ''])), excluded: [], tops };
+      } else {
+        resolved = await this.resolveTarget(input.mode, input.target, true);
+      }
+      await this.checkOverlap(resolved.mapping, input.mode === 'folder');
+      const { encrypted: _e, ...config } = this.config(groupId, account.id, input.name, input.mode, resolved.mapping, false);
+      const { engine, key } = await GroupEngine.create(this.ports(account), { ...config, ...(input.mode === 'folder' ? { followTops: true } : {}) }, {
         passphrase: input.passphrase,
         iterations: input.iterations,
         ignoreDefaults: input.ignoreDefaults,
-        excluded,
+        excluded: resolved.excluded,
+        tops: resolved.tops,
       });
       if (key) await this.deps.store.setKey(groupId, key, false);
       this.engines.set(groupId, engine);
@@ -251,6 +304,64 @@ export class SyncApp {
 
   devices(groupId: string) {
     return this.run(async () => this.engine(groupId).devices());
+  }
+
+  // Parts this browser holds
+
+  /** The folders of a group, joined or not, for choosing which of them this browser holds. */
+  groupFolders(input: { accountId: string; groupId: string; passphrase?: string }): Promise<{ mode: 'everything' | 'folder'; folders: GroupFolder[] }> {
+    return this.run(async () => {
+      const joined = this.engines.get(input.groupId);
+      if (joined) return { mode: joined.state.config.mode, folders: joined.folders() };
+      const account = this.account(input.accountId);
+      const header = await GroupEngine.readHeader(this.providerOf(account), input.groupId);
+      if (!header) throw new UserError('That sync no longer exists on this storage.');
+      const key = header.encryption ? await this.keyFor(input.groupId, header.encryption, input.passphrase) : null;
+      const config = this.config(input.groupId, account.id, header.name, header.mode, {}, !!header.encryption);
+      return { mode: header.mode, folders: await GroupEngine.readFolders(this.ports(account), config, key) };
+    });
+  }
+
+  addParts(groupId: string, parts: PartChoice[]): Promise<void> {
+    return this.run(async () => {
+      const e = this.engine(groupId);
+      const mapping = await this.resolveParts(parts, false);
+      await this.checkOverlap({ ...e.state.config.mapping, ...mapping }, true, groupId);
+      await e.addParts(Object.entries(await this.resolveParts(parts, true)).map(([part, localId]) => ({ part, localId })));
+    });
+  }
+
+  /** Adds local folders to a folder group as new top folders, for every browser. */
+  addTops(groupId: string, folderIds: string[]): Promise<void> {
+    return this.run(async () => {
+      const e = this.engine(groupId);
+      const tops: (NewTop & { localId: string })[] = [];
+      for (const localId of folderIds) {
+        const { title, hint } = await this.deps.roots.describe(localId);
+        tops.push({ id: randomId(this.deps.random), title, hint: hint ?? { root: 'other', path: [title] }, localId });
+      }
+      await this.checkOverlap({ ...e.state.config.mapping, ...Object.fromEntries(tops.map((t) => [t.id, t.localId])) }, true, groupId);
+      await e.addTops(tops);
+    });
+  }
+
+  removePart(groupId: string, part: string, everywhere: boolean): Promise<void> {
+    return this.run(() => this.engine(groupId).removePart(part, everywhere));
+  }
+
+  /** Points a part at another local folder, for example after its folder was deleted. */
+  movePart(groupId: string, part: string, folderId: string): Promise<void> {
+    return this.run(async () => {
+      const e = this.engine(groupId);
+      const { [part]: _old, ...others } = e.state.config.mapping;
+      await this.checkOverlap({ ...others, [part]: folderId }, true, groupId);
+      await e.movePart(part, folderId);
+      await this.syncOne(e);
+    });
+  }
+
+  dismissNotices(groupId: string): Promise<void> {
+    return this.run(() => this.engine(groupId).dismissNotices());
   }
 
   removeDevice(groupId: string, deviceId: string): Promise<void> {
@@ -346,12 +457,23 @@ export class SyncApp {
         const c = e.state.config;
         const g = e.state.guard;
         const m = e.migrationProgress();
+        const tops = new Set(c.mode === 'folder' ? e.folders().filter((f) => f.parent === ROOT_GROUP).map((f) => f.id) : []);
+        const parts: GroupPart[] = [];
+        for (const [part, local] of Object.entries(c.mapping)) {
+          const path = (await this.deps.bookmarks.exists(local)) ? await this.deps.roots.pathOf(local) : 'A deleted folder';
+          parts.push({ part, path, top: tops.has(part) });
+        }
+        const whole = c.mode === 'everything' && EVERYTHING_ROOTS.every((r) => c.mapping[r] !== undefined);
+        const paths = parts.map((p) => p.path);
         out.push({
           groupId: c.groupId,
           name: c.name,
           accountId: c.accountId,
           mode: c.mode,
-          location: c.mode === 'folder' ? await this.deps.roots.pathOf(c.mapping['root:group']!) : 'All bookmarks',
+          location: whole ? 'All bookmarks' : paths.length > 2 ? `${paths.slice(0, 2).join(', ')} and ${paths.length - 2} more` : paths.join(', ') || 'No folders',
+          parts: whole ? [] : parts,
+          held: Object.values(c.mapping),
+          notices: [...e.notices],
           encrypted: c.encrypted,
           bookmarks: [...e.mirror().nodes.values()].filter((n) => n.kind === 'bookmark').length,
           status: e.status,
@@ -520,16 +642,25 @@ export class SyncApp {
   private readonly failures = new Map<string, number>();
 
   private async checkMappingOverlaps(): Promise<void> {
-    const folders = [...this.engines.values()].filter((e) => e.state.config.mode === 'folder').map((e) => ({ e, folder: e.state.config.mapping['root:group']! }));
+    const folders = [...this.engines.values()].flatMap((e) =>
+      Object.entries(e.state.config.mapping)
+        .filter(([, local]) => !local.startsWith(PENDING_PREFIX))
+        .map(([part, folder]) => ({ e, part, folder })),
+    );
     for (const a of folders) {
       for (const b of folders) {
-        if (a === b) continue;
-        if (await this.isInside(a.folder, b.folder)) {
+        if (a === b || (a.e === b.e && this.wholeTreeMapping(a.e.state.config))) continue;
+        if (a.folder === b.folder || (await this.isInside(a.folder, b.folder))) {
           await a.e.pause('mapping-overlap' as PauseReason, b.e.state.config.name);
           await b.e.pause('mapping-overlap' as PauseReason, a.e.state.config.name);
         }
       }
     }
+  }
+
+  /** A whole-tree or into-one-folder mapping, whose Chromium menu helper sits inside the other bookmarks folder. */
+  private wholeTreeMapping(c: GroupConfig): boolean {
+    return c.mode === 'everything' && EVERYTHING_ROOTS.every((r) => c.mapping[r] !== undefined);
   }
 
   private async isInside(inner: string, outer: string): Promise<boolean> {
@@ -539,29 +670,50 @@ export class SyncApp {
     return false;
   }
 
-  private async checkOverlap(mapping: Record<string, string>, target: Target): Promise<void> {
-    const top = new Set(await this.deps.roots.topLevel());
-    const isWhole = (m: Record<string, string>) => m['root:toolbar'] !== undefined && top.has(m['root:toolbar']);
+  /** `ownPairs` also rejects folders of this mapping that sit inside each other; `except` skips that group's current mapping. */
+  private async checkOverlap(mapping: Record<string, string>, ownPairs: boolean, except?: string): Promise<void> {
+    const mine = Object.values(mapping).filter((l) => !l.startsWith(PENDING_PREFIX));
+    const nested = async (a: string, b: string) => a === b || (await this.isInside(a, b)) || (await this.isInside(b, a));
+    if (ownPairs) {
+      for (const [i, a] of mine.entries()) {
+        for (const b of mine.slice(i + 1)) if (await nested(a, b)) throw new UserError('Two of the folders are inside each other. Pick only the outer one.');
+      }
+    }
     for (const e of this.engines.values()) {
-      const theirs = e.state.config.mapping;
+      if (e.groupId === except) continue;
       const name = e.state.config.name;
-      if (target.kind === 'whole' || isWhole(theirs)) throw new UserError(`That overlaps with the sync “${name}”. Pick a folder outside it.`);
-      for (const m of Object.values(mapping)) {
-        for (const t of Object.values(theirs)) {
-          if (m === t || (await this.isInside(m, t)) || (await this.isInside(t, m))) throw new UserError(`That overlaps with the sync “${name}”. Pick a folder outside it.`);
+      for (const m of mine) {
+        for (const t of Object.values(e.state.config.mapping)) {
+          if (!t.startsWith(PENDING_PREFIX) && (await nested(m, t))) throw new UserError(`That overlaps with the sync “${name}”. Pick a folder outside it.`);
         }
       }
     }
   }
 
   private async resolveTarget(mode: 'everything' | 'folder', target: Target, create: boolean): Promise<{ mapping: Record<string, string>; excluded: [string, Excluded][] }> {
-    if (mode === 'folder') {
-      if (target.kind !== 'folder') throw new Error('a folder group needs a folder');
-      return { mapping: { 'root:group': target.folderId }, excluded: [] };
-    }
+    if (target.kind === 'parts') return { mapping: await this.resolveParts(target.parts, create), excluded: [] };
+    if (mode === 'folder') throw new Error('a folder group maps chosen parts');
     if (target.kind === 'whole') return this.deps.roots.wholeTree(create);
     if (target.kind === 'everything-into') return this.deps.roots.everythingInto(target.folderId, create);
-    throw new Error('an everything group maps to the whole tree or into one folder');
+    throw new Error('an everything group maps to the whole tree, into one folder, or chosen parts');
+  }
+
+  private async resolveParts(parts: PartChoice[], create: boolean): Promise<Record<string, string>> {
+    if (!parts.length) throw new UserError('Pick at least one folder to sync.');
+    const mapping: Record<string, string> = {};
+    for (const p of parts) {
+      if (p.folderId) mapping[p.part] = p.folderId;
+      else if (p.hint) mapping[p.part] = await this.deps.roots.resolve(p.hint, create);
+      else throw new Error('a part needs a folder or a hint');
+    }
+    return mapping;
+  }
+
+  private async keyFor(groupId: string, params: Parameters<typeof unlockKey>[1], passphrase?: string): Promise<CryptoKey> {
+    const stored = await this.deps.store.getKey(groupId);
+    if (stored) return stored;
+    if (!passphrase) throw new UserError('This sync is encrypted. Enter its passphrase.');
+    return unlockKey(passphrase, params);
   }
 
   private async prepareJoin(input: JoinInput, preview: boolean) {
@@ -580,9 +732,10 @@ export class SyncApp {
       }
       if (!key) throw new UserError('This sync is encrypted. Enter its passphrase.');
     }
-    await this.checkOverlap((await this.resolveTarget(header.mode, input.target, false)).mapping, input.target);
+    await this.checkOverlap((await this.resolveTarget(header.mode, input.target, false)).mapping, input.target.kind === 'parts');
     const { mapping, excluded } = await this.resolveTarget(header.mode, input.target, !preview);
     const config = this.config(input.groupId, account.id, header.name, header.mode, mapping, !!header.encryption);
+    if (input.target.kind === 'parts' && input.target.followTops && header.mode === 'folder') config.followTops = true;
     const opts: JoinOptions = { mode: input.mode, ignoreDefaults: input.ignoreDefaults, excluded };
     return { ports: this.ports(account), config, opts, key, newKey };
   }
@@ -611,6 +764,7 @@ export class SyncApp {
       random: this.deps.random,
       sleep: this.deps.sleep,
       keyFor: (g) => this.deps.store.getKey(g),
+      place: (hint) => this.deps.roots.resolve(hint, true),
       settings: { historyMs: s.historyDays * DAY, guardPercent: s.guardPercent, guardMin: s.guardMin },
     };
   }

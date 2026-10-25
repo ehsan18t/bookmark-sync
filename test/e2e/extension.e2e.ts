@@ -178,4 +178,62 @@ describe('the extension in two Chromium profiles', () => {
       await b.context.close();
     }
   });
+
+  it('starts a sync from ticked folders and joins only one of them in another browser', async () => {
+    const a = await launch();
+    const b = await launch();
+    try {
+      const account = { type: 'webdav', name: 'Local', url: `http://127.0.0.1:${port}/bsync-parts/`, username: 'e2e', password: 'pw' };
+      await command(a, { t: 'addAccount', account });
+      await command(b, { t: 'addAccount', account });
+      const games = await create(a, { parentId: '2', title: 'Game Dev' });
+      await create(a, { parentId: games, title: 'Godot', url: 'https://godot.example/' });
+      const java = await create(a, { parentId: '2', title: 'Java' });
+      await create(a, { parentId: java, title: 'JDK', url: 'https://jdk.example/' });
+      await create(a, { title: 'Not synced', url: 'https://bar.example/' });
+
+      await a.page.goto(`chrome-extension://${a.id}/options.html#setup`);
+      await a.page.locator('.choice').first().click();
+      await a.page.getByRole('button', { name: 'Continue' }).click();
+      await a.page.getByText('Choose folders').click();
+      await a.page.getByRole('checkbox', { name: 'Game Dev' }).check();
+      await a.page.getByRole('checkbox', { name: 'Java' }).check();
+      await a.page.getByRole('button', { name: 'Start syncing' }).click();
+      await a.page.getByText('Your bookmarks are syncing').waitFor();
+
+      await b.page.goto(`chrome-extension://${b.id}/options.html#setup`);
+      await b.page.locator('.choice').first().click();
+      await b.page.getByText('Join your synced bookmarks').waitFor();
+      await b.page.locator('.choice').first().click();
+      await b.page.getByRole('checkbox', { name: 'Game Dev' }).uncheck();
+      await expect.poll(() => b.page.locator('.placement').count()).toBe(1);
+      await expect.poll(() => b.page.locator('.placement').innerText()).toMatch(/A new folder is made at Other (bookmarks|favorites) \/ Java/);
+      await b.page.getByRole('button', { name: 'Join and sync' }).click();
+      await b.page.getByText('Your bookmarks are syncing').waitFor();
+
+      const other = async (p: Profile) => {
+        const tree = (await p.page.evaluate(() => chrome.bookmarks.getSubTree('2'))) as Tree[];
+        const walk = (n: Tree): unknown[] => (n.children ?? []).map((c) => (c.url ? c.title : [c.title, walk(c)]));
+        return walk(tree[0]!);
+      };
+      expect(await other(b)).toEqual([['Java', ['JDK']]]);
+      expect(await bar(b)).toEqual([]);
+      const [javaB] = (await b.page.evaluate(() => chrome.bookmarks.search({ title: 'Java' }))) as { id: string }[];
+      await create(b, { parentId: javaB!.id, title: 'Maven', url: 'https://maven.example/' });
+      await new Promise((r) => setTimeout(r, 500));
+      await command(b, { t: 'syncNow' });
+      await command(a, { t: 'syncNow' });
+      expect(await other(a)).toEqual([['Game Dev', ['Godot']], ['Java', ['JDK', 'Maven']]]);
+      await b.page.goto(`chrome-extension://${b.id}/options.html#overview`);
+      await b.page.getByText('More options').click();
+      await b.page.getByRole('button', { name: 'Folders synced here' }).click();
+      await b.page.getByRole('button', { name: 'Sync another folder of this sync here' }).click();
+      await b.page.getByRole('checkbox', { name: 'Game Dev' }).check();
+      await b.page.getByRole('button', { name: 'Sync them here' }).click();
+      await expect.poll(() => other(b), { timeout: 15_000 }).toEqual([['Java', ['JDK', 'Maven']], ['Game Dev', ['Godot']]]);
+    } finally {
+      await a.context.close();
+      await b.context.close();
+    }
+  });
 });

@@ -1,11 +1,12 @@
 import { browser } from 'wxt/browser';
 import type { GroupSummary, Target } from '../../engine/app.js';
-import type { JoinPreview } from '../../engine/group.js';
+import type { GroupFolder, JoinPreview } from '../../engine/group.js';
 import { originPattern } from '../../browser/providers.js';
 import { APP_NAME, SERVER_FOLDER } from '../../config.js';
 import { action, brand, errorText, field, h, send } from '../../ui/dom.js';
 import { icon, type IconName } from '../../ui/icons.js';
-import { load, otherBookmarksId, state, storageLabel, type FoundSync, type PublicAccount } from './shared.js';
+import { folderTree, groupItems, localItems, placements, type FolderTree } from './folderTree.js';
+import { load, state, storageLabel, type FoundSync, type PublicAccount } from './shared.js';
 
 type Step =
   | { id: 'storage' }
@@ -189,7 +190,7 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
                 title: f.name,
                 badge: f.encrypted ? 'Encrypted' : undefined,
                 recommended: open.length === 1,
-                desc: f.mode === 'folder' ? 'Syncs one folder' : 'Syncs all bookmarks',
+                desc: f.mode === 'folder' ? 'Syncs chosen folders' : 'Syncs all bookmarks',
                 onclick: () => show({ id: 'join', account, sync: f }),
               }),
             ),
@@ -228,30 +229,15 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
     return { el: h('div', { class: 'stack' }, ...cards), value: () => current };
   }
 
-  function folderSelect(includeNew: string | null) {
-    return h(
-      'select',
-      {},
-      includeNew !== null ? h('option', { value: '' }, `A new folder “${includeNew}” in Other bookmarks`) : null,
-      ...state.folders.map((f) => h('option', { value: f.id }, f.path)),
-    );
-  }
-
-  async function folderFor(select: HTMLSelectElement, name: string): Promise<string> {
-    if (select.value) return select.value;
-    const created = await browser.bookmarks.create({ parentId: await otherBookmarksId(), title: name });
-    return created.id;
-  }
-
   function createStep(account: PublicAccount, name: string) {
-    const folder = folderSelect(null);
-    const folderField = field('Folder to sync', folder, 'Its subfolders sync too.');
+    const tree = folderTree(localItems(state.folders, state.groups), { multi: true, label: 'Folders to sync' });
+    const folderField = h('div', { class: 'stack' }, h('h3', {}, 'Folders to sync'), h('p', { class: 'muted small' }, 'Tick as many as you like. A ticked folder syncs with everything inside it. Other browsers can put each one wherever they want.'), tree.el);
     folderField.hidden = true;
     const what = radios(
       'what',
       [
         { value: 'everything', title: 'All bookmarks', desc: 'The bookmarks bar, other bookmarks, and every folder in them.', icon: 'bookmarks', badge: 'Recommended' },
-        { value: 'folder', title: 'One folder', desc: 'Only the folder you pick. Good for sharing a set of bookmarks between browsers.', icon: 'folder' },
+        { value: 'folder', title: 'Choose folders', desc: 'Only the folders you tick. Good for sharing some bookmarks between browsers.', icon: 'folders' },
       ],
       'everything',
       (v) => (folderField.hidden = v !== 'folder'),
@@ -269,8 +255,8 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
         if (pass.value !== again.value) throw new Error('The passphrases don’t match.');
       }
       const mode = what.value() as 'everything' | 'folder';
-      if (mode === 'folder' && !folder.value) throw new Error('Pick a folder to sync.');
-      const target: Target = mode === 'folder' ? { kind: 'folder', folderId: folder.value } : { kind: 'whole' };
+      if (mode === 'folder' && !tree.value().length) throw new Error('Tick at least one folder to sync.');
+      const target: Target = mode === 'folder' ? { kind: 'folders', folderIds: tree.value() } : { kind: 'whole' };
       const groupId = await send<string>({ t: 'create', input: { accountId: account.id, name, mode, target, passphrase: encrypt.checked ? pass.value : undefined, ignoreDefaults: defaults.checked } });
       await load();
       show({ id: 'done', account, groupId, joined: false });
@@ -309,25 +295,69 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
       () => schedulePreview(),
     );
     const isFolder = sync.mode === 'folder';
-    const folder = folderSelect(isFolder ? sync.name : null);
     const into = h('input', { type: 'checkbox' });
-    const intoFolder = folderSelect(null);
-    const intoField = field('Folder', intoFolder);
+    const intoTree = folderTree(localItems(state.folders, state.groups), { multi: false, label: 'Folder for the synced bookmarks', onchange: () => schedulePreview() });
+    const intoField = h('div', { class: 'stack' }, intoTree.el);
     intoField.hidden = true;
     into.addEventListener('change', () => ((intoField.hidden = !into.checked), schedulePreview()));
-    folder.addEventListener('change', () => schedulePreview());
-    intoFolder.addEventListener('change', () => schedulePreview());
+    const intoOption = h(
+      'details',
+      { class: 'advanced' },
+      h('summary', {}, icon('chevron-right'), 'Advanced'),
+      h('div', { class: 'stack' }, h('label', { class: 'check' }, into, h('span', {}, 'Keep the synced bookmarks inside one folder', h('div', { class: 'hint' }, 'Instead of the bookmarks bar and other bookmarks. Only when everything is ticked.'))), intoField),
+    );
+    intoOption.hidden = isFolder;
     const defaults = h('input', { type: 'checkbox', checked: true });
     defaults.addEventListener('change', () => schedulePreview());
     const pass = h('input', { type: 'password', autocomplete: 'current-password' });
     const remember = h('input', { type: 'checkbox', checked: true });
-    pass.addEventListener('input', () => schedulePreview());
+    pass.addEventListener('input', () => (scheduleFolders(), schedulePreview()));
 
-    const target = (folderId: string): Target => (isFolder ? { kind: 'folder', folderId } : into.checked ? { kind: 'everything-into', folderId: intoFolder.value } : { kind: 'whole' });
-    const input = (folderId: string) => ({
+    const what = h('div', { class: 'stack' }, h('p', { class: 'muted' }, sync.encrypted ? 'Enter the passphrase to see the folders in this sync.' : 'Reading the folders in this sync…'));
+    let picker: { tree: FolderTree; place: ReturnType<typeof placements>; tops: string[]; everyRoot: boolean } | null = null;
+    let folderTimer: ReturnType<typeof setTimeout> | undefined;
+    function scheduleFolders() {
+      clearTimeout(folderTimer);
+      folderTimer = setTimeout(loadFolders, 400);
+    }
+    async function loadFolders() {
+      if (sync.encrypted && !pass.value) return;
+      try {
+        const g = await send<{ mode: 'everything' | 'folder'; folders: GroupFolder[] }>({ t: 'groupFolders', accountId: account.id, groupId: sync.groupId, passphrase: sync.encrypted ? pass.value : undefined });
+        const items = groupItems(g.mode, g.folders, state.folders);
+        const tops = items.filter((i) => i.parent === null).map((i) => i.id);
+        const place = placements({ mode: g.mode, groupFolders: g.folders, items, local: state.folders, localTree: () => localItems(state.folders, state.groups), onchange: () => schedulePreview() });
+        const tree = folderTree(items, {
+          multi: true,
+          selected: tops,
+          label: 'Folders to sync in this browser',
+          onchange: (ids) => (place.set(ids), (intoOption.hidden = isFolder || !wholeTicked()), schedulePreview()),
+        });
+        picker = { tree, place, tops, everyRoot: g.mode === 'everything' };
+        place.set(tops);
+        what.replaceChildren(
+          h('p', { class: 'muted small' }, 'Everything is ticked. Untick what this browser doesn’t need, or tick single folders deeper down.'),
+          tree.el,
+          h('h3', {}, 'Where each folder goes here'),
+          place.el,
+        );
+        schedulePreview();
+      } catch (e) {
+        what.replaceChildren(h('div', { class: 'error' }, icon('alert-triangle'), h('span', {}, errorText(e))));
+      }
+    }
+    queueMicrotask(loadFolders);
+
+    const wholeTicked = () => !!picker && picker.tops.every((t) => picker!.tree.value().includes(t)) && picker.tree.value().length === picker.tops.length;
+    const target = (): Target | null => {
+      if (!picker || !picker.tree.value().length) return null;
+      if (picker.everyRoot && wholeTicked() && picker.place.defaults()) return into.checked ? { kind: 'everything-into', folderId: intoTree.value()[0] ?? '' } : { kind: 'whole' };
+      return { kind: 'parts', parts: picker.place.choices(), followTops: isFolder && wholeTicked() };
+    };
+    const input = (t: Target) => ({
       accountId: account.id,
       groupId: sync.groupId,
-      target: target(folderId),
+      target: t,
       mode: how.value() as 'merge' | 'replace',
       ignoreDefaults: defaults.checked,
       passphrase: sync.encrypted ? pass.value : undefined,
@@ -344,10 +374,12 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
       const mine = ++seq;
       const text = preview.querySelector('.body')!;
       if (sync.encrypted && !pass.value) return void (text.textContent = 'Enter the passphrase to see what will change.');
-      if (isFolder && !folder.value) return void (text.textContent = `A new folder “${sync.name}” is created in Other bookmarks and filled with the synced bookmarks.`);
+      const t = target();
+      if (!t) return void (text.textContent = picker ? 'Tick at least one folder to sync here.' : 'Reading the folders in this sync…');
+      if (t.kind === 'everything-into' && !t.folderId) return void (text.textContent = 'Pick the folder to keep the synced bookmarks in.');
       text.textContent = 'Checking what will change…';
       try {
-        const p = await send<JoinPreview>({ t: 'previewJoin', input: input(isFolder ? folder.value : '') });
+        const p = await send<JoinPreview>({ t: 'previewJoin', input: input(t) });
         if (mine !== seq) return;
         const items = (n: number) => `${n} ${n === 1 ? 'item' : 'items'}`;
         const parts = [`This browser gets ${items(p.groupItems)} from the sync.`];
@@ -360,13 +392,12 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
         if (mine === seq) text.textContent = errorText(e);
       }
     }
-    queueMicrotask(runPreview);
-
     const join = async () => {
       if (sync.encrypted && !pass.value) throw new Error('Enter the passphrase for this sync.');
-      if (!isFolder && into.checked && !intoFolder.value) throw new Error('Pick a folder.');
-      const folderId = isFolder ? await folderFor(folder, sync.name) : '';
-      await send({ t: 'join', input: input(folderId) });
+      const t = target();
+      if (!t) throw new Error('Tick at least one folder to sync here.');
+      if (t.kind === 'everything-into' && !t.folderId) throw new Error('Pick the folder to keep the synced bookmarks in.');
+      await send({ t: 'join', input: input(t) });
       await load();
       show({ id: 'done', account, groupId: sync.groupId, joined: true });
     };
@@ -374,21 +405,14 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
     return h(
       'div',
       { class: 'stack lg' },
-      head(`Join “${sync.name}”`, isFolder ? 'This sync keeps one folder the same in every browser.' : 'This sync keeps all bookmarks the same in every browser.'),
+      head(`Join “${sync.name}”`, isFolder ? 'This sync keeps some folders the same in every browser.' : 'This sync keeps bookmarks the same in every browser.'),
       sync.encrypted
         ? h('div', { class: 'card stack' }, field('Passphrase', pass, 'The passphrase chosen when this sync was started.'), h('label', { class: 'check' }, remember, 'Remember it in this browser'))
         : null,
-      isFolder ? field('Where should the folder go?', folder) : null,
+      h('div', { class: 'stack' }, h('h3', {}, 'What should sync in this browser?'), what),
       h('div', { class: 'stack' }, h('h3', {}, 'What about the bookmarks already here?'), how.el),
       h('label', { class: 'check' }, defaults, h('span', {}, 'Leave out the sample bookmarks this browser came with')),
-      isFolder
-        ? null
-        : h(
-            'details',
-            { class: 'advanced' },
-            h('summary', {}, icon('chevron-right'), 'Advanced'),
-            h('div', { class: 'stack' }, h('label', { class: 'check' }, into, h('span', {}, 'Keep the synced bookmarks inside one folder', h('div', { class: 'hint' }, 'Instead of the bookmarks bar and other bookmarks.'))), intoField),
-          ),
+      intoOption,
       preview,
       h('div', { class: 'footer' }, back({ id: 'choose', account }), action('Join and sync', join, { kind: 'primary', size: 'lg', busy: 'Syncing your bookmarks…' })),
     );

@@ -1,4 +1,4 @@
-import type { JoinInput, NewAccount, Settings, Target } from './engine/app.js';
+import type { JoinInput, NewAccount, PartChoice, Settings, Target } from './engine/app.js';
 
 export type Command =
   | { t: 'status' }
@@ -14,6 +14,12 @@ export type Command =
   | { t: 'join'; input: JoinInput }
   | { t: 'leave' | 'undoJoin' | 'deleteEverywhere' | 'devices' | 'timeline' | 'syncGroup'; groupId: string }
   | { t: 'removeDevice'; groupId: string; deviceId: string }
+  | { t: 'groupFolders'; accountId: string; groupId: string; passphrase?: string }
+  | { t: 'addParts'; groupId: string; parts: PartChoice[] }
+  | { t: 'addTops'; groupId: string; folderIds: string[] }
+  | { t: 'removePart'; groupId: string; part: string; everywhere: boolean }
+  | { t: 'movePart'; groupId: string; part: string; folderId: string }
+  | { t: 'dismissNotices'; groupId: string }
   | { t: 'previewRestore' | 'restore'; groupId: string; hlc: string }
   | { t: 'resolve'; groupId: string; choice: 'apply' | 'revert' | 'resume' }
   | { t: 'unlock'; groupId: string; passphrase: string; remember: boolean }

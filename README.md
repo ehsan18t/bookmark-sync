@@ -11,7 +11,7 @@ Every milestone in the implementation plan is built: the merge engine, joins, fo
 
 What has been checked:
 
-- 113 unit, property and scenario tests, including randomized runs with up to 5 simulated browsers, provider faults and clock skew, a check against a plain tree model, and scenarios for crashes, lost responses, copied profiles, departed devices and renumbered bookmarks.
+- 121 unit, property and scenario tests, including randomized runs with up to 5 simulated browsers and browsers that hold only some folders, provider faults and clock skew, a check against a plain tree model, and scenarios for crashes, lost responses, copied profiles, departed devices and renumbered bookmarks.
 - The WebDAV provider against a real WebDAV server, and the Google Drive provider against a fake of the Drive API.
 - 3 end-to-end tests that load the built extension into two real Chromium profiles syncing through a local WebDAV server. One of them clicks through the setup pages in both profiles: a wrong password, then starting a sync in one and joining it from the other.
 - The Firefox package passes `web-ext lint` with no warnings.
@@ -49,7 +49,7 @@ Installing the extension opens its setup page. It goes one step at a time:
 1. **Choose storage.** Google Drive (when the build includes the Google clients, see below), or your own server. For Nextcloud the server address looks like `https://cloud.example.com/remote.php/dav/files/USERNAME/`; use an app password. For any rclone remote, run `rclone serve webdav REMOTE: --addr 127.0.0.1:8080 --user me --pass secret` and use `http://127.0.0.1:8080/`. The bookmarks go in a folder on the server (`WXT_SERVER_FOLDER` in `.env`), which users can change under Advanced.
 2. **Connect.** The extension checks the sign-in before going on.
 3. **Start or join.** If the storage already holds a sync from another browser, the page suggests joining it. Otherwise this browser starts one.
-4. **Choose what to sync.** All bookmarks or one folder when starting. When joining, Combine (keeps this browser's bookmarks and adds the synced ones) or Replace (takes the synced ones, and can be undone), with a live preview of what changes. Encryption is under Advanced.
+4. **Choose what to sync.** All bookmarks, or any folders ticked in a folder tree, when starting. When joining, tick which folders of the sync this browser holds and where each one goes, then pick Combine (keeps this browser's bookmarks and adds the synced ones) or Replace (takes the synced ones, and can be undone), with a live preview of what changes. Encryption is under Advanced.
 
 After setup, the settings page is a dashboard with Overview, History, Browsers, Duplicates and Settings tabs, and the popup shows each sync's state.
 

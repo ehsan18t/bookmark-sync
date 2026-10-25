@@ -90,7 +90,8 @@ test/
 - **Device ID**: 16 random bytes, base32. Stored locally and published in `device.json`.
 - **Stable node ID**: 16 random bytes, base32, for nodes created by normal edits.
 - **Derived node ID** (join only): `"j" + base32(sha256(groupId | parentStableId | kind | title | url | occurrence))[0..26]`, where `occurrence` is the 0-based index among earlier siblings in the joiner's local order with the same `(kind, title, url)`.
-- **Fixed root IDs**: `root:toolbar`, `root:other`, `root:menu` for `everything` groups; `root:group` for `folder` groups. Roots always exist and are always visible.
+- **Fixed root IDs**: `root:toolbar`, `root:other`, `root:menu` for `everything` groups; `root:group` for `folder` groups, whose children are the tops. Roots always exist and are always visible.
+- **Top hint**: a top's `url` field holds `top:` + the URI-encoded root kind (`toolbar`, `other`, `menu`, `mobile`) and folder titles, joined by `/`. Folders have no URL of their own, and a top is never applied as a local folder, so the hint never reaches the browser.
 - **Op reference**: `(device, opSeq)`. `opSeq` starts at 1 per device per group and increases by 1 for every op. It is never reused.
 - **Batch number**: `batchNo`, starting at 1 per device per group, contiguous. Batch numbers and `opSeq` are different counters.
 
@@ -493,7 +494,9 @@ This design is idempotent. Events caused by the extension's own changes arrive a
 
 ### 8.5 Mappings
 
-- **Overlap:** a new mapping is rejected if its folder is inside, or contains, another group's mapped folder on this device, or if any group maps the whole tree. If a user later moves one mapped folder into another, reconcile detects the overlap and pauses both groups with reason `mapping-overlap`.
+- **Parts:** `config.mapping` maps each held group folder (a fixed root, a top, or any group folder) to a local folder, and the engine's roots are its keys. `visibleTree` gives each node to its nearest listed ancestor and leaves the held folders themselves out, so their names never sync. Adding a part runs `planJoin` for that part only; removing one drops its mirror and `idmap` entries and keeps the local folder.
+- **After each pull** (`reviewParts`, before apply): held parts no longer visible are let go with a notice; held parts nested inside each other in the group pause with `mapping-overlap`; a `folder` group with `followTops` places new tops via `EnginePorts.place` (except `declined` ones); a device left with no parts pauses with `nothing-held`.
+- **Overlap:** a new mapping is rejected if any of its folders is inside, equal to, or contains another group's mapped folder on this device, or, for chosen folders and parts, another folder of the same mapping. If a user later moves one mapped folder into another, the overlap is detected before each sync and the groups pause with reason `mapping-overlap`.
 - **Moves between groups** are handled by reconcile (8.3).
 - **Leave:** see 9.6.
 
@@ -628,6 +631,7 @@ Known limit: edits that other devices made to the removed copy within the window
 | `provider` | the provider accepting writes again (retried hourly) |
 | `locked` | entering the passphrase |
 | `root-changed`, `mapped-folder-missing`, `mapping-overlap` | picking a folder again, or leaving |
+| `nothing-held` | holding a part again, or leaving |
 | `large-remote-change`, `large-local-change` | the user's choice (9.4) |
 | `native-sync` | the user confirming native bookmark sync is off |
 | `migration` | the migration finishing (9.9) |

@@ -611,6 +611,119 @@ details.advanced > .stack {
   background: var(--surface-2);
 }
 
+.tree {
+  max-height: 340px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: calc(var(--depth) * 22px);
+  border-radius: 6px;
+}
+
+.tree-row:hover {
+  background: var(--surface-2);
+}
+
+.tree-row > label {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 2px;
+  cursor: pointer;
+}
+
+.tree-row > label .icon {
+  color: var(--text-3);
+}
+
+.tree-row input {
+  margin: 0;
+  flex: none;
+}
+
+.tree-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tree-row.included .tree-title,
+.tree-row.blocked .tree-title {
+  color: var(--text-3);
+}
+
+.tree-row.blocked > label {
+  cursor: default;
+}
+
+.tree-note {
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--text-3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+button.twisty,
+span.twisty {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+}
+
+button.twisty .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.placement,
+.part {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.placement {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.part-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.part > .row:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 
 .topbar {
   display: flex;

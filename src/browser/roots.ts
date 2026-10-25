@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
 import type { Excluded } from '../core/reconcile.js';
-import { PENDING_PREFIX, type RootsPort } from '../engine/app.js';
+import type { RootType } from '../core/ids.js';
+import { PENDING_PREFIX, type LocalFolder, type RootsPort } from '../engine/app.js';
 import type { Engine, Node } from './bookmarksPort.js';
 
 const FIREFOX = { toolbar: 'toolbar_____', menu: 'menu________', other: 'unfiled_____', mobile: 'mobile______' };
@@ -24,6 +25,13 @@ async function chromiumRoots(): Promise<{ bar: Node; other: Node; all: Node[] }>
     return kids[fallbackIndex]!;
   };
   return { bar: pick('bookmarks-bar', 0), other: pick('other', 1), all: kids };
+}
+
+const CHROMIUM_TYPES: Record<string, RootType> = { 'bookmarks-bar': 'toolbar', other: 'other', mobile: 'mobile' };
+
+function rootType(engine: Engine, top: Node): RootType | undefined {
+  if (engine === 'firefox') return (Object.entries(FIREFOX) as [RootType, string][]).find(([, id]) => id === top.id)?.[0];
+  return top.folderType ? CHROMIUM_TYPES[top.folderType] : undefined;
 }
 
 /** The Bookmarks Menu helper folder made for an earlier group, if it still sits in the other bookmarks folder. */
@@ -66,17 +74,70 @@ export function browserRoots(engine: Engine): RootsPort {
 
     async folders() {
       const [root] = (await browser.bookmarks.getTree()) as Node[];
-      const out: { id: string; path: string }[] = [];
+      const tops = ((root?.children ?? []) as Node[]).filter((c) => c.url === undefined && c.folderType !== 'managed');
+      const out: LocalFolder[] = [];
       const walk = (n: Node, path: string[]) => {
         for (const c of (n.children ?? []) as Node[]) {
-          if (c.url !== undefined || c.type === 'separator' || c.folderType === 'managed') continue;
+          if (c.url !== undefined || c.type === 'separator') continue;
           const p = [...path, c.title || '(untitled)'];
-          out.push({ id: c.id, path: p.join(' / ') });
+          out.push({ id: c.id, parentId: n.id, title: c.title || '(untitled)', path: p.join(' / ') });
           walk(c, p);
         }
       };
-      if (root) walk(root, []);
+      for (const t of tops) {
+        const type = rootType(engine, t);
+        const twin = type && tops.filter((x) => rootType(engine, x) === type).length > 1;
+        const title = `${t.title || '(untitled)'}${twin ? (t.syncing ? ' (account)' : ' (this device only)') : ''}`;
+        out.push({ id: t.id, parentId: null, title, path: title, ...(type ? { root: type } : {}) });
+        walk(t, [title]);
+      }
       return out;
+    },
+
+    async describe(localId) {
+      const chain: Node[] = [];
+      for (let id: string | undefined = localId; id; ) {
+        const found: Node[] = await browser.bookmarks.get(id).catch(() => []);
+        const n = found[0];
+        if (!n || !n.parentId) break;
+        chain.unshift(n);
+        id = n.parentId;
+      }
+      const title = chain.at(-1)?.title ?? '';
+      const top = chain[0];
+      const type = top && rootType(engine, top);
+      if (!type) return { title, hint: null };
+      const path = chain.slice(1).map((n) => n.title);
+      if (engine === 'chromium' && type === 'other' && path.length && chain[1]!.id === (await existingHelper(top.id))) return { title, hint: { root: 'menu', path: path.slice(1) } };
+      return { title, hint: { root: type, path } };
+    },
+
+    async resolve(hint, create) {
+      let parent: string;
+      let path = hint.path;
+      if (engine === 'firefox') parent = FIREFOX[hint.root];
+      else {
+        const { bar, other, all } = await chromiumRoots();
+        if (hint.root === 'toolbar') parent = bar.id;
+        else if (hint.root === 'mobile') parent = (all.find((n) => n.folderType === 'mobile') ?? other).id;
+        else if (hint.root === 'other') parent = other.id;
+        else {
+          const helper = await existingHelper(other.id);
+          if (helper) parent = helper;
+          else {
+            parent = other.id;
+            path = [message('bookmarksMenu', 'Bookmarks Menu'), ...path];
+          }
+        }
+      }
+      for (const [i, title] of path.entries()) {
+        const kids = (await browser.bookmarks.getChildren(parent)) as Node[];
+        const found = kids.find((k) => k.url === undefined && k.type !== 'separator' && k.title === title);
+        if (found) parent = found.id;
+        else if (!create) return `${PENDING_PREFIX}${path.slice(i).join('/')}`;
+        else parent = (await browser.bookmarks.create({ parentId: parent, title })).id;
+      }
+      return parent;
     },
 
     async pathOf(localId) {

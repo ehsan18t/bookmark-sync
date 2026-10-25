@@ -46,6 +46,7 @@ const REASONS: Record<string, string> = {
   corrupt: 'A file in the group could not be read.',
   migration: 'Encryption is being switched for this group.',
   'needs-join': 'This browser needs to join the group again.',
+  'nothing-held': 'This browser no longer syncs any folder of this group.',
 };
 
 export default defineBackground({
@@ -165,6 +166,18 @@ export default defineBackground({
           return app.devices(cmd.groupId);
         case 'removeDevice':
           return app.removeDevice(cmd.groupId, cmd.deviceId);
+        case 'groupFolders':
+          return app.groupFolders(cmd);
+        case 'addParts':
+          return app.addParts(cmd.groupId, cmd.parts);
+        case 'addTops':
+          return app.addTops(cmd.groupId, cmd.folderIds);
+        case 'removePart':
+          return app.removePart(cmd.groupId, cmd.part, cmd.everywhere);
+        case 'movePart':
+          return app.movePart(cmd.groupId, cmd.part, cmd.folderId);
+        case 'dismissNotices':
+          return app.dismissNotices(cmd.groupId);
         case 'timeline':
           return app.timeline(cmd.groupId);
         case 'previewRestore':
