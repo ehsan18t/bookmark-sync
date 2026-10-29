@@ -221,6 +221,11 @@ function ChooseStep({ account, go }: { account: PublicAccount; go: Go }) {
   const [attempt, setAttempt] = useState(0);
   const [pick, setPick] = useState<string | null>(null);
   const [name, setName] = useState('');
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (found) box.current?.querySelector<HTMLElement>('input[type=text], input[type=radio]:checked, input[type=radio]:not(:disabled)')?.focus();
+  }, [found, pick]);
 
   useEffect(() => {
     setFound(null);
@@ -316,7 +321,9 @@ function ChooseStep({ account, go }: { account: PublicAccount; go: Go }) {
   return (
     <div class="stack lg">
       {head}
-      <div class="stack">{body}</div>
+      <div class="stack" ref={box}>
+        {body}
+      </div>
       <div class="footer">
         <Back go={go} to={{ id: 'storage' }} />
         {found && <Action label="Continue" kind="primary" size="lg" run={next} />}
@@ -438,16 +445,19 @@ function JoinStep({ account, sync, go }: { account: PublicAccount; sync: FoundSy
 
   useDebounced(() => {
     if (sync.encrypted && !pass) return;
+    let live = true;
     send<{ mode: 'everything' | 'folder'; folders: GroupFolder[] }>({ t: 'groupFolders', accountId: account.id, groupId: sync.groupId, passphrase: sync.encrypted ? pass : undefined }).then(
       (g) => {
+        if (!live) return;
         const top = groupItems(g.mode, g.folders, folders.value).filter((i) => i.parent === null).map((i) => i.id);
         setGroup(g);
         setGroupError('');
         setTicked(top);
         setChosen({});
       },
-      (e) => setGroupError(errorText(e)),
+      (e) => live && setGroupError(errorText(e)),
     );
+    return () => (live = false);
   }, [pass]);
 
   const target = (): Target | null => {
