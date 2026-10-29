@@ -1,5 +1,4 @@
 import type { ComponentChildren } from 'preact';
-import { render } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { browser } from 'wxt/browser';
 import { originPattern } from '../../browser/providers.js';
@@ -8,7 +7,7 @@ import { sameNameKey } from '../../core/names.js';
 import type { Target } from '../../engine/app.js';
 import type { GroupFolder, JoinPreview } from '../../engine/group.js';
 import { Action, Advanced, Banner, Brand, Choice, ErrorText, Field, Icon, RadioCards } from '../../ui/components.js';
-import { errorText, send } from '../../ui/dom.js';
+import { errorText, send } from '../../ui/util.js';
 import { FolderTree, Placements } from './FolderPicker.js';
 import { groupItems, localItems, placementChoices } from './folders.js';
 import { accounts, caps, folders, groups, load, storageLabel, storageWithAccount, type FoundSync, type PublicAccount } from './shared.js';
@@ -582,11 +581,4 @@ function DoneStep({ step, onFinish }: { step: Extract<Step, { id: 'done' }>; onF
       </button>
     </div>
   );
-}
-
-/** Mounts Setup in a fresh element, so the dashboard's own rendering never meets Preact's. */
-export function renderSetup(root: HTMLElement, finish: () => void) {
-  const host = document.createElement('div');
-  root.replaceChildren(host);
-  render(<Setup onFinish={finish} />, host);
 }

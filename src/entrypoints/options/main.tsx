@@ -1,7 +1,7 @@
 import { signal } from '@preact/signals';
 import { render } from 'preact';
 import { Banner } from '../../ui/components.js';
-import { errorText } from '../../ui/dom.js';
+import { errorText } from '../../ui/util.js';
 import '../../ui/styles.css';
 import { Dashboard, isTab } from './Dashboard.js';
 import { Setup } from './Setup.js';

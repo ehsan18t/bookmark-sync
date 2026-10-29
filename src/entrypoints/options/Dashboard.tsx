@@ -7,7 +7,7 @@ import type { DuplicateGroup } from '../../core/dedupe.js';
 import type { GroupSummary, Settings } from '../../engine/app.js';
 import type { GroupFolder, TimelineEntry } from '../../engine/group.js';
 import { Action, Banner, Brand, EmptyState, ErrorText, Field, Icon, Pill } from '../../ui/components.js';
-import { errorText, hlcTime, relativeTime, send } from '../../ui/dom.js';
+import { errorText, hlcTime, relativeTime, send } from '../../ui/util.js';
 import type { IconName } from '../../ui/icons.js';
 import { FolderTree, Placements } from './FolderPicker.js';
 import { groupItems, localItems, placementChoices } from './folders.js';

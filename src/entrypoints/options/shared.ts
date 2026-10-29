@@ -1,6 +1,6 @@
 import { batch, signal } from '@preact/signals';
 import type { Account, FoundGroup, GroupSummary, LocalFolder } from '../../engine/app.js';
-import { send } from '../../ui/dom.js';
+import { send } from '../../ui/util.js';
 
 export type PublicAccount = Pick<Account, 'id' | 'type' | 'name'> & { url?: string; username?: string; email?: string };
 export type Folder = LocalFolder;
@@ -11,22 +11,6 @@ export const groups = signal<GroupSummary[]>([]);
 export const accounts = signal<PublicAccount[]>([]);
 export const folders = signal<Folder[]>([]);
 export const caps = signal<Capabilities>({ google: false, googleBlocked: false, browser: 'this browser' });
-
-/** Read-only view of the signals for screens not yet written as components. */
-export const state = {
-  get groups() {
-    return groups.value;
-  },
-  get accounts() {
-    return accounts.value;
-  },
-  get folders() {
-    return folders.value;
-  },
-  get caps() {
-    return caps.value;
-  },
-};
 
 export async function load() {
   const [g, a, f, c] = await Promise.all([

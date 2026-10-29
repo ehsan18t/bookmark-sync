@@ -5,7 +5,7 @@ import { APP_NAME } from '../../config.js';
 import type { GroupSummary } from '../../engine/app.js';
 import { SHORT_REASON } from '../options/shared.js';
 import { Action, Brand, ErrorText, Icon, Pill } from '../../ui/components.js';
-import { errorText, relativeTime, send } from '../../ui/dom.js';
+import { errorText, relativeTime, send } from '../../ui/util.js';
 import '../../ui/styles.css';
 
 document.title = APP_NAME;

@@ -2,7 +2,7 @@ import { useSignal } from '@preact/signals';
 import { cloneElement, type ComponentChildren, type VNode } from 'preact';
 import { useId } from 'preact/hooks';
 import { APP_NAME } from '../config.js';
-import { errorText } from './dom.js';
+import { errorText } from './util.js';
 import { icons, type IconName } from './icons.js';
 
 /** The SVGs are bundled Tabler icons, so inserting them as markup is safe. */

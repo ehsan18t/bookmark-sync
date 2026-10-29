@@ -1,10 +1,9 @@
 import { useSignal } from '@preact/signals';
-import { render } from 'preact';
 import { useId, useMemo } from 'preact/hooks';
-import type { LocalFolder, PartChoice } from '../../engine/app.js';
+import type { LocalFolder } from '../../engine/app.js';
 import type { GroupFolder } from '../../engine/group.js';
 import { Icon } from '../../ui/components.js';
-import { findLocal, groupHint, hintText, placementChoices, type TreeItem } from './folders.js';
+import { findLocal, groupHint, hintText, type TreeItem } from './folders.js';
 
 function ancestors(byId: Map<string, TreeItem>, id: string): string[] {
   const out: string[] = [];
@@ -139,60 +138,4 @@ function Placement({ id, mode, groupFolders, items, local, localTree, chosen, on
       )}
     </div>
   );
-}
-
-/** Mounts FolderTree for screens not yet written as components. */
-export function folderTree(items: TreeItem[], opts: { multi: boolean; selected?: string[]; onchange?: (ids: string[]) => void; label: string }) {
-  const el = document.createElement('div');
-  let value = opts.selected ?? [];
-  const draw = () =>
-    render(
-      <FolderTree
-        items={items}
-        multi={opts.multi}
-        value={value}
-        label={opts.label}
-        onChange={(ids) => {
-          value = ids;
-          draw();
-          opts.onchange?.(ids);
-        }}
-      />,
-      el,
-    );
-  draw();
-  return { el, value: () => value };
-}
-
-/** Mounts Placements for screens not yet written as components. */
-export function placements(opts: { mode: 'everything' | 'folder'; groupFolders: GroupFolder[]; items: TreeItem[]; local: LocalFolder[]; localTree: () => TreeItem[]; onchange: () => void }) {
-  const el = document.createElement('div');
-  let picked: string[] = [];
-  let chosen: Record<string, string> = {};
-  const draw = () =>
-    render(
-      <Placements
-        {...opts}
-        localTree={opts.localTree()}
-        picked={picked}
-        chosen={chosen}
-        onChange={(c) => {
-          chosen = c;
-          draw();
-          opts.onchange();
-        }}
-      />,
-      el,
-    );
-  draw();
-  return {
-    el,
-    set(ids: string[]) {
-      picked = ids;
-      chosen = Object.fromEntries(Object.entries(chosen).filter(([k]) => ids.includes(k)));
-      draw();
-    },
-    choices: (): PartChoice[] => placementChoices(opts.mode, opts.groupFolders, picked, chosen),
-    defaults: () => Object.keys(chosen).length === 0,
-  };
 }
