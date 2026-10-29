@@ -140,6 +140,28 @@ describe('google drive batched reads', () => {
   });
 });
 
+describe('google drive batched deletes', () => {
+  it('deletes several files, copies included, with one listing per folder', async () => {
+    const drive = new FakeDrive();
+    const auth = { token: async () => 'good', refresh: async () => 'good' };
+    const one = new DriveProvider(auth, drive.fetch);
+    const two = new DriveProvider(auth, drive.fetch);
+    const dir = 'groups/g/devices/d/batches';
+    await one.createOnce(`${dir}/1.json`, bytes('a'));
+    await Promise.all([one.createOnce(`${dir}/2.json`, bytes('b')), two.createOnce(`${dir}/2.json`, bytes('c'))]);
+    await one.createOnce(`${dir}/3.json`, bytes('keep'));
+    await one.createOnce('groups/g/devices/d/snapshots/s.json', bytes('s'));
+    let listings = 0;
+    const counted = new DriveProvider(auth, async (input, init) => {
+      if (String(input).includes('/drive/v3/files?')) listings++;
+      return drive.fetch(input, init);
+    });
+    await counted.deleteMany([`${dir}/1.json`, `${dir}/2.json`, 'groups/g/devices/d/snapshots/s.json']);
+    expect(listings).toBe(2);
+    expect([...drive.files.values()].map((f) => f.appProperties.p)).toEqual([`${dir}/3.json`]);
+  });
+});
+
 describe('google drive retries', () => {
   it('treats byte-identical copies of a file as one file and removes the extras', async () => {
     const drive = new FakeDrive();

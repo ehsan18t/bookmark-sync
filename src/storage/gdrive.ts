@@ -133,6 +133,18 @@ export class DriveProvider implements StorageProvider {
     for (const f of await this.query({ p: path })) await this.call('DELETE', `${API}/files/${f.id}`, undefined, [404]);
   }
 
+  /** One listing per folder instead of one lookup per file, then several deletes at once. */
+  async deleteMany(paths: string[]): Promise<void> {
+    const wanted = new Set(paths);
+    const listed = await Promise.all([...new Set(paths.map(dirname))].map((d) => this.query({ dir: d })));
+    const ids = listed
+      .flat()
+      .filter((f) => wanted.has(f.appProperties!.p!))
+      .map((f) => f.id);
+    const failed = (await settleLimited(ids, PARALLEL_DOWNLOADS, (id) => this.call('DELETE', `${API}/files/${id}`, undefined, [404]))).find((r) => r.status === 'rejected');
+    if (failed) throw failed.reason;
+  }
+
   private async query(where: Record<string, string>): Promise<DriveFile[]> {
     const q = Object.entries(where)
       .map(([k, v]) => `appProperties has { key='${k}' and value='${v.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}' }`)
