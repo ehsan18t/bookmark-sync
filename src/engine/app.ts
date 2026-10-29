@@ -3,14 +3,13 @@ import { UserError } from '../core/errors.js';
 import { findDuplicates, type DedupeItem, type DuplicateGroup } from '../core/dedupe.js';
 import type { BrowserFamily } from '../core/defaults.js';
 import { DAY } from '../core/frontier.js';
-import { EVERYTHING_ROOTS, linkId, randomId, ROOT_GROUP, type PlaceHint, type RandomBytes, type RootType } from '../core/ids.js';
+import { EVERYTHING_ROOTS, randomId, ROOT_GROUP, type PlaceHint, type RandomBytes, type RootType } from '../core/ids.js';
 import { sameNameKey } from '../core/names.js';
 import type { Kind } from '../core/ops.js';
 import type { Excluded, LiveNode } from '../core/reconcile.js';
 import { ProviderAuthError } from '../storage/webdav.js';
 import {
   GroupEngine,
-  type DeviceSharing,
   type EnginePorts,
   type GroupConfig,
   type GroupFolder,
@@ -477,6 +476,7 @@ export class SyncApp {
       if (this.importing) return;
       await this.fillEmails();
       await this.checkMappingOverlaps();
+      await this.markBridges();
       for (const e of [...this.engines.values()]) await this.syncOne(e);
     });
   }
@@ -494,7 +494,11 @@ export class SyncApp {
   }
 
   syncGroup(groupId: string): Promise<void> {
-    return this.run(() => this.syncOne(this.engine(groupId)));
+    return this.run(async () => {
+      const e = this.engine(groupId);
+      await this.markBridges();
+      await this.syncOne(e);
+    });
   }
 
   status(): Promise<GroupSummary[]> {
@@ -659,10 +663,9 @@ export class SyncApp {
     if ((this.backoffUntil.get(g) ?? 0) > this.deps.clock.now()) return;
     const before = JSON.stringify(e.status);
     try {
-      await this.markBridges();
       const bridged = await this.recordBeforeBridge(e);
       const res = await e.cycle();
-      if (res.applied || res.migratedTo) await this.recordBridged(bridged);
+      if (res.applied) await this.recordBridged(bridged);
       this.lastSyncAt.set(g, this.deps.clock.now());
       this.lastError.delete(g);
       this.rawError.delete(g);
@@ -713,7 +716,7 @@ export class SyncApp {
     return false;
   }
 
-  /** Marks syncs that share folders with another sync here. */
+  /** Marks syncs that share folders, so duplicates two bridges create aren't blamed on the browser's own sync. */
   private async markBridges(): Promise<void> {
     const all = [...this.engines.values()];
     for (const e of all) {
@@ -884,34 +887,9 @@ export class SyncApp {
       sleep: this.deps.sleep,
       keyFor: (g) => this.deps.store.getKey(g),
       place: (hint, title, groupId) => this.placeTop(hint, title, groupId),
-      sharing: this.sharing,
       settings: { historyMs: s.historyDays * DAY, guardPercent: s.guardPercent, guardMin: s.guardMin },
     };
   }
-
-  /** Other groups here, lowest id first, so every device links an item through the same group. */
-  private others(groupId: string): GroupEngine[] {
-    return [...this.engines.values()].filter((e) => e.groupId !== groupId).sort((a, b) => (a.groupId < b.groupId ? -1 : 1));
-  }
-
-  private readonly sharing: DeviceSharing = {
-    linkedId: (localId, groupId) => {
-      for (const e of this.others(groupId)) {
-        const sid = e.state.idmap.find(([l]) => l === localId)?.[1];
-        if (sid) return linkId(sid, e.groupId, groupId);
-      }
-      return null;
-    },
-    twinLocal: (sid, groupId) => {
-      for (const e of this.others(groupId)) {
-        const twin = linkId(sid, groupId, e.groupId);
-        const localId = e.state.idmap.find(([, s]) => s === twin)?.[0];
-        if (localId) return localId;
-      }
-      return null;
-    },
-    heldElsewhere: (localId, groupId) => this.others(groupId).some((e) => e.state.idmap.some(([l]) => l === localId) || Object.values(e.state.config.mapping).includes(localId)),
-  };
 
   private readonly providers = new Map<string, StorageProvider>();
 

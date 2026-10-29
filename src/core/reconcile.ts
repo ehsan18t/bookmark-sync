@@ -31,8 +31,7 @@ export interface ReconcileInput {
   mirror: Mirror;
   idmap: Map<string, string>;
   excluded: ReadonlyMap<string, Excluded>;
-  /** The id for a newly seen local item. */
-  newId: (localId: string) => string;
+  newId: () => string;
 }
 
 export interface ReconcileResult {
@@ -60,7 +59,7 @@ export function reconcile(input: ReconcileInput): ReconcileResult {
     const kids = (n.children ?? []).filter((c) => !isExcluded(c, n.localId));
     kidsOf.set(n, kids);
     for (const c of kids) {
-      const sid = idmap.get(c.localId) ?? newId(c.localId);
+      const sid = idmap.get(c.localId) ?? newId();
       sidOf.set(c, sid);
       liveSids.add(sid);
       assign(c);

@@ -218,73 +218,6 @@ describe('the app layer', () => {
     expect(await titles(a.bookmarks, java)).toEqual(['jdk']);
   });
 
-  it('keeps bookmarks moved in and out of a folder two syncs share exactly', async () => {
-    const { a, b, accA, accB } = await pair();
-    const games = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Games', url: '' });
-    await a.bookmarks.create({ parentId: games, kind: 'bookmark', title: 'Y', url: 'https://y.example/' });
-    const ids = [];
-    for (const name of ['One', 'Two']) ids.push(await a.app.createGroup({ accountId: accA, name, mode: 'folder', target: { kind: 'folders', folderIds: [games] }, ignoreDefaults: false }));
-    const [top] = (await b.app.groupFolders({ accountId: accB, groupId: ids[0]! })).folders;
-    await b.app.joinGroup({ accountId: accB, groupId: ids[0]!, mode: 'merge', ignoreDefaults: false, target: { kind: 'parts', parts: [{ part: top!.id, hint: top!.hint! }] } });
-    const gamesB = (await b.bookmarks.getSubTree(FAKE_ROOTS.other)).children!.find((n) => n.title === 'Games')!.localId;
-    const [top2] = (await b.app.groupFolders({ accountId: accB, groupId: ids[1]! })).folders;
-    await b.app.joinGroup({ accountId: accB, groupId: ids[1]!, mode: 'merge', ignoreDefaults: false, target: { kind: 'parts', parts: [{ part: top2!.id, folderId: gamesB }] } });
-    const settle = async () => {
-      for (let i = 0; i < 3; i++) for (const x of [a, b]) await x.app.syncAll();
-    };
-    await settle();
-    const z = await b.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'Z', url: 'https://z.example/' });
-    const y = (await b.bookmarks.getSubTree(gamesB)).children![0]!.localId;
-    await b.bookmarks.move(y, { parentId: FAKE_ROOTS.toolbar });
-    await b.bookmarks.move(z, { parentId: gamesB });
-    await settle();
-    for (const x of [a, b]) {
-      const g = (await x.bookmarks.getSubTree(FAKE_ROOTS.other)).children!.find((n) => n.title === 'Games')!.localId;
-      expect(await titles(x.bookmarks, g)).toEqual(['Z']);
-    }
-  });
-
-  for (const order of ['inner first', 'outer first'] as const) {
-    it(`keeps a bookmark moved across a nested shared folder (${order})`, async () => {
-      const { a, b, accA, accB } = await pair();
-      const games = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Games', url: '' });
-      await a.bookmarks.create({ parentId: games, kind: 'bookmark', title: 'Y', url: 'https://y.example/' });
-      await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'bookmark', title: 'Z', url: 'https://z.example/' });
-      const make = async (which: 'inner' | 'outer') =>
-        which === 'inner'
-          ? a.app.createGroup({ accountId: accA, name: 'Games', mode: 'folder', target: { kind: 'folders', folderIds: [games] }, ignoreDefaults: false })
-          : a.app.createGroup({ accountId: accA, name: 'Other', mode: 'folder', target: { kind: 'folders', folderIds: [FAKE_ROOTS.other] }, ignoreDefaults: false });
-      const ids = order === 'inner first' ? [await make('inner'), await make('outer')] : [await make('outer'), await make('inner')];
-      for (const groupId of ids) {
-        const [top] = (await b.app.groupFolders({ accountId: accB, groupId })).folders;
-        await b.app.joinGroup({ accountId: accB, groupId, mode: 'merge', ignoreDefaults: false, target: { kind: 'parts', parts: [{ part: top!.id, hint: top!.hint! }] } });
-      }
-      const settle = async () => {
-        for (let i = 0; i < 3; i++) for (const x of [a, b]) await x.app.syncAll();
-      };
-      await settle();
-      const gamesB = (await b.bookmarks.getSubTree(FAKE_ROOTS.other)).children!.find((n) => n.title === 'Games')!.localId;
-      expect((await titles(b.bookmarks, FAKE_ROOTS.other)).sort()).toEqual(['Games', 'Z']);
-      expect(await titles(b.bookmarks, gamesB)).toEqual(['Y']);
-
-      const y = (await b.bookmarks.getSubTree(gamesB)).children![0]!.localId;
-      await b.bookmarks.move(y, { parentId: FAKE_ROOTS.other });
-      await settle();
-      for (const x of [a, b]) {
-        expect((await titles(x.bookmarks, FAKE_ROOTS.other)).sort()).toEqual(['Games', 'Y', 'Z']);
-      }
-
-      const z = (await b.bookmarks.getSubTree(FAKE_ROOTS.other)).children!.find((n) => n.title === 'Z')!.localId;
-      await b.bookmarks.move(z, { parentId: gamesB });
-      await settle();
-      for (const x of [a, b]) {
-        const g = (await x.bookmarks.getSubTree(FAKE_ROOTS.other)).children!.find((n) => n.title === 'Games')!.localId;
-        expect((await titles(x.bookmarks, FAKE_ROOTS.other)).sort()).toEqual(['Games', 'Y']);
-        expect(await titles(x.bookmarks, g)).toEqual(['Z']);
-      }
-    });
-  }
-
   it('still asks about a big change of its own while a shared folder brings changes in', async () => {
     const { a, b, accA, accB } = await pair();
     const shared = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Shared', url: '' });
@@ -302,33 +235,6 @@ describe('the app layer', () => {
     await b.app.syncGroup(work);
     await b.app.syncGroup(home);
     expect((await b.app.status()).find((s) => s.groupId === home)!.status).toMatchObject({ state: 'paused', reason: 'large-local-change' });
-  });
-
-  it('brings bookmarks back once when a big delete in a shared folder is reverted on both syncs', async () => {
-    const { a, b, accA, accB } = await pair();
-    const shared = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Shared', url: '' });
-    for (let i = 0; i < 12; i++) await a.bookmarks.create({ parentId: shared, kind: 'bookmark', title: `b${i}`, url: `https://b${i}.example/` });
-    const work = await a.app.createGroup({ accountId: accA, name: 'Work', mode: 'folder', target: { kind: 'folders', folderIds: [shared] }, ignoreDefaults: false });
-    const home = await b.app.createGroup({ accountId: accB, name: 'Home', mode: 'folder', target: { kind: 'folders', folderIds: [FAKE_ROOTS.other] }, ignoreDefaults: false });
-    const [top] = (await b.app.groupFolders({ accountId: accB, groupId: work })).folders;
-    await b.app.joinGroup({ accountId: accB, groupId: work, mode: 'merge', ignoreDefaults: false, target: { kind: 'parts', parts: [{ part: top!.id, hint: top!.hint! }] } });
-    await b.app.syncAll();
-    await b.app.syncAll();
-    const sharedB = (await b.bookmarks.getSubTree(FAKE_ROOTS.other)).children!.find((n) => n.title === 'Shared')!.localId;
-    expect(await titles(b.bookmarks, sharedB)).toHaveLength(12);
-
-    for (const n of (await b.bookmarks.getSubTree(sharedB)).children ?? []) await b.bookmarks.removeTree(n.localId);
-    await b.app.syncAll();
-    expect((await b.app.status()).map((s) => s.status)).toEqual([
-      expect.objectContaining({ reason: 'large-local-change' }),
-      expect.objectContaining({ reason: 'large-local-change' }),
-    ]);
-    await b.app.resolvePause(home, 'revert');
-    await b.app.resolvePause(work, 'revert');
-    for (let i = 0; i < 2; i++) await b.app.syncAll();
-    expect((await titles(b.bookmarks, sharedB)).sort()).toEqual(Array.from({ length: 12 }, (_, i) => `b${i}`).sort());
-    await a.app.syncAll();
-    expect(await titles(a.bookmarks, shared)).toHaveLength(12);
   });
 
   it('places a joined folder inside a folder of another sync, but never a followed one', async () => {

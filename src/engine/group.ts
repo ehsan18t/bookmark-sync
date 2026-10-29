@@ -247,17 +247,6 @@ export interface EnginePorts {
   keyFor?: (groupId: string) => Promise<CryptoKey | null>;
   /** A new local folder for a top another device added; null where it would overlap a synced folder. */
   place?: (hint: PlaceHint, title: string, groupId: string) => Promise<string | null>;
-  /** Other groups on this device that may hold the same local items. */
-  sharing?: DeviceSharing;
-}
-
-export interface DeviceSharing {
-  /** The id this group gives a local item another group already holds, so every bridging device picks the same one. */
-  linkedId(localId: string, groupId: string): string | null;
-  /** The local item another group holds as the twin of this group's node. */
-  twinLocal(sid: string, groupId: string): string | null;
-  /** Whether another group on this device holds the local item. */
-  heldElsewhere(localId: string, groupId: string): boolean;
 }
 
 export class ForkError extends Error {}
@@ -759,13 +748,8 @@ export class GroupEngine {
       mirror: this.mirror(),
       idmap: new Map(this.local.idmap),
       excluded: new Map(this.local.excluded),
-      newId: (localId) => this.ports.sharing?.linkedId(localId, this.groupId) ?? randomId(this.random),
+      newId: () => randomId(this.random),
     });
-    const mirrorNow = new Map(this.local.mirror.map((m) => [m.id, m]));
-    for (const d of result.drafts) {
-      const localId = d.type === 'delete' ? mirrorNow.get(d.node)?.localId : undefined;
-      if (d.type === 'delete' && localId && (await this.ports.bookmarks.exists(localId))) d.left = true;
-    }
     const ops = this.recordDrafts(result.drafts, opts.confirmed ?? false);
     const now = this.ports.clock.now();
     for (const op of ops) if (op.type === 'create') this.local.recentCreates.push({ node: op.node, hlc: op.hlc, device: op.device, at: now });
@@ -1014,7 +998,8 @@ export class GroupEngine {
       const pairs = findDuplicatePairs(merged, newRemote.filter((op): op is CreateOp => op.type === 'create'), recent);
       if (pairs.length) {
         this.repairDuplicates(merged, pairs.filter((p) => p.ownIsLater).map((p) => [p.own.node, p.remote.node] as const));
-        if (pairs.length >= this.settings.nativeSyncPauseCount) this.pendingNativeSyncPause = true;
+        // Two browsers bridging the same syncs each copy a bookmark across; that is not the browser's own sync.
+        if (pairs.length >= this.settings.nativeSyncPauseCount && !this.bridged) this.pendingNativeSyncPause = true;
         merged = this.mergedTree();
       }
     }
@@ -1044,32 +1029,16 @@ export class GroupEngine {
 
     this.local.applyInProgress = true;
     await this.persist();
-    const sharing = this.ports.sharing;
-    const leftDeleted = new Set<string>();
-    if (sharing) {
-      const lastDelete = new Map<string, boolean>();
-      for (const op of this.local.ops) if (op.type === 'delete') lastDelete.set(op.node, !!op.left);
-      for (const [node, left] of lastDelete) if (left) leftDeleted.add(node);
-    }
     const result = await applyMerged(
       this.ports.bookmarks,
       Object.fromEntries(this.roots.map((r) => [r, this.localRoot(r)])),
       this.mirror(),
       merged,
       new Set(this.local.excluded.map(([l]) => l)),
-      sharing && {
-        adopt: (sid) => sharing.twinLocal(sid, this.groupId),
-        release: (sid, localId) => leftDeleted.has(sid) && sharing.heldElsewhere(localId, this.groupId),
-      },
     );
     this.local.applyInProgress = false;
     this.local.mirror = [...result.mirror.nodes.values()];
     this.local.idmap = [...result.idmap];
-    // A released item stays out of this group until it moves, so it isn't recorded back as new.
-    for (const localId of result.released) {
-      const parent = await this.ports.bookmarks.parentOf(localId);
-      if (parent) this.local.excluded = [...this.local.excluded.filter(([l]) => l !== localId), [localId, { parent, sticky: false }]];
-    }
     for (const [d, c] of Object.entries(this.local.cursors)) this.local.appliedSeq[d] = c.opSeq;
     await this.persist();
     return result.changed;
