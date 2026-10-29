@@ -132,16 +132,53 @@ describe('the app layer', () => {
     expect(await titles(b.bookmarks, box)).toEqual(['Toolbar', 'Other', 'Menu']);
   });
 
-  it('refuses mappings that overlap another group', async () => {
+  it('lets syncs share folders, including folders inside each other', async () => {
     const { a, accA } = await pair();
     const work = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Work', url: '' });
     const inner = await a.bookmarks.create({ parentId: work, kind: 'folder', title: 'Inner', url: '' });
     await a.app.createGroup({ accountId: accA, name: 'Work', mode: 'folder', target: { kind: 'folders', folderIds: [work] }, ignoreDefaults: false });
-    await expect(a.app.createGroup({ accountId: accA, name: 'Inner', mode: 'folder', target: { kind: 'folders', folderIds: [inner] }, ignoreDefaults: false })).rejects.toThrow(/overlaps/);
-    await expect(a.app.createGroup({ accountId: accA, name: 'All', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false })).rejects.toThrow(/overlaps/);
-    const home = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Home', url: '' });
-    await a.app.createGroup({ accountId: accA, name: 'Home', mode: 'folder', target: { kind: 'folders', folderIds: [home] }, ignoreDefaults: false });
-    expect((await a.app.status()).map((s) => s.location).sort()).toEqual(['unfiled_____ / Home', 'unfiled_____ / Work']);
+    await a.app.createGroup({ accountId: accA, name: 'Inner', mode: 'folder', target: { kind: 'folders', folderIds: [inner] }, ignoreDefaults: false });
+    await a.app.createGroup({ accountId: accA, name: 'All', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
+    await a.app.syncAll();
+    expect((await a.app.status()).map((s) => [s.name, s.status.state])).toEqual([
+      ['Work', 'active'],
+      ['Inner', 'active'],
+      ['All', 'active'],
+    ]);
+  });
+
+  it('carries changes between two syncs through a folder they share', async () => {
+    const { provider, a, b, accA, accB } = await pair();
+    const c = browser('edge', provider);
+    await c.app.init();
+    const accC = await c.app.addAccount({ type: 'webdav', name: 'Server', url: 'mem://', username: 'u', password: 'p' });
+    const shared = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Shared', url: '' });
+    const work = await a.app.createGroup({ accountId: accA, name: 'Work', mode: 'folder', target: { kind: 'folders', folderIds: [shared] }, ignoreDefaults: false });
+    const home = await b.app.createGroup({ accountId: accB, name: 'Home', mode: 'folder', target: { kind: 'folders', folderIds: [FAKE_ROOTS.other] }, ignoreDefaults: false });
+    const [top] = (await b.app.groupFolders({ accountId: accB, groupId: work })).folders;
+    await b.app.joinGroup({ accountId: accB, groupId: work, mode: 'merge', ignoreDefaults: false, target: { kind: 'parts', parts: [{ part: top!.id, hint: top!.hint! }] } });
+    const box = await c.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'folder', title: 'Home', url: '' });
+    const [homeTop] = (await c.app.groupFolders({ accountId: accC, groupId: home })).folders;
+    await c.app.joinGroup({ accountId: accC, groupId: home, mode: 'merge', ignoreDefaults: false, target: { kind: 'parts', parts: [{ part: homeTop!.id, folderId: box }] } });
+
+    for (let i = 0; i < 12; i++) await a.bookmarks.create({ parentId: shared, kind: 'bookmark', title: `b${i}`, url: `https://b${i}.example/` });
+    await a.app.syncAll();
+    await b.app.syncAll();
+    await b.app.syncAll();
+    await c.app.syncAll();
+    expect((await b.app.status()).map((s) => s.status.state)).toEqual(['active', 'active']);
+    const sharedC = (await c.bookmarks.getSubTree(box)).children!.find((f) => f.title === 'Shared')!;
+    expect((sharedC.children ?? []).map((n) => n.title)).toHaveLength(12);
+
+    for (const n of (await a.bookmarks.getSubTree(shared)).children ?? []) await a.bookmarks.removeTree(n.localId);
+    await a.app.syncAll();
+    await a.app.resolvePause(work, 'apply');
+    await b.app.syncAll();
+    await b.app.syncAll();
+    expect((await b.app.status()).map((s) => s.status.state)).toEqual(['active', 'active']);
+    await c.app.syncAll();
+    expect((await c.app.status())[0]!.status.state).toBe('active');
+    expect(await titles(c.bookmarks, sharedC.localId)).toEqual([]);
   });
 
   it('starts a group from several folders; another browser joins one by path, adds another, and re-points a lost one', async () => {
@@ -181,7 +218,7 @@ describe('the app layer', () => {
     expect(await titles(a.bookmarks, java)).toEqual(['jdk']);
   });
 
-  it('never places a folder inside a folder another sync holds, including folders still to be made', async () => {
+  it('places a joined folder inside a folder another sync holds, and the two then share it', async () => {
     const { a, b, accA, accB } = await pair();
     const java = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Java', url: '' });
     const groupId = await a.app.createGroup({ accountId: accA, name: 'Picked', mode: 'folder', target: { kind: 'folders', folderIds: [java] }, ignoreDefaults: false });
@@ -189,21 +226,15 @@ describe('the app layer', () => {
     await b.app.createGroup({ accountId: accB, name: 'Mine', mode: 'folder', target: { kind: 'folders', folderIds: [FAKE_ROOTS.other] }, ignoreDefaults: false });
 
     const [top] = (await b.app.groupFolders({ accountId: accB, groupId })).folders;
-    const join = { accountId: accB, groupId, mode: 'merge' as const, ignoreDefaults: false };
-    await expect(b.app.joinGroup({ ...join, target: { kind: 'parts', parts: [{ part: top!.id, hint: top!.hint! }], followTops: true } })).rejects.toThrow(/overlaps with the sync “Mine”/);
-    const javaB = await b.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'folder', title: 'Java', url: '' });
-    await b.app.joinGroup({ ...join, target: { kind: 'parts', parts: [{ part: top!.id, folderId: javaB }], followTops: true } });
-
+    await b.app.joinGroup({ accountId: accB, groupId, mode: 'merge', ignoreDefaults: false, target: { kind: 'parts', parts: [{ part: top!.id, hint: top!.hint! }], followTops: true } });
     const recipes = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Recipes', url: '' });
     await a.app.addTops(groupId, [recipes]);
     await b.app.syncAll();
     const picked = (await b.app.status()).find((s) => s.name === 'Picked')!;
-    expect(picked.parts.map((p) => p.path)).toEqual(['toolbar_____ / Java']);
-    expect(picked.notices.map((n) => n.text)).toEqual([expect.stringContaining('already synced by another folder')]);
-    expect(await titles(b.bookmarks, FAKE_ROOTS.other)).toEqual(['private']);
+    expect(picked.parts.map((p) => p.path).sort()).toEqual(['unfiled_____ / Java', 'unfiled_____ / Recipes']);
+    expect((await titles(b.bookmarks, FAKE_ROOTS.other)).sort()).toEqual(['Java', 'Recipes', 'private']);
     await a.app.syncAll();
     expect(await titles(a.bookmarks, FAKE_ROOTS.other)).toEqual(['Java', 'Recipes']);
-    expect(await titles(a.bookmarks, recipes)).toEqual([]);
   });
 
   it('joins an encrypted group only with the right passphrase, and unlocks after a restart', async () => {

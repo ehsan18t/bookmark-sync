@@ -367,7 +367,7 @@ function CreateStep({ account, name, go }: { account: PublicAccount; name: strin
       {mode === 'folder' && (
         <div class="stack">
           <h3>Folders to sync</h3>
-          <p class="muted small">Tick as many as you like. A ticked folder syncs with everything inside it. Other browsers can put each one wherever they want.</p>
+          <p class="muted small">Tick as many as you like. A ticked folder syncs with everything inside it. Other browsers can put each one wherever they want. A folder another sync uses can be ticked too: changes in it then reach both syncs.</p>
           <FolderTree items={localItems(folders.value, groups.value)} multi value={picked} onChange={setPicked} label="Folders to sync" />
         </div>
       )}

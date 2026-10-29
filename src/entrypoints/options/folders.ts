@@ -8,24 +8,26 @@ export interface TreeItem {
   title: string;
   /** Why the folder can't be picked, shown next to it. */
   blocked?: string;
+  /** Shown next to a folder that can still be picked. */
+  note?: string;
 }
 
-/** This browser's folders, with the ones another sync already holds (or contains) blocked. */
+/** This browser's folders, noting the ones another sync already holds or contains. Syncs may share folders. */
 export function localItems(folders: LocalFolder[], groups: GroupSummary[], except?: string): TreeItem[] {
   const parentOf = new Map(folders.map((f) => [f.id, f.parentId]));
-  const blocked = new Map<string, string>();
+  const notes = new Map<string, string>();
   for (const g of groups) {
     if (g.groupId === except) continue;
     for (const id of g.held) {
       for (const f of folders) {
         for (let cur: string | null | undefined = f.id; cur; cur = parentOf.get(cur)) {
-          if (cur === id) blocked.set(f.id, `Synced by “${g.name}”`);
+          if (cur === id) notes.set(f.id, `Also synced by “${g.name}”`);
         }
       }
-      for (let cur = parentOf.get(id); cur; cur = parentOf.get(cur)) if (!blocked.has(cur)) blocked.set(cur, `Has a folder synced by “${g.name}”`);
+      for (let cur = parentOf.get(id); cur; cur = parentOf.get(cur)) if (!notes.has(cur)) notes.set(cur, `Has a folder synced by “${g.name}”`);
     }
   }
-  return folders.map((f) => ({ id: f.id, parent: f.parentId, title: f.title, ...(blocked.has(f.id) ? { blocked: blocked.get(f.id) } : {}) }));
+  return folders.map((f) => ({ id: f.id, parent: f.parentId, title: f.title, ...(notes.has(f.id) ? { note: notes.get(f.id) } : {}) }));
 }
 
 const FIXED: { id: string; root: RootType; fallback: string }[] = [

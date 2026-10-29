@@ -266,7 +266,7 @@ export class SyncApp {
       } else {
         resolved = await this.resolveTarget(input.mode, input.target, true);
       }
-      await this.checkOverlap(resolved.mapping, input.mode === 'folder');
+      if (input.mode === 'folder') await this.checkNesting(resolved.mapping);
       const { encrypted: _e, ...config } = this.config(groupId, account.id, input.name, input.mode, resolved.mapping, false);
       const { engine, key } = await GroupEngine.create(this.ports(account), { ...config, ...(input.mode === 'folder' ? { followTops: true } : {}) }, {
         passphrase: input.passphrase,
@@ -359,7 +359,7 @@ export class SyncApp {
     return this.run(async () => {
       const e = this.engine(groupId);
       const mapping = await this.resolveParts(parts, false);
-      await this.checkOverlap({ ...e.state.config.mapping, ...mapping }, true, groupId);
+      await this.checkNesting({ ...e.state.config.mapping, ...mapping });
       await e.addParts(Object.entries(await this.resolveParts(parts, true)).map(([part, localId]) => ({ part, localId })));
     });
   }
@@ -373,7 +373,7 @@ export class SyncApp {
         const { title, hint } = await this.deps.roots.describe(localId);
         tops.push({ id: randomId(this.deps.random), title, hint: hint ?? { root: 'other', path: [title] }, localId });
       }
-      await this.checkOverlap({ ...e.state.config.mapping, ...Object.fromEntries(tops.map((t) => [t.id, t.localId])) }, true, groupId);
+      await this.checkNesting({ ...e.state.config.mapping, ...Object.fromEntries(tops.map((t) => [t.id, t.localId])) });
       await e.addTops(tops);
     });
   }
@@ -387,7 +387,7 @@ export class SyncApp {
     return this.run(async () => {
       const e = this.engine(groupId);
       const { [part]: _old, ...others } = e.state.config.mapping;
-      await this.checkOverlap({ ...others, [part]: folderId }, true, groupId);
+      await this.checkNesting({ ...others, [part]: folderId });
       await e.movePart(part, folderId);
       await this.syncOne(e);
     });
@@ -476,6 +476,7 @@ export class SyncApp {
       if (this.importing) return;
       await this.fillEmails();
       await this.checkMappingOverlaps();
+      await this.markBridges();
       for (const e of [...this.engines.values()]) await this.syncOne(e);
     });
   }
@@ -659,6 +660,7 @@ export class SyncApp {
     const before = JSON.stringify(e.status);
     try {
       const res = await e.cycle();
+      if (res.applied) await this.recordBridged(e);
       this.lastSyncAt.set(g, this.deps.clock.now());
       this.lastError.delete(g);
       this.rawError.delete(g);
@@ -687,19 +689,50 @@ export class SyncApp {
 
   private readonly failures = new Map<string, number>();
 
+/** Folders of one sync nested inside each other pause it; folders shared with other syncs are allowed. */
   private async checkMappingOverlaps(): Promise<void> {
-    const folders = [...this.engines.values()].flatMap((e) =>
-      Object.entries(e.state.config.mapping)
-        .filter(([, local]) => !local.startsWith(PENDING_PREFIX))
-        .map(([part, folder]) => ({ e, part, folder })),
-    );
-    for (const a of folders) {
-      for (const b of folders) {
-        if (a === b || (a.e === b.e && this.wholeTreeMapping(a.e.state.config))) continue;
-        if (a.folder === b.folder || (await this.isInside(a.folder, b.folder))) {
-          await a.e.pause('mapping-overlap' as PauseReason, b.e.state.config.name);
-          await b.e.pause('mapping-overlap' as PauseReason, a.e.state.config.name);
+    for (const e of this.engines.values()) {
+      if (this.wholeTreeMapping(e.state.config)) continue;
+      const folders = Object.values(e.state.config.mapping).filter((local) => !local.startsWith(PENDING_PREFIX));
+      for (const a of folders) {
+        for (const b of folders) {
+          if (a !== b && (await this.isInside(a, b))) await e.pause('mapping-overlap' as PauseReason, e.state.config.name);
         }
+      }
+    }
+  }
+
+  /** Whether two syncs hold a folder in common, the same one or one inside the other. */
+  private async shareFolders(a: GroupEngine, b: GroupEngine): Promise<boolean> {
+    const live = (e: GroupEngine) => Object.values(e.state.config.mapping).filter((l) => !l.startsWith(PENDING_PREFIX));
+    for (const x of live(a)) {
+      for (const y of live(b)) if (x === y || (await this.isInside(x, y)) || (await this.isInside(y, x))) return true;
+    }
+    return false;
+  }
+
+  /** Marks syncs that share folders, so duplicates two bridges create aren't blamed on the browser's own sync. */
+  private async markBridges(): Promise<void> {
+    const all = [...this.engines.values()];
+    for (const e of all) {
+      let bridged = false;
+      for (const o of all) if (o !== e && (await this.shareFolders(e, o))) bridged = true;
+      e.bridged = bridged;
+    }
+  }
+
+  /**
+   * After `source` changed bookmarks here, syncs sharing its folders record those changes as already checked:
+   * `source` reviewed them on the way in, so they neither trip the big-change pause nor ask again elsewhere.
+   */
+  private async recordBridged(source: GroupEngine): Promise<void> {
+    if (!source.bridged) return;
+    for (const e of this.engines.values()) {
+      if (e === source || !(await this.shareFolders(source, e))) continue;
+      try {
+        await e.recordLocalChanges({ confirmed: true });
+      } catch {
+        // Recorded on that sync's next pass instead.
       }
     }
   }
@@ -716,8 +749,8 @@ export class SyncApp {
     return false;
   }
 
-  /** `ownPairs` also rejects folders of this mapping that sit inside each other; `except` skips that group's current mapping. */
-  private async checkOverlap(mapping: Record<string, string>, ownPairs: boolean, except?: string): Promise<void> {
+  /** Rejects folders of one sync that sit inside each other. Other syncs may share them. */
+  private async checkNesting(mapping: Record<string, string>): Promise<void> {
     const mine = Object.values(mapping).filter((l) => !l.startsWith(PENDING_PREFIX) || pendingAnchor(l));
     // A folder still to be made is empty and sits below its anchor, so only the anchor being inside the other folder counts.
     const nested = async (a: string, b: string): Promise<boolean> => {
@@ -729,26 +762,14 @@ export class SyncApp {
       if (anchorB) return anchorB === a || (await this.isInside(anchorB, a));
       return (await this.isInside(a, b)) || (await this.isInside(b, a));
     };
-    if (ownPairs) {
-      for (const [i, a] of mine.entries()) {
-        for (const b of mine.slice(i + 1)) if (await nested(a, b)) throw new UserError('Two of the folders are inside each other. Pick only the outer one.');
-      }
-    }
-    for (const e of this.engines.values()) {
-      if (e.groupId === except) continue;
-      const name = e.state.config.name;
-      for (const m of mine) {
-        for (const t of Object.values(e.state.config.mapping)) {
-          if (!t.startsWith(PENDING_PREFIX) && (await nested(m, t))) throw new UserError(`That overlaps with the sync “${name}”. Pick a folder outside it.`);
-        }
-      }
+    for (const [i, a] of mine.entries()) {
+      for (const b of mine.slice(i + 1)) if (await nested(a, b)) throw new UserError('Two of the folders are inside each other. Pick only the outer one.');
     }
   }
 
-  /** Where a top another browser added goes here, or null when that place overlaps a folder already synced. */
   /**
-   * A new, empty folder at the hinted path, never an existing folder or a browser root: adopting one would upload
-   * its contents without anyone choosing that on this browser.
+   * Where a top another browser added goes here, or null when that place overlaps a folder of the same sync.
+   * Always a new, empty folder: adopting an existing one would upload its contents without anyone choosing that here.
    */
   private async placeTop(hint: PlaceHint, title: string, groupId: string): Promise<string | null> {
     const parent = { root: hint.root, path: hint.path.slice(0, -1) };
@@ -756,7 +777,7 @@ export class SyncApp {
     const own = this.engines.get(groupId)?.state.config.mapping ?? {};
     const at = await this.deps.roots.resolve(parent, false);
     try {
-      await this.checkOverlap({ ...own, new: at.startsWith(PENDING_PREFIX) ? at : pendingAt(at, [name]) }, true, groupId);
+      await this.checkNesting({ ...own, new: at.startsWith(PENDING_PREFIX) ? at : pendingAt(at, [name]) });
     } catch (e) {
       if (e instanceof UserError) return null;
       throw e;
@@ -806,7 +827,7 @@ export class SyncApp {
       }
       if (!key) throw new UserError('This sync is encrypted. Enter its passphrase.');
     }
-    await this.checkOverlap((await this.resolveTarget(header.mode, input.target, false)).mapping, input.target.kind === 'parts');
+    if (input.target.kind === 'parts') await this.checkNesting((await this.resolveTarget(header.mode, input.target, false)).mapping);
     const { mapping, excluded } = await this.resolveTarget(header.mode, input.target, !preview);
     const config = this.config(input.groupId, account.id, header.name, header.mode, mapping, !!header.encryption);
     if (input.target.kind === 'parts' && input.target.followTops && header.mode === 'folder') config.followTops = true;

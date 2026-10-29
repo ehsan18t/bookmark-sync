@@ -334,6 +334,8 @@ export class GroupEngine {
   private dryRun = false;
   private guardBypass = false;
   importing = false;
+  /** Set when another sync on this browser shares a folder with this one. */
+  bridged = false;
 
   private constructor(
     private readonly ports: EnginePorts,
@@ -996,7 +998,8 @@ export class GroupEngine {
       const pairs = findDuplicatePairs(merged, newRemote.filter((op): op is CreateOp => op.type === 'create'), recent);
       if (pairs.length) {
         this.repairDuplicates(merged, pairs.filter((p) => p.ownIsLater).map((p) => [p.own.node, p.remote.node] as const));
-        if (pairs.length >= this.settings.nativeSyncPauseCount) this.pendingNativeSyncPause = true;
+        // Two browsers bridging the same syncs each copy a bookmark across; that is not the browser's own sync.
+        if (pairs.length >= this.settings.nativeSyncPauseCount && !this.bridged) this.pendingNativeSyncPause = true;
         merged = this.mergedTree();
       }
     }

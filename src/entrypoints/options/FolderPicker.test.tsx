@@ -4,7 +4,7 @@ import { useState } from 'preact/hooks';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { LocalFolder } from '../../engine/app.js';
 import { FolderTree, Placements, toggle } from './FolderPicker.js';
-import type { TreeItem } from './folders.js';
+import { localItems, type TreeItem } from './folders.js';
 
 afterEach(cleanup);
 
@@ -57,6 +57,20 @@ describe('FolderTree', () => {
     fireEvent.click(box('Bar'));
     expect(box('Bar').checked).toBe(true);
     expect(box('Docs').disabled).toBe(true);
+  });
+});
+
+describe('localItems', () => {
+  it('lets folders of another sync be picked, with a note', () => {
+    const local = [
+      { id: 'L1', parentId: null, title: 'Other', path: 'Other' },
+      { id: 'L2', parentId: 'L1', title: 'Games', path: 'Other / Games' },
+    ];
+    const items = localItems(local, [{ groupId: 'g', name: 'Main', held: ['L2'] } as never]);
+    expect(items.map((i) => [i.id, i.note, i.blocked])).toEqual([
+      ['L1', 'Has a folder synced by “Main”', undefined],
+      ['L2', 'Also synced by “Main”', undefined],
+    ]);
   });
 });
 
