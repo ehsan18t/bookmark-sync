@@ -14,6 +14,7 @@ export type Command =
   | { t: 'join'; input: JoinInput }
   | { t: 'leave' | 'undoJoin' | 'deleteEverywhere' | 'devices' | 'timeline' | 'syncGroup'; groupId: string }
   | { t: 'removeDevice'; groupId: string; deviceId: string }
+  | { t: 'rename'; groupId: string; name: string }
   | { t: 'groupFolders'; accountId: string; groupId: string; passphrase?: string }
   | { t: 'addParts'; groupId: string; parts: PartChoice[] }
   | { t: 'addTops'; groupId: string; folderIds: string[] }

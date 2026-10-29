@@ -482,6 +482,7 @@ export class GroupEngine {
       await this.recordLocalChanges({ clockChecked: true });
       result.pulled = await this.pull(listed);
       if (this.paused) return result;
+      if (this.nameChanged) await this.readName();
       if (!(await this.reviewParts())) return result;
       const migratedTo = await this.migrationStep();
       if (migratedTo) return { ...result, migratedTo };
@@ -508,6 +509,24 @@ export class GroupEngine {
 
   private pendingNativeSyncPause = false;
   private leaving = false;
+  private nameChanged = false;
+
+  /** The name lives in the plain header, so browsers without the key still list the sync by it. */
+  async rename(name: string): Promise<void> {
+    const { provider } = this.ports;
+    const header = await GroupEngine.readHeader(provider, this.groupId);
+    if (!header) throw new UserError('That sync no longer exists on this storage.');
+    await provider.overwrite(groupHeaderPath(this.groupId), await encode('group', { ...header, name } satisfies GroupHeader));
+    this.local.config.name = name;
+    await this.writeMarker('renamed', { hlc: this.clock.tick() });
+    await this.persist();
+  }
+
+  private async readName(): Promise<void> {
+    this.nameChanged = false;
+    const header = await GroupEngine.readHeader(this.ports.provider, this.groupId);
+    if (header) this.local.config.name = header.name;
+  }
 
   private get paused(): boolean {
     return this.local.status.state === 'paused';
@@ -908,6 +927,7 @@ export class GroupEngine {
       else if (name === 'group-deleted') cursor.deleted = !!(body as GroupDeletedMarker).hlc;
       else if (name === 'migration') cursor.migration = body as MigrationMarker;
       else if (name === 'migrated') cursor.migrated = body as MigratedMarker;
+      else if (name === 'renamed') this.nameChanged = true;
       cursor.markers[name] = version;
     }
   }

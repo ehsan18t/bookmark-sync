@@ -104,6 +104,22 @@ describe('the app layer', () => {
       await expect(b.app.createGroup({ accountId: accB, name, mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false })).rejects.toThrow(/already on this storage/);
   });
 
+  it('renames a group for every browser and for discovery, refusing a taken name', async () => {
+    const { provider, a, b, accA, accB } = await pair();
+    const groupId = await a.app.createGroup({ accountId: accA, name: 'Main', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
+    const c = browser('edge', provider);
+    await c.app.init();
+    const accC = await c.app.addAccount({ type: 'webdav', name: 'Server', url: 'mem://', username: 'u', password: 'p' });
+    await c.app.createGroup({ accountId: accC, name: 'Work', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
+    await b.app.joinGroup({ accountId: accB, groupId, target: { kind: 'whole' }, mode: 'merge', ignoreDefaults: false });
+    await expect(a.app.renameGroup(groupId, ' work ')).rejects.toThrow(/already on this storage/);
+    await a.app.renameGroup(groupId, 'Home');
+    expect((await a.app.status()).find((g) => g.groupId === groupId)?.name).toBe('Home');
+    expect((await b.app.discoverGroups(accB)).find((g) => g.groupId === groupId)?.name).toBe('Home');
+    await b.app.syncAll();
+    expect((await b.app.status())[0]?.name).toBe('Home');
+  });
+
   it('previewing a join into a folder creates nothing', async () => {
     const { a, b, accA, accB } = await pair();
     await a.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'x', url: 'https://x.example/' });

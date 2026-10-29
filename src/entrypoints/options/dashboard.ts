@@ -109,6 +109,7 @@ function syncCard(g: GroupSummary, refresh: () => Promise<void>) {
         h(
           'div',
           { class: 'row' },
+          h('button', { onclick: () => more.replaceChildren(renamePanel(g, refresh)) }, icon('pencil'), 'Rename'),
           g.parts.length || g.mode === 'folder' ? h('button', { onclick: () => more.replaceChildren(foldersPanel(g, refresh)) }, icon('folders'), 'Folders synced here') : null,
           h('button', { onclick: () => more.replaceChildren(encryptionPanel(g, refresh)) }, icon('shield-lock'), g.encrypted ? 'Turn off encryption' : 'Turn on encryption'),
           g.canUndoJoin
@@ -272,6 +273,17 @@ function pauseBanner(g: GroupSummary, refresh: () => Promise<void>) {
     buttons.append(action('Resume syncing', resolve('resume'), { kind: 'primary' }));
   }
   return h('div', { class: 'banner' }, icon('player-pause'), h('div', { class: 'body' }, h('span', {}, text), buttons.childElementCount ? buttons : null));
+}
+
+function renamePanel(g: GroupSummary, refresh: () => Promise<void>) {
+  const name = h('input', { type: 'text', value: g.name });
+  queueMicrotask(() => name.select());
+  return h(
+    'div',
+    { class: 'card stack' },
+    field('New name', name, 'Every browser in this sync shows the new name after its next sync.'),
+    h('div', { class: 'row' }, action('Save name', async () => (await send({ t: 'rename', groupId: g.groupId, name: name.value }), refresh()), { kind: 'primary', busy: 'Renaming…' })),
+  );
 }
 
 function encryptionPanel(g: GroupSummary, refresh: () => Promise<void>) {

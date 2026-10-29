@@ -162,6 +162,8 @@ export default defineBackground({
           return app.undoJoin(cmd.groupId);
         case 'deleteEverywhere':
           return app.deleteEverywhere(cmd.groupId);
+        case 'rename':
+          return app.renameGroup(cmd.groupId, cmd.name);
         case 'devices':
           return app.devices(cmd.groupId);
         case 'removeDevice':

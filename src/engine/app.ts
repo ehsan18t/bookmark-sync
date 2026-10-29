@@ -317,6 +317,17 @@ export class SyncApp {
     });
   }
 
+  renameGroup(groupId: string, name: string): Promise<void> {
+    return this.run(async () => {
+      const e = this.engine(groupId);
+      const trimmed = name.trim();
+      if (!sameNameKey(trimmed)) throw new UserError('Give this sync a name.');
+      const taken = (await this.liveGroups(this.providerOf(this.account(e.state.config.accountId)))).find((g) => g.groupId !== groupId && sameNameKey(g.name) === sameNameKey(trimmed));
+      if (taken) throw new UserError(`A sync called “${taken.name}” is already on this storage. Pick another name.`);
+      await e.rename(trimmed);
+    });
+  }
+
   deleteEverywhere(groupId: string): Promise<void> {
     return this.run(async () => {
       await this.engine(groupId).deleteEverywhere();
