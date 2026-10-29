@@ -529,13 +529,16 @@ export class SyncApp {
     });
   }
 
-  /** Reads what the engines hold without waiting for a running sync; the snapshot after it shows its result. */
+  /**
+   * Reads what the engines hold without waiting for a running sync; the snapshot after it shows its result.
+   * Keyed by `engines`, not the engine's own ID, which a migration changes before the app moves it.
+   */
   async status(): Promise<GroupSummary[]> {
-    const engines = [...this.engines.values()];
-    const locals = engines.flatMap((e) => Object.values(e.state.config.mapping));
+    const engines = [...this.engines].map(([groupId, e]) => ({ groupId, e, mapping: { ...e.state.config.mapping } }));
+    const locals = engines.flatMap((x) => Object.values(x.mapping));
     const found = await this.deps.roots.pathsOf(locals);
     const pathOf = new Map(locals.map((l, i) => [l, found[i] ?? 'A deleted folder']));
-    return engines.map((e) => {
+    return engines.map(({ groupId, e, mapping }) => {
       const c = e.state.config;
       const g = e.state.guard;
       const m = e.migrationProgress();
@@ -547,23 +550,23 @@ export class SyncApp {
               .map((f) => f.id)
           : [],
       );
-      const parts: GroupPart[] = Object.entries(c.mapping).map(([part, local]) => ({ part, path: pathOf.get(local) ?? 'A deleted folder', top: tops.has(part) }));
-      const whole = c.mode === 'everything' && EVERYTHING_ROOTS.every((r) => c.mapping[r] !== undefined);
+      const parts: GroupPart[] = Object.entries(mapping).map(([part, local]) => ({ part, path: pathOf.get(local)!, top: tops.has(part) }));
+      const whole = c.mode === 'everything' && EVERYTHING_ROOTS.every((r) => mapping[r] !== undefined);
       const paths = parts.map((p) => p.path);
       return {
-        groupId: c.groupId,
+        groupId,
         name: c.name,
         accountId: c.accountId,
         mode: c.mode,
         location: whole ? 'All bookmarks' : paths.length > 2 ? `${paths.slice(0, 2).join(', ')} and ${paths.length - 2} more` : paths.join(', ') || 'No folders',
         parts: whole ? [] : parts,
-        held: Object.values(c.mapping),
+        held: Object.values(mapping),
         notices: [...e.notices],
         encrypted: c.encrypted,
         bookmarks: [...e.mirror().nodes.values()].filter((n) => n.kind === 'bookmark').length,
         status: e.status,
-        lastSyncAt: this.lastSyncAt.get(c.groupId) ?? null,
-        lastError: this.lastError.get(c.groupId) ?? null,
+        lastSyncAt: this.lastSyncAt.get(groupId) ?? null,
+        lastError: this.lastError.get(groupId) ?? null,
         pendingChanges: e.state.outbox.length + (e.state.pendingBatch?.ops.length ?? 0),
         guard: g ? { kind: g.kind, count: g.count, total: g.total } : null,
         migration: m ? { waitingFor: m.waitingFor, initiator: m.initiator } : null,
