@@ -1,7 +1,11 @@
+import { settleLimited } from '../core/pool.js';
 import { longestIncreasing } from '../core/position.js';
 import type { LiveNode, Mirror, MirrorNode } from '../core/reconcile.js';
 import { childrenIndex, diffTrees, type Tree } from '../core/tree.js';
 import type { BookmarksPort } from './ports.js';
+
+/** Browser calls kept in flight at once; each waits on the browser, not on this worker. */
+const PARALLEL_WRITES = 32;
 
 export interface ApplyResult {
   mirror: Mirror;
@@ -24,17 +28,29 @@ export async function applyMerged(port: BookmarksPort, rootLocal: Readonly<Recor
   // The browser may refuse single items (Firefox rejects javascript: bookmarks from extensions). A refused
   // create has no local copy; a refused move or edit keeps its last state, so it is retried, not recorded back.
   const kept = new Map<string, MirrorNode>();
+  // Creates run a folder level at a time, so every parent exists first; reorder fixes any order the browser chose.
+  const depth = new Map<string, number>();
+  const levels: (typeof diff.creates)[] = [];
   for (const n of diff.creates) {
-    const parent = localOf.get(n.parent);
-    if ((n.kind === 'separator' && !port.supportsSeparators) || !parent) {
-      localOf.set(n.id, '');
-      continue;
-    }
-    try {
-      localOf.set(n.id, await port.create({ parentId: parent, kind: n.kind, title: n.title, url: n.url }));
-    } catch {
-      localOf.set(n.id, '');
-    }
+    const d = (depth.get(n.parent) ?? -1) + 1;
+    depth.set(n.id, d);
+    const level = levels[d] ?? [];
+    levels[d] = level;
+    level.push(n);
+  }
+  for (const level of levels) {
+    await settleLimited(level, PARALLEL_WRITES, async (n) => {
+      const parent = localOf.get(n.parent);
+      if ((n.kind === 'separator' && !port.supportsSeparators) || !parent) {
+        localOf.set(n.id, '');
+        return;
+      }
+      try {
+        localOf.set(n.id, await port.create({ parentId: parent, kind: n.kind, title: n.title, url: n.url }));
+      } catch {
+        localOf.set(n.id, '');
+      }
+    });
   }
   for (const n of diff.moves) {
     const old = retried.get(n.id)!;
@@ -46,26 +62,26 @@ export async function applyMerged(port: BookmarksPort, rootLocal: Readonly<Recor
       kept.set(n.id, old);
     }
   }
-  for (const n of diff.updates) {
-    if (virtual(n.id)) continue;
+  await settleLimited(diff.updates, PARALLEL_WRITES, async (n) => {
+    if (virtual(n.id)) return;
     try {
       await port.update(local(n.id), n.kind === 'bookmark' ? { title: n.title, url: n.url } : { title: n.title });
     } catch {
       const old = retried.get(n.id)!;
       kept.set(n.id, { ...(kept.get(n.id) ?? { ...n, localId: old.localId }), title: old.title, url: old.url });
     }
-  }
+  });
   const deleted = new Set(diff.deletes.map((n) => n.id));
   const refusedDeletes = new Set<string>();
-  for (const n of diff.deletes) {
-    if (virtual(n.id) || deleted.has(retried.get(n.id)!.parent)) continue;
+  await settleLimited(diff.deletes, PARALLEL_WRITES, async (n) => {
+    if (virtual(n.id) || deleted.has(retried.get(n.id)!.parent)) return;
     const localId = retried.get(n.id)!.localId;
     try {
       await port.removeTree(localId);
     } catch {
       if (await port.exists(localId)) refusedDeletes.add(n.id);
     }
-  }
+  });
   const underRefused = (sid: string): boolean => {
     for (let cur = retried.get(sid); cur; cur = retried.get(cur.parent)) if (refusedDeletes.has(cur.id)) return true;
     return false;
@@ -98,24 +114,42 @@ async function reorder(port: BookmarksPort, merged: Tree, localOf: Map<string, s
     live.set(n.localId, n);
     for (const c of n.children ?? []) index(c);
   };
-  for (const r of merged.roots) index(await port.getSubTree(localOf.get(r)!));
+  for (const tree of await Promise.all(merged.roots.map((r) => port.getSubTree(localOf.get(r)!)))) index(tree);
 
+  // Folders are reordered at once; moves inside one folder depend on each other's indexes, so they stay in turn.
   const folders = [...merged.roots, ...[...merged.nodes.values()].filter((n) => n.kind === 'folder').map((n) => n.id)];
-  for (const folder of folders) {
+  await settleLimited(folders, PARALLEL_WRITES, async (folder) => {
     const parentLocal = localOf.get(folder)!;
     const current = (live.get(parentLocal)?.children ?? []).map((c) => c.localId);
     const desired = (idx.get(folder) ?? []).map((c) => localOf.get(c.id)!).filter((l) => l !== '');
     const inGroup = current.filter((l) => !excluded.has(l));
-    if (inGroup.length === desired.length && inGroup.every((x, i) => x === desired[i])) continue;
+    if (inGroup.length === desired.length && inGroup.every((x, i) => x === desired[i])) return;
 
     const keep = longestIncreasing(desired.map((l) => (current.indexOf(l) >= 0 ? current.indexOf(l) : null)));
     for (let j = 0; j < desired.length; j++) {
       if (keep.has(j)) continue;
       const l = desired[j]!;
-      current.splice(current.indexOf(l), 1);
+      const from = current.indexOf(l);
+      if (from >= 0) current.splice(from, 1);
       const target = j === 0 ? 0 : current.indexOf(desired[j - 1]!) + 1;
       current.splice(target, 0, l);
-      await port.move(l, { parentId: parentLocal, index: target }).catch(() => {});
+      await port.move(l, { parentId: parentLocal, index: target, ...(from >= 0 ? { from } : {}) }).catch(() => {});
     }
+  });
+}
+
+/** Creates `nodes` in `parentId` and below, leaving out what `keep` rejects. Siblings go in order, separate folders at once. */
+export async function recreate(port: BookmarksPort, parentId: string, nodes: readonly LiveNode[], keep: (n: LiveNode) => boolean = () => true, index?: number): Promise<void> {
+  const folders: [string, LiveNode[]][] = [];
+  for (const [i, n] of nodes.filter(keep).entries()) {
+    const id = await port.create({ parentId, index: index === undefined ? undefined : index + i, kind: n.kind, title: n.title, url: n.url });
+    if (n.kind === 'folder' && n.children?.length) folders.push([id, n.children]);
   }
+  await settleLimited(folders, PARALLEL_WRITES, ([id, kids]) => recreate(port, id, kids, keep));
+}
+
+/** Removes each item with its contents, all at once; throws the first refusal after trying every one. */
+export async function removeAll(port: BookmarksPort, localIds: readonly string[]): Promise<void> {
+  const failed = (await settleLimited(localIds, PARALLEL_WRITES, (l) => port.removeTree(l))).find((r) => r.status === 'rejected');
+  if (failed) throw failed.reason;
 }

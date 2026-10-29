@@ -33,7 +33,8 @@ export interface BookmarksPort {
   positions(): Promise<Map<string, { parentId: string; index: number }>>;
   create(args: { parentId: string; index?: number; kind: Kind; title: string; url: string }): Promise<string>;
   update(localId: string, changes: { title?: string; url?: string }): Promise<void>;
-  move(localId: string, dest: { parentId: string; index?: number }): Promise<void>;
+  /** `from` is the item's index in `parentId` when the caller already knows it sits there. */
+  move(localId: string, dest: { parentId: string; index?: number; from?: number }): Promise<void>;
   removeTree(localId: string): Promise<void>;
 }
 
