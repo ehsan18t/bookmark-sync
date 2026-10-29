@@ -218,7 +218,26 @@ describe('the app layer', () => {
     expect(await titles(a.bookmarks, java)).toEqual(['jdk']);
   });
 
-  it('places a joined folder inside a folder another sync holds, and the two then share it', async () => {
+  it('still asks about a big change of its own while a shared folder brings changes in', async () => {
+    const { a, b, accA, accB } = await pair();
+    const shared = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Shared', url: '' });
+    const work = await a.app.createGroup({ accountId: accA, name: 'Work', mode: 'folder', target: { kind: 'folders', folderIds: [shared] }, ignoreDefaults: false });
+    const own = await b.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Own', url: '' });
+    for (let i = 0; i < 12; i++) await b.bookmarks.create({ parentId: own, kind: 'bookmark', title: `o${i}`, url: `https://o${i}.example/` });
+    const home = await b.app.createGroup({ accountId: accB, name: 'Home', mode: 'folder', target: { kind: 'folders', folderIds: [FAKE_ROOTS.other] }, ignoreDefaults: false });
+    const [top] = (await b.app.groupFolders({ accountId: accB, groupId: work })).folders;
+    await b.app.joinGroup({ accountId: accB, groupId: work, mode: 'merge', ignoreDefaults: false, target: { kind: 'parts', parts: [{ part: top!.id, hint: top!.hint! }] } });
+    await b.app.syncAll();
+
+    for (const n of (await b.bookmarks.getSubTree(own)).children ?? []) await b.bookmarks.removeTree(n.localId);
+    await a.bookmarks.create({ parentId: shared, kind: 'bookmark', title: 'new', url: 'https://new.example/' });
+    await a.app.syncAll();
+    await b.app.syncGroup(work);
+    await b.app.syncGroup(home);
+    expect((await b.app.status()).find((s) => s.groupId === home)!.status).toMatchObject({ state: 'paused', reason: 'large-local-change' });
+  });
+
+  it('places a joined folder inside a folder of another sync, but never a followed one', async () => {
     const { a, b, accA, accB } = await pair();
     const java = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Java', url: '' });
     const groupId = await a.app.createGroup({ accountId: accA, name: 'Picked', mode: 'folder', target: { kind: 'folders', folderIds: [java] }, ignoreDefaults: false });
@@ -231,8 +250,9 @@ describe('the app layer', () => {
     await a.app.addTops(groupId, [recipes]);
     await b.app.syncAll();
     const picked = (await b.app.status()).find((s) => s.name === 'Picked')!;
-    expect(picked.parts.map((p) => p.path).sort()).toEqual(['unfiled_____ / Java', 'unfiled_____ / Recipes']);
-    expect((await titles(b.bookmarks, FAKE_ROOTS.other)).sort()).toEqual(['Java', 'Recipes', 'private']);
+    expect(picked.parts.map((p) => p.path)).toEqual(['unfiled_____ / Java']);
+    expect(picked.notices.map((n) => n.text)).toEqual([expect.stringContaining('already synced by another folder')]);
+    expect((await titles(b.bookmarks, FAKE_ROOTS.other)).sort()).toEqual(['Java', 'private']);
     await a.app.syncAll();
     expect(await titles(a.bookmarks, FAKE_ROOTS.other)).toEqual(['Java', 'Recipes']);
   });

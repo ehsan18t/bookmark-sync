@@ -494,7 +494,11 @@ export class SyncApp {
   }
 
   syncGroup(groupId: string): Promise<void> {
-    return this.run(() => this.syncOne(this.engine(groupId)));
+    return this.run(async () => {
+      const e = this.engine(groupId);
+      await this.markBridges();
+      await this.syncOne(e);
+    });
   }
 
   status(): Promise<GroupSummary[]> {
@@ -659,8 +663,9 @@ export class SyncApp {
     if ((this.backoffUntil.get(g) ?? 0) > this.deps.clock.now()) return;
     const before = JSON.stringify(e.status);
     try {
+      const bridged = await this.recordBeforeBridge(e);
       const res = await e.cycle();
-      if (res.applied) await this.recordBridged(e);
+      if (res.applied) await this.recordBridged(bridged);
       this.lastSyncAt.set(g, this.deps.clock.now());
       this.lastError.delete(g);
       this.rawError.delete(g);
@@ -721,18 +726,32 @@ export class SyncApp {
     }
   }
 
-  /**
-   * After `source` changed bookmarks here, syncs sharing its folders record those changes as already checked:
-   * `source` reviewed them on the way in, so they neither trip the big-change pause nor ask again elsewhere.
-   */
-  private async recordBridged(source: GroupEngine): Promise<void> {
-    if (!source.bridged) return;
+/** Syncs sharing a folder with `source`, after recording their pending changes unconfirmed so the big-change guard still sees them. */
+  private async recordBeforeBridge(source: GroupEngine): Promise<GroupEngine[]> {
+    if (!source.bridged) return [];
+    const ready: GroupEngine[] = [];
     for (const e of this.engines.values()) {
       if (e === source || !(await this.shareFolders(source, e))) continue;
       try {
+        await e.recordLocalChanges();
+        ready.push(e);
+      } catch {
+        // Not recorded first, so it must not confirm afterwards; its next pass records everything unconfirmed.
+      }
+    }
+    return ready;
+  }
+
+  /**
+   * After `source` applied changes here, `targets` record them as already checked: `source` reviewed them on the way in.
+   * Only what changed during `source`'s pass is confirmed; anything before it was recorded by `recordBeforeBridge`.
+   */
+  private async recordBridged(targets: GroupEngine[]): Promise<void> {
+    for (const e of targets) {
+      try {
         await e.recordLocalChanges({ confirmed: true });
       } catch {
-        // Recorded on that sync's next pass instead.
+        // Recorded unconfirmed on that sync's next pass instead.
       }
     }
   }
@@ -768,7 +787,7 @@ export class SyncApp {
   }
 
   /**
-   * Where a top another browser added goes here, or null when that place overlaps a folder of the same sync.
+   * Where a top another browser added goes here, or null when that place overlaps a folder of this or another sync.
    * Always a new, empty folder: adopting an existing one would upload its contents without anyone choosing that here.
    */
   private async placeTop(hint: PlaceHint, title: string, groupId: string): Promise<string | null> {
@@ -781,6 +800,14 @@ export class SyncApp {
     } catch (e) {
       if (e instanceof UserError) return null;
       throw e;
+    }
+    // Sharing a folder with another sync bridges the two, so only the user may choose it, never an automatic placement.
+    const anchor = pendingAnchor(at) ?? at;
+    for (const e of this.engines.values()) {
+      if (e.groupId === groupId) continue;
+      for (const held of Object.values(e.state.config.mapping)) {
+        if (!held.startsWith(PENDING_PREFIX) && (anchor === held || (await this.isInside(anchor, held)))) return null;
+      }
     }
     return this.deps.bookmarks.create({ parentId: await this.deps.roots.resolve(parent, true), kind: 'folder', title: name, url: '' });
   }
