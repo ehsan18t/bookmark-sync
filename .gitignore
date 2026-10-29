@@ -8,3 +8,5 @@ coverage/
 .keys/
 .env.local
 .env.*.local
+
+.env
