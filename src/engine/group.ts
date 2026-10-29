@@ -516,6 +516,16 @@ export class GroupEngine {
   private leaving = false;
   private nameChanged = false;
 
+  /** Markers come from storage others may write: a claim needs a name and a time no later than a day ahead. */
+  private validLinks(body: unknown): BridgesMarker['links'] {
+    const links = (body as Partial<BridgesMarker> | null)?.links;
+    if (!links || typeof links !== 'object') return {};
+    const latest = this.ports.provider.serverDate() + DAY;
+    return Object.fromEntries(
+      Object.entries(links).filter(([, l]) => l && typeof l.name === 'string' && typeof l.at === 'number' && Number.isFinite(l.at) && l.at <= latest),
+    );
+  }
+
   /** Bridge claims this device holds: the groups it links with this one. */
   ownLinks(): BridgesMarker['links'] {
     return (this.local.markers.bridges?.body as BridgesMarker | undefined)?.links ?? {};
@@ -956,7 +966,7 @@ export class GroupEngine {
       else if (name === 'migration') cursor.migration = body as MigrationMarker;
       else if (name === 'migrated') cursor.migrated = body as MigratedMarker;
       else if (name === 'renamed') this.nameChanged = true;
-      else if (name === 'bridges') cursor.bridges = (body as BridgesMarker).links;
+      else if (name === 'bridges') cursor.bridges = this.validLinks(body);
       cursor.markers[name] = version;
     }
   }

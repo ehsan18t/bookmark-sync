@@ -201,6 +201,18 @@ describe('the app layer', () => {
     });
   }
 
+  it('ignores a link claim written to only one of the two syncs', async () => {
+    const { a, b } = await nested('outer first');
+    const [outer, inner] = (await b.app.status()).map((s) => s.groupId);
+    const innerA = (a.app as unknown as { engines: Map<string, { setLinks(l: object): Promise<void> }> }).engines.get(inner!)!;
+    await innerA.setLinks({ [outer!]: { name: 'Other', at: now + 60_000 } });
+    for (let i = 0; i < 2; i++) await b.app.syncAll();
+    const innerB = (await b.app.status()).find((s) => s.groupId === inner)!;
+    expect(innerB.links).toContainEqual({ name: 'Other', via: 'chrome' });
+    expect(innerB.parts.map((p) => p.path)).toEqual(['unfiled_____ / Games']);
+    expect(innerB.notices).toEqual([]);
+  });
+
   it('refuses a second link between two syncs unless it takes over, and the old link lets go', async () => {
     const { a, b, c } = await nested('outer first');
     const [outer, inner] = (await b.app.status()).map((s) => s.groupId);
@@ -214,7 +226,7 @@ describe('the app layer', () => {
     const input = { accountId: accC, groupId: inner!, mode: 'merge' as const, ignoreDefaults: false, target: { kind: 'parts' as const, parts: [{ part: top!.id, folderId: gamesC }] } };
     await expect(c.app.joinGroup(input)).rejects.toThrow(/firefox already links this sync with “Other”/);
     await c.app.joinGroup({ ...input, takeover: true });
-    for (let i = 0; i < 2; i++) for (const x of [c, b, a]) await x.app.syncAll();
+    for (let i = 0; i < 3; i++) for (const x of [c, b, a]) await x.app.syncAll();
 
     const innerB = await status(b, inner!);
     expect(innerB.parts).toEqual([]);
