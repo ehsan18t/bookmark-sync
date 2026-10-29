@@ -1,17 +1,17 @@
 import { browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
-import type { BrowserFamily } from '../core/defaults.js';
-import { APP_NAME } from '../config.js';
-import { SyncApp } from '../engine/app.js';
-import type { GroupStatus } from '../engine/group.js';
 import { googleAvailable, identityAvailable, signInWithGoogle } from '../browser/auth.js';
 import { BrowserBookmarks, type Engine, type Node } from '../browser/bookmarksPort.js';
+import { friendlyError } from '../browser/friendlyError.js';
 import { IdbStore } from '../browser/idbStore.js';
 import { providerFactory } from '../browser/providers.js';
-import { friendlyError } from '../browser/friendlyError.js';
-import { BridgeTakenError } from '../core/errors.js';
 import { browserRoots } from '../browser/roots.js';
-import { SNAPSHOT_KEY, type Capabilities, type Command, type PublicAccount, type Reply, type Snapshot } from '../messages.js';
+import { APP_NAME } from '../config.js';
+import type { BrowserFamily } from '../core/defaults.js';
+import { BridgeTakenError } from '../core/errors.js';
+import { SyncApp } from '../engine/app.js';
+import type { GroupStatus } from '../engine/group.js';
+import { type Capabilities, type Command, type PublicAccount, type Reply, SNAPSHOT_KEY, type Snapshot } from '../messages.js';
 
 function detect(): { engine: Engine; family: BrowserFamily; name: string } {
   const ua = navigator.userAgent;

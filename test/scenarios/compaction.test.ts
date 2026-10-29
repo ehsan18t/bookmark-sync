@@ -1,14 +1,14 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { decode, type Batch } from '../../src/core/codec.js';
+import { type Batch, decode } from '../../src/core/codec.js';
 import { DAY } from '../../src/core/frontier.js';
 import { EVERYTHING_ROOTS } from '../../src/core/ids.js';
 import type { Op } from '../../src/core/ops.js';
 import { emptyState, replay } from '../../src/core/replay.js';
 import { canonical, visibleTree } from '../../src/core/tree.js';
-import { performEdit, type Action } from '../sim/actions.js';
+import { type Action, performEdit } from '../sim/actions.js';
 import { FAKE_ROOTS } from '../sim/fakeBookmarks.js';
-import { GROUP_ID, Simulator, type SimDevice } from '../sim/simulator.js';
+import { GROUP_ID, type SimDevice, Simulator } from '../sim/simulator.js';
 
 const COMPACTING = { compactIntervalMs: 0, compactMinOps: 1, historyMs: 60 * 60_000 };
 
@@ -30,8 +30,7 @@ async function expectConverged(sim: Simulator, devices: SimDevice[] = sim.device
   expect(sim.provider.overwrittenPaths()).toEqual([]);
 }
 
-const batchFiles = (sim: Simulator, device: string) =>
-  [...sim.provider.createLog.keys()].filter((p) => p.includes(`/devices/${device}/batches/`)).length;
+const batchFiles = (sim: Simulator, device: string) => [...sim.provider.createLog.keys()].filter((p) => p.includes(`/devices/${device}/batches/`)).length;
 
 describe('compaction and snapshots', () => {
   it('replaying the full log from scratch equals every device after compaction (property 4)', async () => {

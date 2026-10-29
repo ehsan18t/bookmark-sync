@@ -1,16 +1,7 @@
-import { canonical, type Tree } from '../../src/core/tree.js';
 import type { RandomBytes } from '../../src/core/ids.js';
-import {
-  GroupEngine,
-  type EnginePorts,
-  type EngineSettings,
-  type GroupConfig,
-  type GroupLocal,
-  type GroupStore,
-  type JoinOptions,
-  type NewTop,
-} from '../../src/engine/group.js';
-import { MemoryProvider, type MemoryFaults } from '../../src/storage/memory.js';
+import { canonical, type Tree } from '../../src/core/tree.js';
+import { type EnginePorts, type EngineSettings, type GroupConfig, GroupEngine, type GroupLocal, type GroupStore, type JoinOptions, type NewTop } from '../../src/engine/group.js';
+import { type MemoryFaults, MemoryProvider } from '../../src/storage/memory.js';
 import { FAKE_ROOTS, FakeBookmarks, fakeRoots } from './fakeBookmarks.js';
 
 export function mulberry32(seed: number): () => number {
@@ -257,11 +248,9 @@ export class Simulator {
     const out = [];
     for (const groupRoot of d.engine.roots) {
       const n = await d.bookmarks.getSubTree(d.engine.state.config.mapping[groupRoot]!);
-      const walk = (x: typeof n): unknown[] =>
-        (x.children ?? []).filter((c) => !excluded.has(c.localId)).map((c) => [idmap.get(c.localId) ?? `?${c.localId}`, c.kind, c.title, c.url, walk(c)]);
+      const walk = (x: typeof n): unknown[] => (x.children ?? []).filter((c) => !excluded.has(c.localId)).map((c) => [idmap.get(c.localId) ?? `?${c.localId}`, c.kind, c.title, c.url, walk(c)]);
       out.push([groupRoot, walk(n)]);
     }
     return out;
   }
-
 }

@@ -57,9 +57,7 @@ export class IdbStore implements AppStore {
 
   /** Remembered keys are stored non-extractable in IndexedDB; others live only in storage.session, which is kept in memory. */
   async getKey(groupId: string): Promise<CryptoKey | null> {
-    const stored = (await tx<{ key: CryptoKey; session?: string }>(await this.db, 'keys', 'readonly', (s) => s.get(groupId))) as
-      | { key: CryptoKey; session?: string }
-      | undefined;
+    const stored = (await tx<{ key: CryptoKey; session?: string }>(await this.db, 'keys', 'readonly', (s) => s.get(groupId))) as { key: CryptoKey; session?: string } | undefined;
     if (stored && stored.session !== undefined && stored.session !== 'persistent') {
       await tx(await this.db, 'keys', 'readwrite', (s) => void s.delete(groupId));
     } else if (stored) return stored.key;

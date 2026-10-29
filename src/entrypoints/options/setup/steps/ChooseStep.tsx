@@ -93,7 +93,9 @@ export function ChooseStep({ account, go }: ChooseStepProps) {
   else if (!open.length) {
     head = (
       <StepHead title="Start syncing">
-        {found.length ? `Every sync on ${where} already syncs in this browser, so this starts a new one.` : `Nothing is synced on ${where} yet, so this browser starts the sync. Your other browsers join it later.`}
+        {found.length
+          ? `Every sync on ${where} already syncs in this browser, so this starts a new one.`
+          : `Nothing is synced on ${where} yet, so this browser starts the sync. Your other browsers join it later.`}
       </StepHead>
     );
     body = nameField;

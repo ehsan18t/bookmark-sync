@@ -50,12 +50,7 @@ export function planRestore(now: Tree, then: Tree, only?: ReadonlySet<string>): 
  * hidden only through an ancestor's delete visible again. So the plan is replayed by `simulate` and
  * patched until the result is exactly the target.
  */
-export function planRestoreExact(
-  now: Tree,
-  then: Tree,
-  simulate: (drafts: OpDraft[]) => Tree,
-  only?: ReadonlySet<string>,
-): OpDraft[] {
+export function planRestoreExact(now: Tree, then: Tree, simulate: (drafts: OpDraft[]) => Tree, only?: ReadonlySet<string>): OpDraft[] {
   const drafts = planRestore(now, then, only);
   const scope = only ? closeOverParents(now, then, only) : undefined;
   const target = (id: string) => (scope && !scope.has(id) ? now.nodes.has(id) : then.nodes.has(id));

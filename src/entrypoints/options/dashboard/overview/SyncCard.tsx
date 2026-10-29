@@ -51,7 +51,11 @@ export function SyncCard({ g }: SyncCardProps) {
         )}
       </dl>
       <p class="muted small">
-        {[plural(g.bookmarks, 'bookmark', 'bookmarks'), g.lastSyncAt ? `synced ${relativeTime(g.lastSyncAt, now.value)}` : 'not synced yet', `${plural(g.pendingChanges, 'change', 'changes')} waiting to upload`].join(' · ')}
+        {[
+          plural(g.bookmarks, 'bookmark', 'bookmarks'),
+          g.lastSyncAt ? `synced ${relativeTime(g.lastSyncAt, now.value)}` : 'not synced yet',
+          `${plural(g.pendingChanges, 'change', 'changes')} waiting to upload`,
+        ].join(' · ')}
       </p>
       <PauseBanner g={g} onAddFolders={showFolders} />
       {g.notices.length > 0 && (

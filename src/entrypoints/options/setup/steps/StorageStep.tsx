@@ -32,14 +32,27 @@ export function StorageStep({ go }: StorageStepProps) {
       )}
       <div class="stack">
         {google && (
-          <Choice icon="brand-google-drive" title="Google Drive" badge="Recommended" recommended desc="Sign in with your Google account. Bookmarks go in a private app folder." onClick={() => go({ id: 'google' })} />
+          <Choice
+            icon="brand-google-drive"
+            title="Google Drive"
+            badge="Recommended"
+            recommended
+            desc="Sign in with your Google account. Bookmarks go in a private app folder."
+            onClick={() => go({ id: 'google' })}
+          />
         )}
         {caps.value.googleBlocked && (
           <Banner kind="info" icon="info-circle">
             To use Google Drive in Brave, turn on “Allow Google login for extensions” in Settings, Extensions, then reload this page.
           </Banner>
         )}
-        <Choice icon="server" title="Your own server" desc="Nextcloud, ownCloud, Synology, any WebDAV server, or rclone." recommended={!google && !connected.length} onClick={() => go({ id: 'server' })} />
+        <Choice
+          icon="server"
+          title="Your own server"
+          desc="Nextcloud, ownCloud, Synology, any WebDAV server, or rclone."
+          recommended={!google && !connected.length}
+          onClick={() => go({ id: 'server' })}
+        />
       </div>
     </div>
   );

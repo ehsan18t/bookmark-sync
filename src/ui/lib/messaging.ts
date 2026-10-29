@@ -16,9 +16,12 @@ export async function withTakeover(run: (takeover: boolean) => Promise<unknown>)
     await run(false);
   } catch (e) {
     if (!(e instanceof ReplyError) || e.code !== 'bridge-taken') throw e;
-    if (!window.confirm(`${e.message}
+    if (
+      !window.confirm(`${e.message}
 
-Make this browser the link instead? The other browser then stops syncing the shared folder in one of the two syncs.`)) throw e;
+Make this browser the link instead? The other browser then stops syncing the shared folder in one of the two syncs.`)
+    )
+      throw e;
     await run(true);
   }
 }

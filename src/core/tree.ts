@@ -120,9 +120,6 @@ export function disturbedIds(d: TreeDiff): Set<string> {
 
 export function canonical(t: Tree, withIds = true): unknown {
   const idx = childrenIndex(t);
-  const render = (parent: string): unknown[] =>
-    (idx.get(parent) ?? []).map((c) =>
-      withIds ? [c.id, c.kind, c.title, c.url, render(c.id)] : [c.kind, c.title, c.url, render(c.id)],
-    );
+  const render = (parent: string): unknown[] => (idx.get(parent) ?? []).map((c) => (withIds ? [c.id, c.kind, c.title, c.url, render(c.id)] : [c.kind, c.title, c.url, render(c.id)]));
   return t.roots.map((r) => [r, render(r)]);
 }

@@ -27,7 +27,16 @@ export function AddFromSync({ g, onClose }: AddFromSyncProps) {
   return (
     <div class="stack">
       <FolderTree items={items} multi value={picked} onChange={setPicked} label="Folders of this sync" />
-      <Placements mode={mode} groupFolders={groupFolders} items={items} local={folders.value} localTree={localItems(folders.value, groups.value)} picked={picked} chosen={chosen} onChange={setChosen} />
+      <Placements
+        mode={mode}
+        groupFolders={groupFolders}
+        items={items}
+        local={folders.value}
+        localTree={localItems(folders.value, groups.value)}
+        picked={picked}
+        chosen={chosen}
+        onChange={setChosen}
+      />
       <div class="row">
         <Action
           label="Sync them here"

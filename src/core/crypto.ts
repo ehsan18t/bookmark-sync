@@ -37,20 +37,12 @@ export function importRawKey(raw: Uint8Array): Promise<CryptoKey> {
 
 export async function encryptBytes(key: CryptoKey, plain: Uint8Array, aad: string): Promise<{ iv: string; data: string }> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(aad) },
-    key,
-    plain as BufferSource,
-  );
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(aad) }, key, plain as BufferSource);
   return { iv: toBase64(iv), data: toBase64(new Uint8Array(ct)) };
 }
 
 export async function decryptBytes(key: CryptoKey, iv: string, data: string, aad: string): Promise<Uint8Array> {
-  const pt = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: fromBase64(iv) as BufferSource, additionalData: new TextEncoder().encode(aad) },
-    key,
-    fromBase64(data) as BufferSource,
-  );
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromBase64(iv) as BufferSource, additionalData: new TextEncoder().encode(aad) }, key, fromBase64(data) as BufferSource);
   return new Uint8Array(pt);
 }
 

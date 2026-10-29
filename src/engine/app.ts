@@ -1,29 +1,29 @@
 import { unlockKey } from '../core/crypto.js';
-import { BridgeTakenError, UserError } from '../core/errors.js';
-import { findDuplicates, type DedupeItem, type DuplicateGroup } from '../core/dedupe.js';
+import { type DedupeItem, type DuplicateGroup, findDuplicates } from '../core/dedupe.js';
 import type { BrowserFamily } from '../core/defaults.js';
+import { BridgeTakenError, UserError } from '../core/errors.js';
 import { DAY } from '../core/frontier.js';
-import { EVERYTHING_ROOTS, randomId, ROOT_GROUP, type PlaceHint, type RandomBytes, type RootType } from '../core/ids.js';
+import { EVERYTHING_ROOTS, type PlaceHint, type RandomBytes, ROOT_GROUP, type RootType, randomId } from '../core/ids.js';
 import { sameNameKey } from '../core/names.js';
 import type { Kind } from '../core/ops.js';
 import type { Excluded, LiveNode } from '../core/reconcile.js';
 import { ProviderAuthError } from '../storage/webdav.js';
 import {
-  GroupEngine,
   type EnginePorts,
   type GroupConfig,
+  GroupEngine,
   type GroupFolder,
   type GroupStatus,
-  type NewTop,
-  type Notice,
   type GroupStore,
   type JoinOptions,
   type JoinPreview,
+  type NewTop,
+  type Notice,
   type PauseReason,
   type RestorePoint,
   type TimelineEntry,
 } from './group.js';
-import { PermissionMissingError, type BookmarksPort, type Clock, type StorageProvider } from './ports.js';
+import { type BookmarksPort, type Clock, PermissionMissingError, type StorageProvider } from './ports.js';
 
 export type Account =
   | { id: string; type: 'webdav'; name: string; url: string; username: string; password: string }
@@ -77,11 +77,7 @@ export interface PartChoice {
  * Where a group lives in this browser. `folders` starts a folder group with those local folders as its
  * tops; `parts` holds chosen group folders, and `followTops` also places tops other browsers add later.
  */
-export type Target =
-  | { kind: 'whole' }
-  | { kind: 'everything-into'; folderId: string }
-  | { kind: 'folders'; folderIds: string[] }
-  | { kind: 'parts'; parts: PartChoice[]; followTops?: boolean };
+export type Target = { kind: 'whole' } | { kind: 'everything-into'; folderId: string } | { kind: 'folders'; folderIds: string[] } | { kind: 'parts'; parts: PartChoice[]; followTops?: boolean };
 
 /** Folder IDs a preview uses for helper folders that do not exist yet; they read as empty. */
 export const PENDING_PREFIX = 'pending:';
@@ -270,13 +266,17 @@ export class SyncApp {
       }
       if (input.mode === 'folder') await this.checkNesting(resolved.mapping);
       const { encrypted: _e, ...config } = this.config(groupId, account.id, input.name, input.mode, resolved.mapping, false);
-      const { engine, key } = await GroupEngine.create(this.ports(account), { ...config, ...(input.mode === 'folder' ? { followTops: true } : {}) }, {
-        passphrase: input.passphrase,
-        iterations: input.iterations,
-        ignoreDefaults: input.ignoreDefaults,
-        excluded: resolved.excluded,
-        tops: resolved.tops,
-      });
+      const { engine, key } = await GroupEngine.create(
+        this.ports(account),
+        { ...config, ...(input.mode === 'folder' ? { followTops: true } : {}) },
+        {
+          passphrase: input.passphrase,
+          iterations: input.iterations,
+          ignoreDefaults: input.ignoreDefaults,
+          excluded: resolved.excluded,
+          tops: resolved.tops,
+        },
+      );
       if (key) await this.deps.store.setKey(groupId, key, false);
       this.engines.set(groupId, engine);
       this.meta.groups.push(groupId);
@@ -497,7 +497,9 @@ export class SyncApp {
     for (const a of this.meta.accounts) {
       if (a.type !== 'gdrive' || a.email || this.emailTried.has(a.id)) continue;
       this.emailTried.add(a.id);
-      const email = await this.providerOf(a).whoAmI?.().catch(() => null);
+      const email = await this.providerOf(a)
+        .whoAmI?.()
+        .catch(() => null);
       if (email) {
         a.email = email;
         changed = true;
@@ -520,7 +522,14 @@ export class SyncApp {
         const c = e.state.config;
         const g = e.state.guard;
         const m = e.migrationProgress();
-        const tops = new Set(c.mode === 'folder' ? e.folders().filter((f) => f.parent === ROOT_GROUP).map((f) => f.id) : []);
+        const tops = new Set(
+          c.mode === 'folder'
+            ? e
+                .folders()
+                .filter((f) => f.parent === ROOT_GROUP)
+                .map((f) => f.id)
+            : [],
+        );
         const parts: GroupPart[] = [];
         for (const [part, local] of Object.entries(c.mapping)) {
           const path = (await this.deps.bookmarks.exists(local)) ? await this.deps.roots.pathOf(local) : 'A deleted folder';
@@ -600,7 +609,7 @@ export class SyncApp {
       const synced = (id: string) => [...this.engines.values()].some((e) => e.state.idmap.some(([l]) => l === id));
       const index = async (id: string) => {
         const parent = await this.deps.bookmarks.parentOf(id);
-        const kids = parent ? (await this.deps.bookmarks.getSubTree(parent)).children ?? [] : [];
+        const kids = parent ? ((await this.deps.bookmarks.getSubTree(parent)).children ?? []) : [];
         return { parentId: parent ?? '', index: kids.findIndex((k) => k.localId === id) };
       };
       if ('remove' in action) {
@@ -709,7 +718,7 @@ export class SyncApp {
 
   private readonly failures = new Map<string, number>();
 
-/** Folders of one sync nested inside each other pause it; folders shared with other syncs are allowed. */
+  /** Folders of one sync nested inside each other pause it; folders shared with other syncs are allowed. */
   private async checkMappingOverlaps(): Promise<void> {
     for (const e of this.engines.values()) {
       if (this.wholeTreeMapping(e.state.config)) continue;
@@ -747,7 +756,12 @@ export class SyncApp {
    */
   private claimsFor(a: GroupEngine, b: GroupEngine) {
     // Device ids differ per group, so the device name and time identify the same claim in both.
-    const inB = new Set(b.otherLinks().filter((l) => l.group === a.groupId).map((l) => `${l.device}|${l.at}`));
+    const inB = new Set(
+      b
+        .otherLinks()
+        .filter((l) => l.group === a.groupId)
+        .map((l) => `${l.device}|${l.at}`),
+    );
     return a.otherLinks().filter((l) => l.group === b.groupId && inB.has(`${l.device}|${l.at}`));
   }
 
@@ -774,7 +788,11 @@ export class SyncApp {
       const mine = Math.max(links[p.groupId]?.at ?? 0, p.ownLinks()[e.groupId]?.at ?? 0);
       const self = this.meta.deviceName;
       // Equal times go to the later device name, so two claims made at once still settle on one bridge.
-      const newer = takeover ? undefined : this.claimsFor(e, p).filter((c) => c.at > mine || (c.at === mine && c.device > self)).sort((x, y) => y.at - x.at)[0];
+      const newer = takeover
+        ? undefined
+        : this.claimsFor(e, p)
+            .filter((c) => c.at > mine || (c.at === mine && c.device > self))
+            .sort((x, y) => y.at - x.at)[0];
       if (newer) {
         await this.release(e, p, newer.device);
         delete links[p.groupId];
@@ -800,7 +818,10 @@ export class SyncApp {
     const [first, later] = order.indexOf(a.groupId) <= order.indexOf(b.groupId) ? [a, b] : [b, a];
     const live = (e: GroupEngine) => Object.entries(e.state.config.mapping).filter(([, l]) => !l.startsWith(PENDING_PREFIX));
     const drops: [GroupEngine, string, GroupEngine][] = [];
-    for (const [drop, keep] of [[later, first], [first, later]] as const) {
+    for (const [drop, keep] of [
+      [later, first],
+      [first, later],
+    ] as const) {
       if (this.wholeTreeMapping(drop.state.config)) continue;
       for (const [part, local] of live(drop)) {
         for (const [, held] of live(keep)) {
@@ -811,7 +832,9 @@ export class SyncApp {
     }
     if (!drops.length) {
       if (later.status.state === 'paused' && later.status.reason === 'bridge-moved') return;
-      later.addNotice(`${device} now links “${first.state.config.name}” and “${later.state.config.name}”. Both sync all bookmarks here, so “${later.state.config.name}” is paused. Stop syncing one of them here.`);
+      later.addNotice(
+        `${device} now links “${first.state.config.name}” and “${later.state.config.name}”. Both sync all bookmarks here, so “${later.state.config.name}” is paused. Stop syncing one of them here.`,
+      );
       await later.pause('bridge-moved', device);
       return;
     }
@@ -819,7 +842,9 @@ export class SyncApp {
       if (!drop.state.config.mapping[part]) continue;
       const path = await this.deps.roots.pathOf(drop.state.config.mapping[part]!);
       await drop.removePart(part, false);
-      drop.addNotice(`${device} now links “${keep.state.config.name}” and “${drop.state.config.name}”. “${path}” stays in “${keep.state.config.name}” here and no longer syncs in “${drop.state.config.name}”.`);
+      drop.addNotice(
+        `${device} now links “${keep.state.config.name}” and “${drop.state.config.name}”. “${path}” stays in “${keep.state.config.name}” here and no longer syncs in “${drop.state.config.name}”.`,
+      );
     }
   }
 
@@ -837,7 +862,9 @@ export class SyncApp {
   private async checkBridge(groupId: string, mapping: Record<string, string>, takeover = false): Promise<void> {
     if (takeover) return;
     for (const e of this.engines.values()) await e.refreshMarkers().catch(() => {});
-    const mine = Object.values(mapping).map((l) => pendingAnchor(l) ?? l).filter((l) => !l.startsWith(PENDING_PREFIX));
+    const mine = Object.values(mapping)
+      .map((l) => pendingAnchor(l) ?? l)
+      .filter((l) => !l.startsWith(PENDING_PREFIX));
     for (const p of this.engines.values()) {
       if (p.groupId === groupId) continue;
       const held = Object.values(p.state.config.mapping).filter((l) => !l.startsWith(PENDING_PREFIX));

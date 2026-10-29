@@ -1,6 +1,6 @@
 import type { Hlc } from './hlc.js';
 import { isRootId } from './ids.js';
-import { compareOps, opKey, refOf, type Kind, type Op, type OpRef } from './ops.js';
+import { compareOps, type Kind, type Op, type OpRef, opKey, refOf } from './ops.js';
 
 export interface Reg<T> {
   value: T;
@@ -59,8 +59,7 @@ export function cloneState(s: GroupState): GroupState {
   return { nodes, coverage: { ...s.coverage } };
 }
 
-export const coveredBy = (coverage: Record<string, number>, op: { device: string; opSeq: number }): boolean =>
-  op.opSeq <= (coverage[op.device] ?? 0);
+export const coveredBy = (coverage: Record<string, number>, op: { device: string; opSeq: number }): boolean => op.opSeq <= (coverage[op.device] ?? 0);
 
 export function replay(base: GroupState, ops: readonly Op[]): GroupState {
   const s = cloneState(base);

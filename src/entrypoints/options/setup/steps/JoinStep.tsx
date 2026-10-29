@@ -115,7 +115,16 @@ export function JoinStep({ account, sync, go }: JoinStepProps) {
         <p class="muted small">Everything is ticked. Untick what this browser doesn’t need, or tick single folders deeper down.</p>
         <FolderTree items={items} multi value={ticked} onChange={tick} label="Folders to sync in this browser" />
         <h3>Where each folder goes here</h3>
-        <Placements mode={group.mode} groupFolders={group.folders} items={items} local={folders.value} localTree={localItems(folders.value, groups.value)} picked={ticked} chosen={chosen} onChange={setChosen} />
+        <Placements
+          mode={group.mode}
+          groupFolders={group.folders}
+          items={items}
+          local={folders.value}
+          localTree={localItems(folders.value, groups.value)}
+          picked={ticked}
+          chosen={chosen}
+          onChange={setChosen}
+        />
       </>
     );
 

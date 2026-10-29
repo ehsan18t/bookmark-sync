@@ -74,14 +74,7 @@ export async function sha256Hex(data: Uint8Array | string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function derivedId(
-  groupId: string,
-  parentStableId: string,
-  kind: string,
-  title: string,
-  url: string,
-  occurrence: number,
-): Promise<string> {
+export async function derivedId(groupId: string, parentStableId: string, kind: string, title: string, url: string, occurrence: number): Promise<string> {
   const input = [groupId, parentStableId, kind, title, url, String(occurrence)].join('\u0000');
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
   return `j${base32(new Uint8Array(digest)).slice(0, 26)}`;

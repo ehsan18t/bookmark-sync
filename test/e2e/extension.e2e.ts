@@ -1,9 +1,9 @@
-import { createRequire } from 'node:module';
 import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { chromium, type BrowserContext, type Page } from 'playwright';
+import { type BrowserContext, chromium, type Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { browser } from 'wxt/browser';
 
@@ -119,7 +119,10 @@ describe('the extension in two Chromium profiles', () => {
       const accB = await command<string>(b, { t: 'addAccount', account });
       const folder = await create(a, { title: 'Recipes' });
       await create(a, { parentId: folder, title: 'Pasta', url: 'https://pasta.example/' });
-      const groupId = await command<string>(a, { t: 'create', input: { accountId: accA, name: 'Secret', mode: 'everything', target: { kind: 'whole' }, passphrase: 'long passphrase', ignoreDefaults: true } });
+      const groupId = await command<string>(a, {
+        t: 'create',
+        input: { accountId: accA, name: 'Secret', mode: 'everything', target: { kind: 'whole' }, passphrase: 'long passphrase', ignoreDefaults: true },
+      });
       await command(b, { t: 'join', input: { accountId: accB, groupId, target: { kind: 'whole' }, mode: 'merge', ignoreDefaults: true, passphrase: 'long passphrase' } });
       expect(await bar(b)).toEqual([['Recipes', ['Pasta']]]);
 
@@ -226,14 +229,22 @@ describe('the extension in two Chromium profiles', () => {
       await new Promise((r) => setTimeout(r, 500));
       await command(b, { t: 'syncNow' });
       await command(a, { t: 'syncNow' });
-      expect(await other(a)).toEqual([['Game Dev', ['Godot']], ['Java', ['JDK', 'Maven']]]);
+      expect(await other(a)).toEqual([
+        ['Game Dev', ['Godot']],
+        ['Java', ['JDK', 'Maven']],
+      ]);
       await b.page.goto(`chrome-extension://${b.id}/options.html#overview`);
       await b.page.getByText('More options').click();
       await b.page.getByRole('button', { name: 'Folders synced here' }).click();
       await b.page.getByRole('button', { name: 'Sync another folder of this sync here' }).click();
       await b.page.getByRole('checkbox', { name: 'Game Dev' }).check();
       await b.page.getByRole('button', { name: 'Sync them here' }).click();
-      await expect.poll(() => other(b), { timeout: 15_000 }).toEqual([['Java', ['JDK', 'Maven']], ['Game Dev', ['Godot']]]);
+      await expect
+        .poll(() => other(b), { timeout: 15_000 })
+        .toEqual([
+          ['Java', ['JDK', 'Maven']],
+          ['Game Dev', ['Godot']],
+        ]);
     } finally {
       await a.context.close();
       await b.context.close();

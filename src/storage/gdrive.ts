@@ -1,4 +1,4 @@
-import { DuplicateFileError, type CreateOnceResult, type StorageProvider } from '../engine/ports.js';
+import { type CreateOnceResult, DuplicateFileError, type StorageProvider } from '../engine/ports.js';
 import { ProviderAuthError, ProviderError } from './webdav.js';
 
 /** `code` is the OAuth `error` field from Google's token endpoint, absent for Drive API rejections. */
@@ -163,6 +163,6 @@ function basename(path: string): string {
 
 function props(path: string): Record<string, string> {
   const parts = path.split('/');
-  const kind = path.endsWith('/group.json') ? 'group' : path.endsWith('/device.json') ? 'device' : parts[4] ?? 'file';
+  const kind = path.endsWith('/group.json') ? 'group' : path.endsWith('/device.json') ? 'device' : (parts[4] ?? 'file');
   return { p: path, dir: parts.slice(0, -1).join('/'), g: parts[1] ?? '', k: kind };
 }

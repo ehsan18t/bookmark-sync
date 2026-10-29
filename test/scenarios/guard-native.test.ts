@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GroupEngine } from '../../src/engine/group.js';
 import { FAKE_ROOTS, type FakeBookmarks } from '../sim/fakeBookmarks.js';
-import { Simulator, type SimDevice } from '../sim/simulator.js';
+import { type SimDevice, Simulator } from '../sim/simulator.js';
 
 const GUARD = { guardMin: 10, guardPercent: 20 };
 const titles = (d: SimDevice) => [...d.engine.mirror().nodes.values()].map((n) => n.title).sort();

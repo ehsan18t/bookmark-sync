@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { HlcClock, parseHlc } from './hlc.js';
 import { ROOT_OTHER, ROOT_TOOLBAR } from './ids.js';
 import { assignKeys } from './position.js';
-import { reconcile, type LiveNode, type Mirror } from './reconcile.js';
+import { type LiveNode, type Mirror, reconcile } from './reconcile.js';
 
 describe('HLC', () => {
   it('orders ticks and survives a wall clock that steps back', () => {

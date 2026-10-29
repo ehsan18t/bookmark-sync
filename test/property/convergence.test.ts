@@ -1,8 +1,7 @@
-
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { canonical, type Tree } from '../../src/core/tree.js';
-import { performEdit, type Action } from '../sim/actions.js';
+import { type Action, performEdit } from '../sim/actions.js';
 import { FAKE_ROOTS, FakeBookmarks } from '../sim/fakeBookmarks.js';
 import { Simulator } from '../sim/simulator.js';
 
@@ -124,14 +123,9 @@ describe('convergence (properties 1, 2, 5)', () => {
 
   it('converges with 2 to 5 devices and provider faults (lost responses, delayed visibility)', async () => {
     await fc.assert(
-      fc.asyncProperty(
-        fc.integer({ min: 1, max: 1e9 }),
-        fc.integer({ min: 2, max: 5 }),
-        fc.array(action, { maxLength: 80 }),
-        async (seed, devices, actions) => {
-          await checkConverged(await runConcurrent(seed, devices, actions, true));
-        },
-      ),
+      fc.asyncProperty(fc.integer({ min: 1, max: 1e9 }), fc.integer({ min: 2, max: 5 }), fc.array(action, { maxLength: 80 }), async (seed, devices, actions) => {
+        await checkConverged(await runConcurrent(seed, devices, actions, true));
+      }),
       { numRuns: 60 },
     );
   });

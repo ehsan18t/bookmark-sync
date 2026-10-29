@@ -24,7 +24,14 @@ export function GoogleStep({ go }: GoogleStepProps) {
       </div>
       <div class="footer">
         <BackButton go={go} to={{ id: 'storage' }} />
-        <Action label="Sign in with Google" kind="primary" size="lg" icon="brand-google-drive" busy="Waiting for Google…" run={async () => connected(go, await send<string>({ t: 'addGoogle', name: 'Google Drive' }))} />
+        <Action
+          label="Sign in with Google"
+          kind="primary"
+          size="lg"
+          icon="brand-google-drive"
+          busy="Waiting for Google…"
+          run={async () => connected(go, await send<string>({ t: 'addGoogle', name: 'Google Drive' }))}
+        />
       </div>
     </div>
   );

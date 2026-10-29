@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlaceHint } from '../../src/core/ids.js';
 import { FAKE_ROOTS, FakeBookmarks, fakeRoots } from '../sim/fakeBookmarks.js';
-import { Simulator, type SimDevice } from '../sim/simulator.js';
+import { type SimDevice, Simulator } from '../sim/simulator.js';
 
 const JOIN = { join: { mode: 'merge' as const, ignoreDefaults: false } };
 

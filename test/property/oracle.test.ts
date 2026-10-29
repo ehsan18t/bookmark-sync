@@ -1,10 +1,9 @@
-
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import type { Kind } from '../../src/core/ops.js';
-import { FOLDER_HEAVY_KINDS, performEdit, type Action } from '../sim/actions.js';
+import { type Action, FOLDER_HEAVY_KINDS, performEdit } from '../sim/actions.js';
 import { FAKE_ROOTS } from '../sim/fakeBookmarks.js';
-import { Simulator, type SimDevice } from '../sim/simulator.js';
+import { type SimDevice, Simulator } from '../sim/simulator.js';
 
 interface ONode {
   kind: Kind;
@@ -154,20 +153,36 @@ describe('sequential oracle (property 3)', () => {
 
   it('several fully synced devices match a plain tree model, including restores', async () => {
     await fc.assert(
-      fc.asyncProperty(
-        fc.integer({ min: 1, max: 1e9 }),
-        fc.integer({ min: 2, max: 3 }),
-        fc.array(action, { maxLength: 30 }),
-        async (seed, devices, actions) => {
-          await runSequential(seed, devices, actions);
-        },
-      ),
+      fc.asyncProperty(fc.integer({ min: 1, max: 1e9 }), fc.integer({ min: 2, max: 3 }), fc.array(action, { maxLength: 30 }), async (seed, devices, actions) => {
+        await runSequential(seed, devices, actions);
+      }),
       { numRuns: 40 },
     );
   });
 
   it('regression: shrunk case 1', async () => {
-    const actions: Action[] = [{"k":0,"a":0,"b":0,"c":0},{"k":0,"a":0,"b":0,"c":0},{"k":75,"a":0,"b":0,"c":0},{"k":0,"a":0,"b":0,"c":0},{"k":0,"a":0,"b":0,"c":0},{"k":0,"a":507,"b":0,"c":0},{"k":0,"a":67,"b":0,"c":171},{"k":60,"a":0,"b":0,"c":0},{"k":0,"a":0,"b":0,"c":0},{"k":0,"a":0,"b":0,"c":0},{"k":60,"a":0,"b":0,"c":0},{"k":0,"a":134,"b":0,"c":0},{"k":0,"a":0,"b":603,"c":0},{"k":60,"a":0,"b":0,"c":0},{"k":0,"a":0,"b":746,"c":0},{"k":0,"a":347,"b":482,"c":373},{"k":75,"a":0,"b":0,"c":0},{"k":75,"a":0,"b":719,"c":0},{"k":0,"a":0,"b":0,"c":0},{"k":0,"a":0,"b":0,"c":0}];
+    const actions: Action[] = [
+      { k: 0, a: 0, b: 0, c: 0 },
+      { k: 0, a: 0, b: 0, c: 0 },
+      { k: 75, a: 0, b: 0, c: 0 },
+      { k: 0, a: 0, b: 0, c: 0 },
+      { k: 0, a: 0, b: 0, c: 0 },
+      { k: 0, a: 507, b: 0, c: 0 },
+      { k: 0, a: 67, b: 0, c: 171 },
+      { k: 60, a: 0, b: 0, c: 0 },
+      { k: 0, a: 0, b: 0, c: 0 },
+      { k: 0, a: 0, b: 0, c: 0 },
+      { k: 60, a: 0, b: 0, c: 0 },
+      { k: 0, a: 134, b: 0, c: 0 },
+      { k: 0, a: 0, b: 603, c: 0 },
+      { k: 60, a: 0, b: 0, c: 0 },
+      { k: 0, a: 0, b: 746, c: 0 },
+      { k: 0, a: 347, b: 482, c: 373 },
+      { k: 75, a: 0, b: 0, c: 0 },
+      { k: 75, a: 0, b: 719, c: 0 },
+      { k: 0, a: 0, b: 0, c: 0 },
+      { k: 0, a: 0, b: 0, c: 0 },
+    ];
     await runSequential(1, 1, actions);
   });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WrongPassphraseError } from '../../src/core/crypto.js';
-import { SyncApp, type AppMeta, type AppStore } from '../../src/engine/app.js';
+import { type AppMeta, type AppStore, SyncApp } from '../../src/engine/app.js';
 import type { StorageProvider } from '../../src/engine/ports.js';
 import { MemoryProvider } from '../../src/storage/memory.js';
 import { ProviderAuthError } from '../../src/storage/webdav.js';
@@ -42,10 +42,12 @@ function browser(name: string, provider: MemoryProvider, fail?: { auth: boolean 
       if (!fail) return p;
       return new Proxy(p, {
         get: (t, k: keyof StorageProvider) =>
-          k === 'serverDate' ? t.serverDate : async (...args: unknown[]) => {
-            if (fail.auth) throw new ProviderAuthError('401');
-            return (t[k] as (...a: unknown[]) => unknown)(...args);
-          },
+          k === 'serverDate'
+            ? t.serverDate
+            : async (...args: unknown[]) => {
+                if (fail.auth) throw new ProviderAuthError('401');
+                return (t[k] as (...a: unknown[]) => unknown)(...args);
+              },
       }) as StorageProvider;
     },
     clock,

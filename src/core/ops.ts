@@ -66,12 +66,7 @@ export type Op = CreateOp | UpdateOp | MoveOp | DeleteOp | UndeleteOp;
 
 type Draft<T extends OpBase> = Omit<T, keyof OpBase> & { node: string };
 
-export type OpDraft =
-  | Draft<CreateOp>
-  | Draft<UpdateOp>
-  | Draft<MoveOp>
-  | (Omit<Draft<DeleteOp>, 'seen'> & { seen?: Record<string, number> })
-  | Draft<UndeleteOp>;
+export type OpDraft = Draft<CreateOp> | Draft<UpdateOp> | Draft<MoveOp> | (Omit<Draft<DeleteOp>, 'seen'> & { seen?: Record<string, number> }) | Draft<UndeleteOp>;
 
 export const refOf = (op: Op): OpRef => ({ device: op.device, opSeq: op.opSeq });
 

@@ -1,4 +1,3 @@
-
 import { bytesEqual } from '../core/codec.js';
 import type { CreateOnceResult, StorageProvider } from '../engine/ports.js';
 

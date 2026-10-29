@@ -19,10 +19,15 @@ export function RenamePanel({ g, onDone }: RenamePanelProps) {
         <input type="text" value={name} onInput={(e) => setName(e.currentTarget.value)} ref={input} />
       </Field>
       <div class="row">
-        <Action label="Save name" kind="primary" busy="Renaming…" run={async () => {
+        <Action
+          label="Save name"
+          kind="primary"
+          busy="Renaming…"
+          run={async () => {
             await sendAndReload({ t: 'rename', groupId: g.groupId, name });
             onDone();
-          }} />
+          }}
+        />
       </div>
     </div>
   );

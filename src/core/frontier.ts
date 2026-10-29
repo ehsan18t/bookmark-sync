@@ -1,5 +1,5 @@
 import type { DeviceInfo, Snapshot } from './codec.js';
-import { hlcFloor, type Hlc } from './hlc.js';
+import { type Hlc, hlcFloor } from './hlc.js';
 
 export const DAY = 24 * 60 * 60 * 1000;
 

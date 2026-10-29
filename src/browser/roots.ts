@@ -1,7 +1,7 @@
 import { browser } from 'wxt/browser';
-import type { Excluded } from '../core/reconcile.js';
 import type { RootType } from '../core/ids.js';
-import { PENDING_PREFIX, pendingAt, type LocalFolder, type RootsPort } from '../engine/app.js';
+import type { Excluded } from '../core/reconcile.js';
+import { type LocalFolder, PENDING_PREFIX, pendingAt, type RootsPort } from '../engine/app.js';
 import type { Engine, Node } from './bookmarksPort.js';
 
 const FIREFOX = { toolbar: 'toolbar_____', menu: 'menu________', other: 'unfiled_____', mobile: 'mobile______' };
@@ -59,8 +59,7 @@ export function browserRoots(engine: Engine): RootsPort {
     },
 
     async everythingInto(folderId, create) {
-      const make = async (key: MessageKey, fallback: string) =>
-        create ? (await browser.bookmarks.create({ parentId: folderId, title: message(key, fallback) })).id : `${PENDING_PREFIX}${key}`;
+      const make = async (key: MessageKey, fallback: string) => (create ? (await browser.bookmarks.create({ parentId: folderId, title: message(key, fallback) })).id : `${PENDING_PREFIX}${key}`);
       return {
         mapping: { 'root:toolbar': await make('rootToolbar', 'Toolbar'), 'root:other': await make('rootOther', 'Other'), 'root:menu': await make('rootMenu', 'Menu') },
         excluded: [],

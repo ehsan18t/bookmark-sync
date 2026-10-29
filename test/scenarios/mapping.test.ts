@@ -1,8 +1,8 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { performEdit, WITH_SEPARATORS, type Action } from '../sim/actions.js';
+import { type Action, performEdit, WITH_SEPARATORS } from '../sim/actions.js';
 import { FAKE_ROOTS, FakeBookmarks } from '../sim/fakeBookmarks.js';
-import { Simulator, type SimDevice } from '../sim/simulator.js';
+import { type SimDevice, Simulator } from '../sim/simulator.js';
 
 const folderGroup = (groupId: string, local: string) => ({ groupId, mode: 'folder' as const, mapping: { 'root:group': local } });
 

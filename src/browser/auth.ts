@@ -3,7 +3,7 @@ import { APP_NAME } from '../config.js';
 import { UserError } from '../core/errors.js';
 import { base32, toBase64 } from '../core/ids.js';
 import type { Account } from '../engine/app.js';
-import { GoogleAuthError, type DriveAuth } from '../storage/gdrive.js';
+import { type DriveAuth, GoogleAuthError } from '../storage/gdrive.js';
 import type { Engine } from './bookmarksPort.js';
 
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -74,7 +74,8 @@ export function identityAvailable(): boolean {
 }
 
 export async function signInWithGoogle(engine: Engine): Promise<{ refreshToken: string; accessToken: string; expiresAt: number }> {
-  if (!identityAvailable()) throw new UserError('This browser doesn’t let extensions sign in to Google. In Brave, turn on “Allow Google login for extensions” in Settings, Extensions, then try again.');
+  if (!identityAvailable())
+    throw new UserError('This browser doesn’t let extensions sign in to Google. In Brave, turn on “Allow Google login for extensions” in Settings, Extensions, then try again.');
   const { clientId, clientSecret } = client(engine);
   const verifier = base32(crypto.getRandomValues(new Uint8Array(48)));
   const challenge = base64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));

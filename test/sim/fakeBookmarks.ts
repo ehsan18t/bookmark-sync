@@ -1,7 +1,7 @@
 import type { RootType } from '../../src/core/ids.js';
 import type { Kind } from '../../src/core/ops.js';
-import { PENDING_PREFIX, pendingAt, type RootsPort } from '../../src/engine/app.js';
 import type { LiveNode } from '../../src/core/reconcile.js';
+import { PENDING_PREFIX, pendingAt, type RootsPort } from '../../src/engine/app.js';
 import type { BookmarksPort } from '../../src/engine/ports.js';
 
 interface FakeNode {
@@ -177,7 +177,12 @@ export class FakeBookmarks implements BookmarksPort {
   }
 
   folders(): string[] {
-    return [...Object.values(FAKE_ROOTS), ...this.allNodes().filter((n) => n.kind === 'folder').map((n) => n.id)];
+    return [
+      ...Object.values(FAKE_ROOTS),
+      ...this.allNodes()
+        .filter((n) => n.kind === 'folder')
+        .map((n) => n.id),
+    ];
   }
 
   childCount(folder: string): number {

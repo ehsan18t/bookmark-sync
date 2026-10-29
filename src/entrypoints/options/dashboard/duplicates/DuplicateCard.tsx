@@ -38,11 +38,7 @@ export function DuplicateCard({ d, rescan }: DuplicateCardProps) {
         ))}
       </div>
       <div class="row">
-        <Action
-          label="Keep this one, remove the rest"
-          kind="primary"
-          run={() => apply({ remove: d.items.map((i) => i.localId).filter((id) => id !== keep) })}
-        />
+        <Action label="Keep this one, remove the rest" kind="primary" run={() => apply({ remove: d.items.map((i) => i.localId).filter((id) => id !== keep) })} />
         <span class="muted">or</span>
         <select class="narrow" value={folder} onChange={(e) => setFolder(e.currentTarget.value)}>
           {folders.value.map((f) => (
