@@ -179,7 +179,7 @@ Bookmarks a device brings into a group at join time get IDs derived from their g
 - Builds an in-memory map from normalized URL to the bookmarks with that URL, across the whole browser, labeled by group (or "not synced").
 - **Exact duplicates:** identical after lowercasing the scheme and host and removing a trailing `/` and the `#fragment`.
 - **Possible duplicates:** additionally ignore `http` vs `https`, `www.`, and tracking parameters (`utm_*`, `fbclid`, `gclid`, and similar). Listed separately because other query differences can be real.
-- A review screen groups duplicates with their folder paths and offers "keep this one, remove the others" and "move all into one folder". Nothing is removed automatically.
+- A review screen groups duplicates with their folder paths. Each set offers a choice of the copy to keep or "keep all"; exact sets start on a synced copy and possible ones on "keep all". One Apply button, after a confirmation, removes the other copies of every set in one cleanup. Each set can also move all its copies into one folder. Nothing is removed automatically.
 - Cleanup of synced bookmarks goes through the change log, so it syncs and can be restored from history. Cleanup of bookmarks outside every group is kept in a local undo list on this browser.
 
 ### Encryption (when on)

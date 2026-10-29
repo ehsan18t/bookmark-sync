@@ -1,22 +1,22 @@
 import { useState } from 'preact/hooks';
 import type { DuplicateGroup } from '../../../../core/dedupe.js';
-import type { Command } from '../../../../messages.js';
 import { Action } from '../../../../ui/components/Action.js';
 import { send } from '../../../../ui/lib/messaging.js';
 import { folders } from '../../../../ui/state/store.js';
 
+/** The choice that leaves every copy in a set as it is. */
+export const KEEP_ALL = '';
+
 interface DuplicateCardProps {
   d: DuplicateGroup;
+  keep: string;
+  onKeep: (localId: string) => void;
   rescan: () => Promise<void>;
 }
 
-export function DuplicateCard({ d, rescan }: DuplicateCardProps) {
-  const [keep, setKeep] = useState(d.items[0]!.localId);
+export function DuplicateCard({ d, keep, onKeep, rescan }: DuplicateCardProps) {
   const [folder, setFolder] = useState(folders.value[0]?.id ?? '');
-  const apply = async (action: Extract<Command, { t: 'applyDedupe' }>['action']) => {
-    await send({ t: 'applyDedupe', action });
-    await rescan();
-  };
+  const name = `dup-${d.key}-${d.items[0]!.localId}`;
   return (
     <div class="card stack">
       <div class="row spread">
@@ -26,7 +26,7 @@ export function DuplicateCard({ d, rescan }: DuplicateCardProps) {
       <div class="stack">
         {d.items.map((it) => (
           <label key={it.localId} class="check">
-            <input type="radio" name={`dup-${d.key}`} checked={keep === it.localId} onChange={() => setKeep(it.localId)} />
+            <input type="radio" name={name} checked={keep === it.localId} onChange={() => onKeep(it.localId)} />
             <span class="grow">
               {it.title || 'Untitled'}
               <div class="url">
@@ -36,10 +36,13 @@ export function DuplicateCard({ d, rescan }: DuplicateCardProps) {
             </span>
           </label>
         ))}
+        <label class="check">
+          <input type="radio" name={name} checked={keep === KEEP_ALL} onChange={() => onKeep(KEEP_ALL)} />
+          <span class="grow muted">Keep all of these</span>
+        </label>
       </div>
       <div class="row">
-        <Action label="Keep this one, remove the rest" kind="primary" run={() => apply({ remove: d.items.map((i) => i.localId).filter((id) => id !== keep) })} />
-        <span class="muted">or</span>
+        <span class="muted small">Or move them all to</span>
         <select class="narrow" value={folder} onChange={(e) => setFolder(e.currentTarget.value)}>
           {folders.value.map((f) => (
             <option key={f.id} value={f.id}>
@@ -47,7 +50,13 @@ export function DuplicateCard({ d, rescan }: DuplicateCardProps) {
             </option>
           ))}
         </select>
-        <Action label="Move them all here" run={() => apply({ move: d.items.map((i) => i.localId), folderId: folder })} />
+        <Action
+          label="Move"
+          run={async () => {
+            await send({ t: 'applyDedupe', action: { move: d.items.map((i) => i.localId), folderId: folder } });
+            await rescan();
+          }}
+        />
       </div>
     </div>
   );

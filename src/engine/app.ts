@@ -623,13 +623,13 @@ export class SyncApp {
         return { parentId: parent ?? '', index: kids.findIndex((k) => k.localId === id) };
       };
       if ('remove' in action) {
-        entry.label = `Removed ${action.remove.length} duplicates`;
+        entry.label = `Removed ${action.remove.length} ${action.remove.length === 1 ? 'duplicate' : 'duplicates'}`;
         for (const id of action.remove) {
           if (!synced(id)) entry.removed.push({ ...(await index(id)), node: await this.deps.bookmarks.getSubTree(id) });
           await this.deps.bookmarks.removeTree(id);
         }
       } else {
-        entry.label = `Moved ${action.move.length} duplicates`;
+        entry.label = `Moved ${action.move.length} ${action.move.length === 1 ? 'duplicate' : 'duplicates'}`;
         for (const id of action.move) {
           if (!synced(id)) entry.moved.push({ localId: id, ...(await index(id)) });
           await this.deps.bookmarks.move(id, { parentId: action.folderId });
