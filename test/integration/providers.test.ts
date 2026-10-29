@@ -180,6 +180,19 @@ describe('google drive lookups', () => {
     expect(text(await new DriveProvider(auth, drive.fetch).get('groups/g/devices/d/device.json'))).toBe('two');
   });
 
+  it('reads a listed file that another browser removed as missing', async () => {
+    const drive = new FakeDrive();
+    const auth = { token: async () => 'good', refresh: async () => 'good' };
+    const other = new DriveProvider(auth, drive.fetch);
+    const dir = 'groups/g/devices/d/batches';
+    await other.createOnce(`${dir}/1.json`, bytes('a'));
+    const p = new DriveProvider(auth, drive.fetch);
+    await p.listFiles(dir);
+    await other.delete(`${dir}/1.json`);
+    expect(await p.get(`${dir}/1.json`)).toBeNull();
+    expect(await p.getMany([`${dir}/1.json`])).toEqual([{ status: 'fulfilled', value: null }]);
+  });
+
   it('looks a listed file up again when another browser removed it', async () => {
     const drive = new FakeDrive();
     const auth = { token: async () => 'good', refresh: async () => 'good' };

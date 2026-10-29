@@ -70,12 +70,18 @@ export class DriveProvider implements StorageProvider {
   }
 
   async get(path: string): Promise<Uint8Array | null> {
-    return this.read(path, this.recent(path) ?? (await this.query({ p: path })));
+    const recent = this.recent(path);
+    return recent ? this.readRecent(path, recent) : this.read(path, await this.query({ p: path }));
   }
 
   /** One listing per folder instead of one lookup per file, then several downloads at once. */
   async getMany(paths: string[]): Promise<PromiseSettledResult<Uint8Array | null>[]> {
-    const known = new Map(paths.flatMap((p) => (this.recent(p) ? [[p, this.recent(p)!] as const] : [])));
+    const known = new Map(
+      paths.flatMap((p) => {
+        const r = this.recent(p);
+        return r ? [[p, r] as const] : [];
+      }),
+    );
     const dirs = [...new Set(paths.filter((p) => !known.has(p)).map(dirname))];
     const listed = new Map<string, Map<string, DriveFile[]>>();
     await Promise.all(
@@ -85,7 +91,7 @@ export class DriveProvider implements StorageProvider {
         listed.set(d, byPath);
       }),
     );
-    return settleLimited(paths, PARALLEL_DOWNLOADS, (p) => this.read(p, known.get(p) ?? listed.get(dirname(p))!.get(p) ?? []));
+    return settleLimited(paths, PARALLEL_DOWNLOADS, (p) => (known.has(p) ? this.readRecent(p, known.get(p)!) : this.read(p, listed.get(dirname(p))!.get(p) ?? [])));
   }
 
   async copiedPaths(dir: string): Promise<string[]> {
@@ -95,6 +101,17 @@ export class DriveProvider implements StorageProvider {
   }
 
   /** Byte-identical copies (a retried upload) count as one file; differing copies mean two writers. */
+  /** A file removed since the listing reads as a fresh lookup would. */
+  private async readRecent(path: string, files: DriveFile[]): Promise<Uint8Array | null> {
+    try {
+      return await this.read(path, files);
+    } catch (e) {
+      if (!(e instanceof ProviderError) || e.status !== 404) throw e;
+      this.listed.delete(path);
+      return this.read(path, await this.query({ p: path }));
+    }
+  }
+
   private async read(path: string, found: DriveFile[]): Promise<Uint8Array | null> {
     const files = [...found].sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
     if (!files[0]) return null;
@@ -135,7 +152,7 @@ export class DriveProvider implements StorageProvider {
         this.listed.delete(path);
         return this.overwrite(path, data);
       }
-      for (const extra of existing.slice(1)) await this.call('DELETE', `${API}/files/${extra.id}`);
+      for (const extra of existing.slice(1)) await this.call('DELETE', `${API}/files/${extra.id}`, undefined, [404]);
       if (existing.length > 1) this.listed.set(path, { at: Date.now(), files: [existing[0]] });
     } else {
       await this.upload('POST', `${UPLOAD}/files?uploadType=multipart`, { name: basename(path), parents: ['appDataFolder'], appProperties: props(path) }, data);
@@ -177,6 +194,8 @@ export class DriveProvider implements StorageProvider {
     const at = Date.now();
     const byPath = new Map<string, DriveFile[]>();
     for (const f of out) byPath.set(f.appProperties!.p!, [...(byPath.get(f.appProperties!.p!) ?? []), f]);
+    // A path the listing covers but no longer returns was removed.
+    for (const p of this.listed.keys()) if (p === where.p || (where.dir !== undefined && dirname(p) === where.dir)) this.listed.delete(p);
     for (const [p, files] of byPath) this.listed.set(p, { at, files });
     return out;
   }
