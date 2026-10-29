@@ -1,4 +1,4 @@
-import type { JoinInput, NewAccount, PartChoice, Settings, Target } from './engine/app.js';
+import type { Account, GroupSummary, JoinInput, LocalFolder, NewAccount, PartChoice, Settings, Target } from './engine/app.js';
 
 export type Command =
   | { t: 'status' }
@@ -36,3 +36,18 @@ export type Command =
   | { t: 'diagnostics' };
 
 export type Reply<T = unknown> = { ok: true; value: T } | { ok: false; error: string };
+
+export type PublicAccount = Pick<Account, 'id' | 'type' | 'name'> & { url?: string; username?: string; email?: string };
+export type Capabilities = { google: boolean; googleBlocked: boolean; browser: string };
+export type Device = { deviceId: string; name: string; browser: string; lastSeen: number; left: boolean; removed: boolean; self: boolean };
+
+/** What the pages show, saved by the background script so they can draw it before it answers. */
+export interface Snapshot {
+  groups: GroupSummary[];
+  accounts: PublicAccount[];
+  folders: LocalFolder[];
+  caps: Capabilities;
+  devices: Record<string, Device[]>;
+}
+
+export const SNAPSHOT_KEY = 'snapshot';

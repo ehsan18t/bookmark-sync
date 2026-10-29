@@ -10,7 +10,7 @@ import { IdbStore } from '../browser/idbStore.js';
 import { providerFactory } from '../browser/providers.js';
 import { friendlyError } from '../browser/friendlyError.js';
 import { browserRoots } from '../browser/roots.js';
-import type { Command, Reply } from '../messages.js';
+import { SNAPSHOT_KEY, type Capabilities, type Command, type PublicAccount, type Reply, type Snapshot } from '../messages.js';
 
 function detect(): { engine: Engine; family: BrowserFamily; name: string } {
   const ua = navigator.userAgent;
@@ -74,15 +74,29 @@ export default defineBackground({
       if (!existing || existing.periodInMinutes !== minutes) await browser.alarms.create('pull', { periodInMinutes: minutes });
     }
 
-    async function refreshBadge() {
+    const caps = (): Capabilities => ({ google: googleAvailable(env.engine) && identityAvailable(), googleBlocked: googleAvailable(env.engine) && !identityAvailable(), browser: env.name });
+
+    /** Saves what the pages show, so they draw it at once instead of waiting behind a sync. */
+    let published = '';
+    let publishing: Promise<void> = Promise.resolve();
+    const publish = () => (publishing = publishing.then(writeSnapshot, writeSnapshot));
+    void ready.then(publish);
+    async function writeSnapshot() {
       const groups = await app.status();
+      const devices: Snapshot['devices'] = {};
+      for (const g of groups) devices[g.groupId] = await app.devices(g.groupId);
+      const snapshot: Snapshot = { groups, accounts: app.accounts() as PublicAccount[], folders: await app.folders(), caps: caps(), devices };
       const attention = groups.some((g) => g.status.state === 'paused' && g.status.reason !== 'migration');
       await browser.action.setBadgeText({ text: attention ? '!' : '' });
       await browser.action.setBadgeBackgroundColor({ color: '#c2410c' });
+      const json = JSON.stringify(snapshot);
+      if (json === published) return;
+      published = json;
+      await browser.storage.local.set({ [SNAPSHOT_KEY]: snapshot });
     }
 
     async function onStatus(groupId: string, status: GroupStatus) {
-      await refreshBadge();
+      await publish();
       if (status.state !== 'paused' || status.reason === 'migration') return;
       const name = (await app.status()).find((g) => g.groupId === groupId)?.name ?? APP_NAME;
       await browser.notifications.create(`bsync:${groupId}`, {
@@ -96,7 +110,7 @@ export default defineBackground({
     let timer: ReturnType<typeof setTimeout> | undefined;
     const scheduleSync = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => void ready.then(() => app.syncAll()).then(refreshBadge), 3000);
+      timer = setTimeout(() => void ready.then(() => app.syncAll()).then(publish), 3000);
     };
 
     browser.bookmarks.onCreated.addListener(scheduleSync);
@@ -109,7 +123,7 @@ export default defineBackground({
     extra.onImportEnded?.addListener(() => app.setImporting(false));
 
     browser.alarms.onAlarm.addListener((alarm) => {
-      if (alarm.name === 'pull') void ready.then(() => app.syncAll()).then(refreshBadge);
+      if (alarm.name === 'pull') void ready.then(() => app.syncAll()).then(publish);
     });
 
     browser.windows.onFocusChanged.addListener(async (windowId) => {
@@ -117,14 +131,14 @@ export default defineBackground({
       const { lastFocusSync = 0 } = (await browser.storage.session.get('lastFocusSync')) as { lastFocusSync?: number };
       if (Date.now() - lastFocusSync < 10_000) return;
       await browser.storage.session.set({ lastFocusSync: Date.now() });
-      void ready.then(() => app.syncAll()).then(refreshBadge);
+      void ready.then(() => app.syncAll()).then(publish);
     });
 
     browser.runtime.onInstalled.addListener(({ reason }) => {
       if (reason === 'install') void browser.tabs.create({ url: browser.runtime.getURL('/options.html#setup') });
     });
 
-    browser.runtime.onStartup.addListener(() => void ready.then(() => app.syncAll()));
+    browser.runtime.onStartup.addListener(() => void ready.then(() => app.syncAll()).then(publish));
     browser.notifications.onClicked.addListener((id) => {
       if (id.startsWith('bsync:')) void browser.runtime.openOptionsPage();
     });
@@ -135,7 +149,7 @@ export default defineBackground({
         case 'status':
           return app.status();
         case 'capabilities':
-          return { google: googleAvailable(env.engine) && identityAvailable(), googleBlocked: googleAvailable(env.engine) && !identityAvailable(), browser: env.name };
+          return caps();
         case 'accounts':
           return app.accounts();
         case 'addAccount':
@@ -220,7 +234,7 @@ export default defineBackground({
       handle(msg as Command)
         .then((value) => sendResponse({ ok: true, value }))
         .catch((e: unknown) => sendResponse({ ok: false, error: friendlyError(e) }))
-        .finally(() => void refreshBadge());
+        .finally(() => void publish());
       return true;
     });
   },
