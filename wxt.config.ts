@@ -1,3 +1,4 @@
+import preact from '@preact/preset-vite';
 import { defineConfig } from 'wxt';
 
 /** WXT loads .env and .env.local into process.env before it builds the manifest. */
@@ -27,6 +28,7 @@ function checkEnv(browser: string) {
 
 export default defineConfig({
   srcDir: 'src',
+  vite: () => ({ plugins: [preact()] }),
   outDir: process.env.BSYNC_E2E ? '.output-e2e' : '.output',
   manifestVersion: 3,
   manifest: ({ browser }) => {

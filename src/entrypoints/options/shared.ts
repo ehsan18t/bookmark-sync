@@ -1,25 +1,30 @@
+import { batch, signal } from '@preact/signals';
 import type { Account, FoundGroup, GroupSummary, LocalFolder } from '../../engine/app.js';
-import { send } from '../../ui/dom.js';
+import { send } from '../../ui/util.js';
 
 export type PublicAccount = Pick<Account, 'id' | 'type' | 'name'> & { url?: string; username?: string; email?: string };
 export type Folder = LocalFolder;
 export type Capabilities = { google: boolean; googleBlocked: boolean; browser: string };
 export type FoundSync = FoundGroup;
 
-export const state: { accounts: PublicAccount[]; groups: GroupSummary[]; folders: Folder[]; caps: Capabilities } = {
-  accounts: [],
-  groups: [],
-  folders: [],
-  caps: { google: false, googleBlocked: false, browser: 'this browser' },
-};
+export const groups = signal<GroupSummary[]>([]);
+export const accounts = signal<PublicAccount[]>([]);
+export const folders = signal<Folder[]>([]);
+export const caps = signal<Capabilities>({ google: false, googleBlocked: false, browser: 'this browser' });
 
 export async function load() {
-  [state.groups, state.accounts, state.folders, state.caps] = await Promise.all([
+  const [g, a, f, c] = await Promise.all([
     send<GroupSummary[]>({ t: 'status' }),
     send<PublicAccount[]>({ t: 'accounts' }),
     send<Folder[]>({ t: 'folders' }),
     send<Capabilities>({ t: 'capabilities' }),
   ]);
+  batch(() => {
+    groups.value = g;
+    accounts.value = a;
+    folders.value = f;
+    caps.value = c;
+  });
 }
 
 export const storageLabel = (a: PublicAccount | undefined) => (!a ? 'Unknown storage' : a.type === 'gdrive' ? 'Google Drive' : a.name);
