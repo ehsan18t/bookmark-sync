@@ -6,7 +6,8 @@ import { APP_NAME, SERVER_FOLDER } from '../../config.js';
 import { action, brand, errorText, field, h, send } from '../../ui/dom.js';
 import { icon, type IconName } from '../../ui/icons.js';
 import { folderTree, groupItems, localItems, placements, type FolderTree } from './folderTree.js';
-import { load, state, storageLabel, type FoundSync, type PublicAccount } from './shared.js';
+import { sameNameKey } from '../../core/names.js';
+import { load, state, storageLabel, storageWithAccount, type FoundSync, type PublicAccount } from './shared.js';
 
 type Step =
   | { id: 'storage' }
@@ -65,7 +66,7 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
 
   function storageStep() {
     const existing = state.accounts.map((a) =>
-      choice({ icon: a.type === 'gdrive' ? 'brand-google-drive' : 'server', title: storageLabel(a), desc: a.type === 'gdrive' ? 'Already connected' : `Already connected · ${a.url ?? ''}`, onclick: () => show({ id: 'choose', account: a }) }),
+      choice({ icon: a.type === 'gdrive' ? 'brand-google-drive' : 'server', title: storageWithAccount(a), desc: a.type === 'gdrive' ? 'Already connected' : `Already connected · ${a.url ?? ''}`, onclick: () => show({ id: 'choose', account: a }) }),
     );
     const google = state.caps.google
       ? choice({ icon: 'brand-google-drive', title: 'Google Drive', badge: 'Recommended', recommended: true, desc: 'Sign in with your Google account. Bookmarks go in a private app folder.', onclick: () => show({ id: 'google' }) })
@@ -168,39 +169,65 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
   }
 
   function chooseStep(account: PublicAccount) {
-    const list = h('div', { class: 'stack' }, h('div', { class: 'row muted' }, icon('loader-2', 'spin'), `Looking for synced bookmarks on ${storageLabel(account)}…`));
-    const wrap = h('div', { class: 'stack lg' }, head('Start or join', `Connected to ${storageLabel(account)}.`), list, h('div', { class: 'row' }, back({ id: 'storage' })));
+    const where = storageWithAccount(account);
+    const list = h('div', { class: 'stack' }, h('div', { class: 'row muted' }, icon('loader-2', 'spin'), `Looking for synced bookmarks on ${where}…`));
+    const footer = h('div', { class: 'footer' }, back({ id: 'storage' }));
+    const wrap = h('div', { class: 'stack lg' }, head('Join or start a sync', where), list, footer);
     void send<FoundSync[]>({ t: 'discover', accountId: account.id }).then(
       (found) => {
+        const taken = new Set(found.map((f) => sameNameKey(f.name)));
+        let suggested = 'Bookmarks';
+        for (let i = 2; taken.has(sameNameKey(suggested)); i++) suggested = `Bookmarks ${i}`;
+        const name = h('input', { type: 'text', value: suggested });
+        const nameField = h('div', { class: 'card stack' }, field('Name the new sync', name, 'Shown in every browser that joins. It can’t match the name of another sync here.'));
+        const start = () => {
+          const value = name.value.trim();
+          if (!value) throw new Error('Give the new sync a name.');
+          const same = found.find((f) => sameNameKey(f.name) === sameNameKey(value));
+          if (same) throw new Error(`A sync called “${same.name}” is already on this storage. Join it, or pick another name.`);
+          show({ id: 'create', account, name: value });
+        };
         const open = found.filter((f) => !f.joined);
-        const name = h('input', { type: 'text', value: open.length || found.length ? `Bookmarks ${found.length + 1}` : 'Bookmarks' });
-        const startCard = () =>
-          h(
-            'div',
-            { class: 'card stack' },
-            field('Name this sync', name, 'Shown in every browser that joins.'),
-            h('div', { class: 'row' }, h('button', { class: open.length ? '' : 'primary lg', onclick: () => show({ id: 'create', account, name: name.value.trim() || 'Bookmarks' }) }, 'Continue', icon('chevron-right'))),
+        if (!open.length) {
+          wrap.replaceChild(
+            head('Start syncing', found.length ? `Every sync on ${where} already syncs in this browser, so this starts a new one.` : `Nothing is synced on ${where} yet, so this browser starts the sync. Your other browsers join it later.`),
+            wrap.firstChild!,
           );
-        if (open.length) {
-          wrap.replaceChild(head('Join your synced bookmarks', 'These are already synced on this storage from your other browsers. Join one to get the same bookmarks here.'), wrap.firstChild!);
-          list.replaceChildren(
-            ...open.map((f) =>
-              choice({
-                icon: f.encrypted ? 'lock' : 'bookmarks',
-                title: f.name,
-                badge: f.encrypted ? 'Encrypted' : undefined,
-                recommended: open.length === 1,
-                desc: f.mode === 'folder' ? 'Syncs chosen folders' : 'Syncs all bookmarks',
-                onclick: () => show({ id: 'join', account, sync: f }),
-              }),
-            ),
-            h('details', { class: 'advanced' }, h('summary', {}, icon('chevron-right'), 'Start a separate sync instead'), h('div', { class: 'stack' }, startCard())),
-          );
-        } else {
-          wrap.replaceChild(head('Start syncing', 'Nothing is synced on this storage yet, so this browser starts the sync. Your other browsers join it later.'), wrap.firstChild!);
-          list.replaceChildren(startCard());
+          list.replaceChildren(nameField);
+          footer.append(action('Continue', async () => start(), { kind: 'primary', size: 'lg' }));
+          return void name.focus();
         }
-        name.focus();
+        const members = (f: FoundSync) => (f.browsers === null ? null : f.browsers.length ? f.browsers.join(', ') : 'no browsers yet');
+        const pick = radios<string>(
+          'sync',
+          [
+            ...found.map((f) => ({
+              value: f.groupId,
+              title: f.name,
+              icon: (f.encrypted ? 'lock' : 'bookmarks') as IconName,
+              badge: f.encrypted ? 'Encrypted' : undefined,
+              desc: f.joined ? 'Already syncing in this browser' : [f.mode === 'folder' ? 'Chosen folders' : 'All bookmarks', members(f)].filter(Boolean).join(' · '),
+              disabled: f.joined,
+            })),
+            { value: 'new', title: 'Start a new sync', icon: 'plus', desc: 'Keeps a separate set of bookmarks in sync, apart from the ones above.' },
+          ],
+          open.length === 1 ? open[0]!.groupId : null,
+          (v) => ((nameField.hidden = v !== 'new'), v === 'new' && name.focus()),
+        );
+        nameField.hidden = true;
+        list.replaceChildren(pick.el, nameField);
+        footer.append(
+          action(
+            'Continue',
+            async () => {
+              const v = pick.value();
+              if (!v) throw new Error('Pick a sync to join, or start a new one.');
+              if (v === 'new') return start();
+              show({ id: 'join', account, sync: open.find((f) => f.groupId === v)! });
+            },
+            { kind: 'primary', size: 'lg' },
+          ),
+        );
       },
       (e) => list.replaceChildren(h('div', { class: 'error' }, icon('alert-triangle'), h('span', {}, errorText(e))), h('div', { class: 'row' }, h('button', { onclick: () => show({ id: 'choose', account }) }, icon('refresh'), 'Try again'))),
     );
@@ -208,13 +235,18 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
   }
 
   /** Radio cards for a small set of exclusive options. */
-  function radios<T extends string>(name: string, options: { value: T; title: string; desc: string; icon: IconName; badge?: string }[], initial: T, onchange: (v: T) => void) {
+  function radios<T extends string>(
+    name: string,
+    options: { value: T; title: string; desc: string; icon: IconName; badge?: string; disabled?: boolean }[],
+    initial: T | null,
+    onchange: (v: T) => void,
+  ) {
     let current = initial;
     const cards = options.map((o) => {
-      const input = h('input', { type: 'radio', name, value: o.value, checked: o.value === initial });
+      const input = h('input', { type: 'radio', name, value: o.value, checked: o.value === initial, disabled: !!o.disabled });
       const card = h(
         'label',
-        { class: `choice${o.value === initial ? ' selected' : ''}` },
+        { class: `choice${o.value === initial ? ' selected' : ''}${o.disabled ? ' disabled' : ''}` },
         input,
         h('span', { class: 'tile' }, icon(o.icon, 'lg')),
         h('span', { class: 'text' }, h('span', { class: 'title' }, o.title, o.badge ? h('span', { class: 'pill accent' }, o.badge) : null), h('span', { class: 'desc' }, o.desc)),
@@ -264,7 +296,7 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
     return h(
       'div',
       { class: 'stack lg' },
-      head('What should sync?', `Starting “${name}” on ${storageLabel(account)}.`),
+      head('What should sync?', `Starting “${name}” on ${storageWithAccount(account)}.`),
       what.el,
       folderField,
       h('label', { class: 'check' }, defaults, h('span', {}, 'Leave out the sample bookmarks the browser came with', h('div', { class: 'hint' }, 'So every browser doesn’t add its own copies.'))),
@@ -429,7 +461,7 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
       h(
         'div',
         { class: 'card stack', style: 'text-align:left;width:100%' },
-        h('div', { class: 'row' }, icon('devices', 'lg'), h('div', { class: 'grow' }, h('b', {}, step.joined ? 'Add more browsers the same way' : 'Next, set up your other browsers'), h('p', { class: 'muted small' }, `Install ${APP_NAME} in each browser and connect ${storageLabel(step.account)}. They find “${g?.name ?? 'Bookmarks'}” and join it.`))),
+        h('div', { class: 'row' }, icon('devices', 'lg'), h('div', { class: 'grow' }, h('b', {}, step.joined ? 'Add more browsers the same way' : 'Next, set up your other browsers'), h('p', { class: 'muted small' }, `Install ${APP_NAME} in each browser and connect ${storageWithAccount(step.account)}. They find “${g?.name ?? 'Bookmarks'}” and join it.`))),
       ),
       h('button', { class: 'primary lg', onclick: finish }, 'Open the dashboard'),
     );

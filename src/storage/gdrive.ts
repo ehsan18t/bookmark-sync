@@ -42,6 +42,12 @@ export class DriveProvider implements StorageProvider {
     return this.lastServerDate;
   }
 
+  /** `about` is readable with the drive.appdata scope, so no extra sign-in permission is needed. */
+  async whoAmI(): Promise<string | null> {
+    const res = await this.call('GET', `${API}/about?fields=user(emailAddress)`);
+    return ((await res.json()) as { user?: { emailAddress?: string } }).user?.emailAddress ?? null;
+  }
+
   async listGroups(): Promise<string[]> {
     return (await this.query({ k: 'group' })).map((f) => f.appProperties!.g!).sort();
   }

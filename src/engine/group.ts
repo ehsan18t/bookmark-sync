@@ -381,6 +381,20 @@ export class GroupEngine {
     return bytes ? decode<GroupHeader>(bytes, 'group') : null;
   }
 
+  /** Whether the group was deleted, and the names of browsers in it when they are readable without a key. */
+  static async readMembers(provider: StorageProvider, groupId: string, encrypted: boolean): Promise<{ deleted: boolean; browsers: string[] | null }> {
+    const devices = await provider.listDevices(groupId);
+    const browsers: string[] = [];
+    for (const d of devices) {
+      if (await provider.get(markerPath(groupId, d, 'group-deleted'))) return { deleted: true, browsers: null };
+      if (encrypted) continue;
+      const bytes = await provider.get(deviceInfoPath(groupId, d));
+      const info = bytes ? await decode<DeviceInfo>(bytes, 'device').catch(() => null) : null;
+      if (info && !info.left) browsers.push(info.name);
+    }
+    return { deleted: false, browsers: encrypted ? null : browsers };
+  }
+
   static async preview(ports: EnginePorts, config: GroupConfig, opts: JoinOptions, key: CryptoKey | null): Promise<JoinPreview> {
     const scratch: GroupStore = { load: async () => null, save: async () => {}, delete: async () => {} };
     const engine = new GroupEngine({ ...ports, store: scratch }, freshLocal(config), key);
@@ -397,7 +411,10 @@ export class GroupEngine {
     engine.observe(hlcFloor(ports.provider.serverDate()));
     await engine.pull();
     if (await engine.loadNewestSnapshot()) await engine.pull();
-    if (engine.paused) throw new UserError(`That sync can’t be read right now (${(engine.local.status as { reason: string }).reason}). Try again in a few minutes.`);
+    if (engine.paused)
+      throw new UserError(
+        (engine.local.status as { reason: string }).reason === 'group-deleted' ? 'That sync was deleted from another browser.' : 'That sync can’t be read right now. Try again in a few minutes.',
+      );
     return engine.folders();
   }
 

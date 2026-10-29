@@ -4,6 +4,7 @@ import { findDuplicates, type DedupeItem, type DuplicateGroup } from '../core/de
 import type { BrowserFamily } from '../core/defaults.js';
 import { DAY } from '../core/frontier.js';
 import { EVERYTHING_ROOTS, randomId, ROOT_GROUP, type PlaceHint, type RandomBytes, type RootType } from '../core/ids.js';
+import { sameNameKey } from '../core/names.js';
 import type { Kind } from '../core/ops.js';
 import type { Excluded, LiveNode } from '../core/reconcile.js';
 import { ProviderAuthError } from '../storage/webdav.js';
@@ -26,7 +27,9 @@ import { PermissionMissingError, type BookmarksPort, type Clock, type StoragePro
 
 export type Account =
   | { id: string; type: 'webdav'; name: string; url: string; username: string; password: string }
-  | { id: string; type: 'gdrive'; name: string; refreshToken: string; accessToken?: string; expiresAt?: number };
+  | { id: string; type: 'gdrive'; name: string; email?: string; refreshToken: string; accessToken?: string; expiresAt?: number };
+
+export type FoundGroup = { groupId: string; name: string; mode: 'everything' | 'folder'; encrypted: boolean; joined: boolean; browsers: string[] | null };
 
 export type NewAccount = Account extends infer A ? (A extends Account ? Omit<A, 'id'> : never) : never;
 
@@ -166,6 +169,7 @@ export class SyncApp {
   private readonly lastError = new Map<string, string>();
   private readonly rawError = new Map<string, string>();
   private readonly backoffUntil = new Map<string, number>();
+  private readonly emailTried = new Set<string>();
   private queue: Promise<unknown> = Promise.resolve();
   private importing = false;
 
@@ -200,14 +204,16 @@ export class SyncApp {
   // Accounts
 
   accounts(): Omit<Account, 'password' | 'refreshToken' | 'accessToken'>[] {
-    return this.meta.accounts.map((a) => ({ id: a.id, type: a.type, name: a.name, ...(a.type === 'webdav' ? { url: a.url, username: a.username } : {}) }) as Account);
+    return this.meta.accounts.map((a) => ({ id: a.id, type: a.type, name: a.name, ...(a.type === 'webdav' ? { url: a.url, username: a.username } : { email: a.email }) }) as Account);
   }
 
   addAccount(account: NewAccount): Promise<string> {
     return this.run(async () => {
       const id = randomId(this.deps.random, 8);
       const full = { ...account, id } as Account;
-      await this.deps.providerFor(full, async () => {}).listGroups();
+      const provider = this.deps.providerFor(full, async () => {});
+      await provider.listGroups();
+      if (full.type === 'gdrive') full.email = (await provider.whoAmI?.().catch(() => null)) ?? undefined;
       this.meta.accounts.push(full);
       await this.saveMeta();
       return id;
@@ -222,16 +228,20 @@ export class SyncApp {
     });
   }
 
-  discoverGroups(accountId: string): Promise<{ groupId: string; name: string; mode: string; encrypted: boolean; joined: boolean }[]> {
-    return this.run(async () => {
-      const provider = this.providerOf(this.account(accountId));
-      const out = [];
-      for (const g of await provider.listGroups()) {
-        const h = await GroupEngine.readHeader(provider, g);
-        if (h) out.push({ groupId: g, name: h.name, mode: h.mode, encrypted: !!h.encryption, joined: this.engines.has(g) });
-      }
-      return out;
-    });
+  /** Groups on the storage that aren't deleted. */
+  discoverGroups(accountId: string): Promise<FoundGroup[]> {
+    return this.run(() => this.liveGroups(this.providerOf(this.account(accountId))));
+  }
+
+  private async liveGroups(provider: StorageProvider): Promise<FoundGroup[]> {
+    const out: FoundGroup[] = [];
+    for (const g of await provider.listGroups()) {
+      const h = await GroupEngine.readHeader(provider, g);
+      if (!h) continue;
+      const { deleted, browsers } = await GroupEngine.readMembers(provider, g, !!h.encryption);
+      if (!deleted) out.push({ groupId: g, name: h.name, mode: h.mode, encrypted: !!h.encryption, joined: this.engines.has(g), browsers });
+    }
+    return out;
   }
 
   // Groups
@@ -239,6 +249,10 @@ export class SyncApp {
   createGroup(input: { accountId: string; name: string; mode: 'everything' | 'folder'; target: Target; passphrase?: string; ignoreDefaults: boolean; iterations?: number }): Promise<string> {
     return this.run(async () => {
       const account = this.account(input.accountId);
+      const nameKey = sameNameKey(input.name);
+      if (!nameKey) throw new UserError('Give this sync a name.');
+      const taken = (await this.liveGroups(this.providerOf(account))).find((g) => sameNameKey(g.name) === nameKey);
+      if (taken) throw new UserError(`A sync called “${taken.name}” is already on this storage. Join it, or pick another name.`);
       const groupId = randomId(this.deps.random);
       let resolved: { mapping: Record<string, string>; excluded: [string, Excluded][]; tops?: NewTop[] };
       if (input.mode === 'folder') {
@@ -449,9 +463,22 @@ export class SyncApp {
   syncAll(): Promise<void> {
     return this.run(async () => {
       if (this.importing) return;
+      await this.fillEmails();
       await this.checkMappingOverlaps();
       for (const e of [...this.engines.values()]) await this.syncOne(e);
     });
+  }
+
+  /** Google accounts connected before the email was recorded; tried once per run of the extension. */
+  private async fillEmails(): Promise<void> {
+    let changed = false;
+    for (const a of this.meta.accounts) {
+      if (a.type !== 'gdrive' || a.email || this.emailTried.has(a.id)) continue;
+      this.emailTried.add(a.id);
+      const email = await this.providerOf(a).whoAmI?.().catch(() => null);
+      if (email) (a.email = email), (changed = true);
+    }
+    if (changed) await this.saveMeta();
   }
 
   syncGroup(groupId: string): Promise<void> {

@@ -7,7 +7,7 @@ import { APP_NAME, HOMEPAGE_URL, PRIVACY_URL, SUPPORT_EMAIL } from '../../config
 import { action, brand, errorText, field, h, hlcTime, relativeTime, send } from '../../ui/dom.js';
 import { icon, type IconName } from '../../ui/icons.js';
 import { folderTree, groupItems, localItems, placements } from './folderTree.js';
-import { load, REASON_TEXT, state, storageLabel } from './shared.js';
+import { load, REASON_TEXT, state, storageLabel, storageWithAccount } from './shared.js';
 
 type Tab = 'overview' | 'history' | 'browsers' | 'duplicates' | 'settings';
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
@@ -55,21 +55,39 @@ async function overview(panel: HTMLElement, refresh: () => Promise<void>) {
 function syncCard(g: GroupSummary, refresh: () => Promise<void>) {
   const account = state.accounts.find((a) => a.id === g.accountId);
   const more = h('div', { class: 'stack' });
+  const sharedWith = h('dd', { class: 'muted' }, 'Checking…');
+  void send<{ name: string; left: boolean; removed: boolean; self: boolean }[]>({ t: 'devices', groupId: g.groupId }).then(
+    (list) => {
+      const others = list.filter((d) => !d.self && !d.left && !d.removed).map((d) => d.name);
+      sharedWith.className = others.length ? '' : 'muted';
+      sharedWith.textContent = others.length ? others.join(', ') : 'No other browsers yet';
+    },
+    () => (sharedWith.textContent = 'Couldn’t check'),
+  );
+  const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
   return h(
     'div',
     { class: 'card stack lg' },
     h(
       'div',
       { class: 'row spread' },
-      h('div', { class: 'stack', style: 'gap:4px' }, h('div', { class: 'row' }, h('h2', {}, g.name), statusPill(g), g.encrypted ? h('span', { class: 'pill' }, icon('lock'), 'Encrypted') : null), h('span', { class: 'muted' }, `${g.location} · ${storageLabel(account)}`)),
+      h('div', { class: 'row' }, h('h2', {}, g.name), statusPill(g), g.encrypted ? h('span', { class: 'pill' }, icon('lock'), 'Encrypted') : null),
       action('Sync now', async () => (await send({ t: 'syncGroup', groupId: g.groupId }), refresh()), { icon: 'refresh', busy: 'Syncing…' }),
     ),
     h(
-      'div',
-      { class: 'stats' },
-      h('div', { class: 'stat' }, h('b', {}, String(g.bookmarks)), h('span', {}, 'bookmarks')),
-      h('div', { class: 'stat' }, h('b', {}, relativeTime(g.lastSyncAt)), h('span', {}, 'last synced')),
-      h('div', { class: 'stat' }, h('b', {}, String(g.pendingChanges)), h('span', {}, 'changes waiting to upload')),
+      'dl',
+      { class: 'facts' },
+      h('dt', {}, 'Syncs here'),
+      h('dd', {}, g.location),
+      h('dt', {}, 'Stored in'),
+      h('dd', {}, storageWithAccount(account)),
+      h('dt', {}, 'Shared with'),
+      sharedWith,
+    ),
+    h(
+      'p',
+      { class: 'muted small' },
+      [n(g.bookmarks, 'bookmark', 'bookmarks'), g.lastSyncAt ? `synced ${relativeTime(g.lastSyncAt)}` : 'not synced yet', `${n(g.pendingChanges, 'change', 'changes')} waiting to upload`].join(' · '),
     ),
     pauseBanner(g, refresh),
     g.notices.length
@@ -493,7 +511,7 @@ async function settings(panel: HTMLElement, refresh: () => Promise<void>) {
                   'li',
                   {},
                   icon(a.type === 'gdrive' ? 'brand-google-drive' : 'server', 'lg'),
-                  h('div', { class: 'grow' }, h('b', {}, storageLabel(a)), h('div', { class: 'meta' }, [a.type === 'webdav' && a.url ? decodeURI(a.url) : null, used.length ? `Used by ${used.join(', ')}` : 'Not used by any sync'].filter(Boolean).join(' · '))),
+                  h('div', { class: 'grow' }, h('b', {}, storageWithAccount(a)), h('div', { class: 'meta' }, [a.type === 'webdav' && a.url ? decodeURI(a.url) : null, used.length ? `Used by ${used.join(', ')}` : 'Not used by any sync'].filter(Boolean).join(' · '))),
                   action('Remove', async () => (await send({ t: 'removeAccount', id: a.id }), await load(), refresh()), { kind: 'ghost', confirm: `Remove ${storageLabel(a)} from this browser? Nothing is deleted from the storage.` }),
                 );
               }),

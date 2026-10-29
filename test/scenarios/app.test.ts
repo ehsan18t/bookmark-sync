@@ -77,7 +77,7 @@ describe('the app layer', () => {
     await a.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'From Chrome', url: 'https://c.example/' });
     const groupId = await a.app.createGroup({ accountId: accA, name: 'Main', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
     const found = await b.app.discoverGroups(accB);
-    expect(found).toEqual([{ groupId, name: 'Main', mode: 'everything', encrypted: false, joined: false }]);
+    expect(found).toEqual([{ groupId, name: 'Main', mode: 'everything', encrypted: false, joined: false, browsers: ['chrome'] }]);
     await b.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'From Firefox', url: 'https://f.example/' });
     const input = { accountId: accB, groupId, target: { kind: 'whole' as const }, mode: 'merge' as const, ignoreDefaults: true };
     expect(await b.app.previewJoin(input)).toMatchObject({ added: 1, matched: 0, groupItems: 1 });
@@ -87,6 +87,21 @@ describe('the app layer', () => {
     expect(await titles(b.bookmarks)).toEqual(['From Chrome', 'From Firefox']);
     const [status] = await a.app.status();
     expect(status).toMatchObject({ name: 'Main', status: { state: 'active' }, pendingChanges: 0 });
+  });
+
+  it('hides a group deleted from another browser and frees its name', async () => {
+    const { a, b, accA, accB } = await pair();
+    const groupId = await a.app.createGroup({ accountId: accA, name: 'Main', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
+    await a.app.deleteEverywhere(groupId);
+    expect(await b.app.discoverGroups(accB)).toEqual([]);
+    await expect(b.app.createGroup({ accountId: accB, name: 'Main', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false })).resolves.toBeTruthy();
+  });
+
+  it('refuses a name already used on the storage, ignoring case and spaces', async () => {
+    const { a, b, accA, accB } = await pair();
+    await a.app.createGroup({ accountId: accA, name: 'Bookmarks New', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
+    for (const name of ['bookmarks new', '  BOOKMARKS   NEW ', 'BookmarksNew'])
+      await expect(b.app.createGroup({ accountId: accB, name, mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false })).rejects.toThrow(/already on this storage/);
   });
 
   it('previewing a join into a folder creates nothing', async () => {

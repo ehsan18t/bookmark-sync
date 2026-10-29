@@ -17,6 +17,8 @@ export interface StorageProvider {
   delete(path: string): Promise<void>;
   listFiles(dir: string): Promise<string[]>;
   serverDate(): number;
+  /** The signed-in account, such as an email address, when the storage can tell. */
+  whoAmI?(): Promise<string | null>;
 }
 
 export interface BookmarksPort {

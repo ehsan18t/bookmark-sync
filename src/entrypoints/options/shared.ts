@@ -1,10 +1,10 @@
-import type { Account, GroupSummary, LocalFolder } from '../../engine/app.js';
+import type { Account, FoundGroup, GroupSummary, LocalFolder } from '../../engine/app.js';
 import { send } from '../../ui/dom.js';
 
-export type PublicAccount = Pick<Account, 'id' | 'type' | 'name'> & { url?: string; username?: string };
+export type PublicAccount = Pick<Account, 'id' | 'type' | 'name'> & { url?: string; username?: string; email?: string };
 export type Folder = LocalFolder;
 export type Capabilities = { google: boolean; googleBlocked: boolean; browser: string };
-export type FoundSync = { groupId: string; name: string; mode: 'everything' | 'folder'; encrypted: boolean; joined: boolean };
+export type FoundSync = FoundGroup;
 
 export const state: { accounts: PublicAccount[]; groups: GroupSummary[]; folders: Folder[]; caps: Capabilities } = {
   accounts: [],
@@ -23,6 +23,12 @@ export async function load() {
 }
 
 export const storageLabel = (a: PublicAccount | undefined) => (!a ? 'Unknown storage' : a.type === 'gdrive' ? 'Google Drive' : a.name);
+
+/** The storage with the account signed in to it, for telling two connections apart. */
+export const storageWithAccount = (a: PublicAccount | undefined) => {
+  const who = a?.type === 'gdrive' ? a.email : a?.username;
+  return who ? `${storageLabel(a)} · ${who}` : storageLabel(a);
+};
 
 export const REASON_TEXT: Record<string, string> = {
   'large-remote-change': 'Another browser made a big change to these bookmarks. Check it before it’s applied here.',
