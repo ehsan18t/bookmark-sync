@@ -1,0 +1,144 @@
+.steps {
+  display: flex;
+  gap: 6px;
+}
+
+.steps span {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.steps span.done {
+  background: var(--accent);
+}
+
+.step-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step-head h1 {
+  font-size: 22px;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  white-space: normal;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.choice:hover {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
+.choice.recommended {
+  border: 2px solid var(--accent);
+  padding: 15px 17px;
+}
+
+.choice.selected {
+  border: 2px solid var(--accent);
+  padding: 15px 17px;
+  background: var(--accent-bg);
+}
+
+.choice .tile {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  flex: none;
+}
+
+.choice.recommended .tile,
+.choice.selected .tile {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+
+.choice .text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.choice .title {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.choice .desc {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.choice > .icon:last-child {
+  color: var(--text-3);
+}
+
+.choice input[type='radio'] {
+  margin: 0 4px 0 0;
+}
+
+.choice.disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.choice.disabled:hover {
+  border-color: var(--border);
+}
+
+.choice.selected .pill.accent {
+  background: var(--surface);
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.footer > .action {
+  align-items: flex-end;
+  text-align: right;
+  max-width: 70%;
+}
+
+.footer > .action .error {
+  text-align: left;
+  max-width: 420px;
+}
+
+.connect-new {
+  margin-top: 8px;
+}
+
+.card.next-steps {
+  text-align: left;
+  width: 100%;
+}

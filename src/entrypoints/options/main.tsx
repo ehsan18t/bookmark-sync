@@ -1,67 +1,19 @@
-import { effect, signal } from '@preact/signals';
+import { effect } from '@preact/signals';
 import { render } from 'preact';
-import { Banner } from '../../ui/components.js';
-import { errorText } from '../../ui/util.js';
-import '../../ui/styles.css';
-import { Dashboard, isTab } from './Dashboard.js';
-import { Setup } from './Setup.js';
-import { follow, groups, load, refreshError } from './shared.js';
+import { boot, ready } from '../../ui/state/boot.js';
+import { groups } from '../../ui/state/store.js';
+import '../../ui/styles/common.css';
+import './setup/setup.css';
+import './folder-picker/folder-picker.css';
+import './dashboard/dashboard.css';
+import { App } from './App.js';
+import { followHash, inSetup } from './route.js';
 
-const hash = signal(location.hash.slice(1));
-const ready = signal(false);
-const failure = signal('');
-/** Setup keeps the page until it finishes, even once its own reload shows a sync. */
-const inSetup = signal(false);
-
-const finish = () => {
-  inSetup.value = false;
-  location.hash = 'overview';
-};
-
-window.addEventListener('hashchange', () => {
-  hash.value = location.hash.slice(1);
-  if (isTab(hash.value) && groups.value.length) inSetup.value = false;
-});
-
-function App() {
-  if (failure.value)
-    return (
-      <div class="page">
-        <Banner kind="danger" icon="alert-triangle">
-          {failure.value}
-        </Banner>
-      </div>
-    );
-  if (!ready.value) return null;
-  return (
-    <>
-      {refreshError.value && (
-        <div class="page">
-          <Banner kind="danger" icon="alert-triangle">
-            {refreshError.value} What you see may be out of date.
-          </Banner>
-        </div>
-      )}
-      {hash.value === 'setup' || inSetup.value ? <Setup onFinish={finish} /> : <Dashboard tab={isTab(hash.value) ? hash.value : 'overview'} />}
-    </>
-  );
-}
-
+followHash();
 render(<App />, document.getElementById('app')!);
 
 effect(() => {
   if (ready.value && !groups.value.length) inSetup.value = true;
 });
 
-/** The saved snapshot draws the page at once; the fresh load only has to be waited for when nothing is saved. */
-async function start() {
-  if (await follow()) {
-    ready.value = true;
-    void load().catch((e) => (refreshError.value = errorText(e)));
-  } else {
-    await load();
-    ready.value = true;
-  }
-}
-
-start().catch((e) => (failure.value = errorText(e)));
+boot();
