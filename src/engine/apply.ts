@@ -48,10 +48,9 @@ export async function applyMerged(
       continue;
     }
     const twin = sharing?.adopt(n.id);
-    // Node ids come from storage others may write: only an identical twin is taken over, never edited, and a folder only
-    // while empty, since its contents would follow it into this group.
+    // Node ids come from storage others may write, so only an identical twin is taken over, and it is never edited.
     const same = twin && (await port.exists(twin)) ? await port.getSubTree(twin).catch(() => null) : null;
-    if (same && same.kind === n.kind && (n.kind === 'bookmark' ? same.url === n.url : same.title === n.title && !same.children?.length)) {
+    if (same && same.kind === n.kind && (n.kind === 'bookmark' ? same.url === n.url : same.title === n.title)) {
       try {
         await port.move(same.localId, { parentId: parent });
         localOf.set(n.id, same.localId);
