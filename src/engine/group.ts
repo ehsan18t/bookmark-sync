@@ -520,6 +520,7 @@ export class GroupEngine {
       return result;
     }
     if (st.state === 'paused') this.local.status = { state: 'active' };
+    this.copies = this.listCopies();
     try {
       if (!(await this.checkMapping())) return result;
       const listed = await this.ports.provider.listDevices(this.groupId);
@@ -547,9 +548,22 @@ export class GroupEngine {
       else if (e instanceof CorruptFileError) await this.pause('corrupt', e.message);
       else throw e;
     } finally {
+      this.copies = null;
       await this.persist();
     }
     return result;
+  }
+
+  /** Started at the top of a pass, so the listing overlaps the pull instead of waiting for it. */
+  private copies: { dir: string; paths: Promise<string[]> } | null = null;
+
+  private listCopies(): { dir: string; paths: Promise<string[]> } | null {
+    const { provider } = this.ports;
+    if (!this.local.ownBatches.length || !provider.copiedPaths) return null;
+    const dir = batchesDir(this.groupId, this.deviceId);
+    const paths = provider.copiedPaths(dir);
+    paths.catch(() => {});
+    return { dir, paths };
   }
 
   private pendingNativeSyncPause = false;
@@ -1279,7 +1293,10 @@ export class GroupEngine {
    */
   private async checkOwnDuplicates(): Promise<void> {
     const { provider } = this.ports;
-    const copied = new Set((await provider.copiedPaths?.(batchesDir(this.groupId, this.deviceId))) ?? []);
+    const dir = batchesDir(this.groupId, this.deviceId);
+    const early = this.copies?.dir === dir ? this.copies.paths : null;
+    this.copies = null;
+    const copied = new Set((await (early ?? provider.copiedPaths?.(dir))) ?? []);
     if (!copied.size) return;
     let earliest: { batchNo: number; firstOpSeq: number } | null = null;
     for (const b of this.local.ownBatches.slice(-20).reverse()) {

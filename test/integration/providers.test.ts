@@ -162,6 +162,50 @@ describe('google drive batched deletes', () => {
   });
 });
 
+describe('google drive lookups', () => {
+  it('reads and overwrites files it just listed without looking them up again', async () => {
+    const drive = new FakeDrive();
+    const auth = { token: async () => 'good', refresh: async () => 'good' };
+    await new DriveProvider(auth, drive.fetch).createOnce('groups/g/devices/d/device.json', bytes('one'));
+    const calls: string[] = [];
+    const p = new DriveProvider(auth, async (input, init) => {
+      calls.push(`${init?.method ?? 'GET'} ${new URL(String(input)).pathname}`);
+      return drive.fetch(input, init);
+    });
+    expect(await p.listDevices('g')).toEqual(['d']);
+    const [read] = await p.getMany(['groups/g/devices/d/device.json']);
+    expect(text((read as PromiseFulfilledResult<Uint8Array>).value)).toBe('one');
+    await p.overwrite('groups/g/devices/d/device.json', bytes('two'));
+    expect(calls.filter((c) => c === 'GET /drive/v3/files')).toHaveLength(1);
+    expect(text(await new DriveProvider(auth, drive.fetch).get('groups/g/devices/d/device.json'))).toBe('two');
+  });
+
+  it('reads a listed file that another browser removed as missing', async () => {
+    const drive = new FakeDrive();
+    const auth = { token: async () => 'good', refresh: async () => 'good' };
+    const other = new DriveProvider(auth, drive.fetch);
+    const dir = 'groups/g/devices/d/batches';
+    await other.createOnce(`${dir}/1.json`, bytes('a'));
+    const p = new DriveProvider(auth, drive.fetch);
+    await p.listFiles(dir);
+    await other.delete(`${dir}/1.json`);
+    expect(await p.get(`${dir}/1.json`)).toBeNull();
+    expect(await p.getMany([`${dir}/1.json`])).toEqual([{ status: 'fulfilled', value: null }]);
+  });
+
+  it('looks a listed file up again when another browser removed it', async () => {
+    const drive = new FakeDrive();
+    const auth = { token: async () => 'good', refresh: async () => 'good' };
+    const other = new DriveProvider(auth, drive.fetch);
+    await other.createOnce('groups/g/devices/d/device.json', bytes('one'));
+    const p = new DriveProvider(auth, drive.fetch);
+    await p.listDevices('g');
+    await other.delete('groups/g/devices/d/device.json');
+    await p.overwrite('groups/g/devices/d/device.json', bytes('two'));
+    expect(text(await other.get('groups/g/devices/d/device.json'))).toBe('two');
+  });
+});
+
 describe('google drive retries', () => {
   it('treats byte-identical copies of a file as one file and removes the extras', async () => {
     const drive = new FakeDrive();

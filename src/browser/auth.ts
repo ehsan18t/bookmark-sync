@@ -106,12 +106,17 @@ export async function signInWithGoogle(engine: Engine): Promise<{ refreshToken: 
 
 export function driveAuth(engine: Engine, account: Extract<Account, { type: 'gdrive' }>, onTokens: (a: Account) => Promise<void>): DriveAuth {
   let current = account;
-  const refresh = async () => {
-    const { clientId, clientSecret } = client(engine);
-    const t = await tokenRequest({ refresh_token: current.refreshToken, client_id: clientId, client_secret: clientSecret, grant_type: 'refresh_token' });
-    current = { ...current, accessToken: t.access_token, expiresAt: Date.now() + t.expires_in * 1000 };
-    await onTokens(current);
-    return t.access_token;
+  // Requests running at once share one refresh instead of each asking Google for a token.
+  let refreshing: Promise<string> | null = null;
+  const refresh = () => {
+    refreshing ??= (async () => {
+      const { clientId, clientSecret } = client(engine);
+      const t = await tokenRequest({ refresh_token: current.refreshToken, client_id: clientId, client_secret: clientSecret, grant_type: 'refresh_token' });
+      current = { ...current, accessToken: t.access_token, expiresAt: Date.now() + t.expires_in * 1000 };
+      await onTokens(current);
+      return t.access_token;
+    })().finally(() => (refreshing = null));
+    return refreshing;
   };
   return {
     token: async () => (current.accessToken && (current.expiresAt ?? 0) > Date.now() + 60_000 ? current.accessToken : refresh()),
