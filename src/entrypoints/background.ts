@@ -77,22 +77,41 @@ export default defineBackground({
     const caps = (): Capabilities => ({ google: googleAvailable(env.engine) && identityAvailable(), googleBlocked: googleAvailable(env.engine) && !identityAvailable(), browser: env.name });
 
     /** Saves what the pages show, so they draw it at once instead of waiting behind a sync. */
-    let published = '';
-    let publishing: Promise<void> = Promise.resolve();
-    const publish = () => (publishing = publishing.then(writeSnapshot, writeSnapshot));
+    let last: Snapshot | null = null;
+    let lastJson = '';
+    let publishing: Promise<Snapshot | null> = Promise.resolve(null);
+    let pending = false;
+    /** One pass waits at most; requests made before it starts share it. */
+    const publish = (): Promise<Snapshot | null> => {
+      if (pending) return publishing;
+      pending = true;
+      publishing = publishing.then(() => ((pending = false), writeSnapshot()));
+      return publishing;
+    };
     void ready.then(publish);
-    async function writeSnapshot() {
-      const groups = await app.status();
-      const devices: Snapshot['devices'] = {};
-      for (const g of groups) devices[g.groupId] = await app.devices(g.groupId);
-      const snapshot: Snapshot = { groups, accounts: app.accounts() as PublicAccount[], folders: await app.folders(), caps: caps(), devices };
-      const attention = groups.some((g) => g.status.state === 'paused' && g.status.reason !== 'migration');
-      await browser.action.setBadgeText({ text: attention ? '!' : '' });
-      await browser.action.setBadgeBackgroundColor({ color: '#c2410c' });
-      const json = JSON.stringify(snapshot);
-      if (json === published) return;
-      published = json;
-      await browser.storage.local.set({ [SNAPSHOT_KEY]: snapshot });
+    async function writeSnapshot(): Promise<Snapshot | null> {
+      try {
+        const groups = await app.status();
+        const devices: Snapshot['devices'] = {};
+        for (const g of groups) {
+          // The group can be left or migrated between the two queue slots.
+          const list = await app.devices(g.groupId).catch(() => null);
+          if (list) devices[g.groupId] = list;
+        }
+        const body = { groups, accounts: app.accounts() as PublicAccount[], folders: await app.folders(), caps: caps(), devices };
+        const attention = groups.some((g) => g.status.state === 'paused' && g.status.reason !== 'migration');
+        await browser.action.setBadgeText({ text: attention ? '!' : '' });
+        await browser.action.setBadgeBackgroundColor({ color: '#c2410c' });
+        const json = JSON.stringify(body);
+        if (last && json === lastJson) return last;
+        last = { ...body, at: Math.max(Date.now(), (last?.at ?? 0) + 1) };
+        lastJson = json;
+        await browser.storage.local.set({ [SNAPSHOT_KEY]: last });
+        return last;
+      } catch (e) {
+        console.error('Saving the status snapshot failed', e);
+        return null;
+      }
     }
 
     async function onStatus(groupId: string, status: GroupStatus) {
@@ -120,7 +139,7 @@ export default defineBackground({
     const extra = browser.bookmarks as unknown as Record<string, { addListener(f: () => void): void } | undefined>;
     extra.onChildrenReordered?.addListener(scheduleSync);
     extra.onImportBegan?.addListener(() => app.setImporting(true));
-    extra.onImportEnded?.addListener(() => app.setImporting(false));
+    extra.onImportEnded?.addListener(() => (app.setImporting(false), void publish()));
 
     browser.alarms.onAlarm.addListener((alarm) => {
       if (alarm.name === 'pull') void ready.then(() => app.syncAll()).then(publish);
@@ -146,6 +165,11 @@ export default defineBackground({
     async function handle(cmd: Command): Promise<unknown> {
       await ready;
       switch (cmd.t) {
+        case 'snapshot': {
+          const snapshot = await publish();
+          if (!snapshot) throw new Error('The extension couldn’t read its status. Try again.');
+          return snapshot;
+        }
         case 'status':
           return app.status();
         case 'capabilities':
@@ -234,7 +258,7 @@ export default defineBackground({
       handle(msg as Command)
         .then((value) => sendResponse({ ok: true, value }))
         .catch((e: unknown) => sendResponse({ ok: false, error: friendlyError(e) }))
-        .finally(() => void publish());
+        .finally(() => (msg as Command).t !== 'snapshot' && void publish());
       return true;
     });
   },

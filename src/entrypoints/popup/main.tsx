@@ -3,7 +3,7 @@ import { render } from 'preact';
 import { browser } from 'wxt/browser';
 import { APP_NAME } from '../../config.js';
 import type { GroupSummary } from '../../engine/app.js';
-import { follow, groups, now, SHORT_REASON } from '../options/shared.js';
+import { follow, groups, load, now, SHORT_REASON } from '../options/shared.js';
 import { Action, Brand, ErrorText, Icon, Pill } from '../../ui/components.js';
 import { errorText, relativeTime, send } from '../../ui/util.js';
 import '../../ui/styles.css';
@@ -13,15 +13,13 @@ document.title = APP_NAME;
 const ready = signal(false);
 const failure = signal('');
 
-async function refresh() {
-  groups.value = await send<GroupSummary[]>({ t: 'status' });
-}
-
-/** Draws the saved snapshot at once; asks the background only when nothing is saved. */
+/** Draws the saved snapshot at once, then a fresh one; waits for the fresh one only when nothing is saved. */
 async function start() {
-  if (await follow()) ready.value = true;
-  else {
-    await refresh();
+  if (await follow()) {
+    ready.value = true;
+    void load().catch((e) => (failure.value = errorText(e)));
+  } else {
+    await load();
     ready.value = true;
   }
 }
@@ -105,7 +103,7 @@ function Popup() {
     <>
       <div class="popup-head">
         <Brand />
-        <Action label="Sync now" kind="ghost" icon="refresh" busy="Syncing…" run={async () => (await send({ t: 'syncNow' }), refresh())} />
+        <Action label="Sync now" kind="ghost" icon="refresh" busy="Syncing…" run={async () => (await send({ t: 'syncNow' }), load())} />
       </div>
       {list.map((g) => (
         <SyncCard key={g.groupId} g={g} />

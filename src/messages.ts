@@ -2,6 +2,7 @@ import type { Account, GroupSummary, JoinInput, LocalFolder, NewAccount, PartCho
 
 export type Command =
   | { t: 'status' }
+  | { t: 'snapshot' }
   | { t: 'capabilities' }
   | { t: 'accounts' }
   | { t: 'addAccount'; account: NewAccount }
@@ -48,6 +49,8 @@ export interface Snapshot {
   folders: LocalFolder[];
   caps: Capabilities;
   devices: Record<string, Device[]>;
+  /** Increases with every saved snapshot, so a page never replaces a newer one with an older one. */
+  at: number;
 }
 
 export const SNAPSHOT_KEY = 'snapshot';

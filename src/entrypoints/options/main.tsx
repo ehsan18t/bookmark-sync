@@ -44,7 +44,7 @@ effect(() => {
 async function start() {
   if (await follow()) {
     ready.value = true;
-    void load().catch(() => {});
+    void load().catch((e) => (failure.value = errorText(e)));
   } else {
     await load();
     ready.value = true;

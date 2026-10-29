@@ -16,7 +16,8 @@ vi.mock('wxt/browser', () => ({
 
 const { follow, groups, devices } = await import('./shared.js');
 
-const snapshot = (name: string): Snapshot => ({
+const snapshot = (name: string, at: number): Snapshot => ({
+  at,
   groups: [{ groupId: 'g1', name } as Snapshot['groups'][number]],
   accounts: [],
   folders: [],
@@ -31,13 +32,18 @@ describe('follow', () => {
   });
 
   it('shows the saved snapshot and each later one', async () => {
-    store[SNAPSHOT_KEY] = snapshot('Main');
+    store[SNAPSHOT_KEY] = snapshot('Main', 1);
     expect(await follow()).toBe(true);
     expect(groups.value[0]?.name).toBe('Main');
     expect(devices.value).toEqual({ g1: [] });
-    for (const f of listeners) f({ [SNAPSHOT_KEY]: { newValue: snapshot('Home') } }, 'local');
+    for (const f of listeners) f({ [SNAPSHOT_KEY]: { newValue: snapshot('Home', 3) } }, 'local');
     expect(groups.value[0]?.name).toBe('Home');
-    for (const f of listeners) f({ [SNAPSHOT_KEY]: { newValue: snapshot('Sync') } }, 'session');
+    for (const f of listeners) f({ [SNAPSHOT_KEY]: { newValue: snapshot('Sync', 4) } }, 'session');
+    expect(groups.value[0]?.name).toBe('Home');
+  });
+
+  it('never replaces a newer snapshot with an older one', async () => {
+    for (const f of listeners) f({ [SNAPSHOT_KEY]: { newValue: snapshot('Old', 2) } }, 'local');
     expect(groups.value[0]?.name).toBe('Home');
   });
 });

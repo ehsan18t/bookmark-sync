@@ -14,7 +14,11 @@ export const folders = signal<Folder[]>([]);
 export const caps = signal<Capabilities>({ google: false, googleBlocked: false, browser: 'this browser' });
 export const devices = signal<Snapshot['devices']>({});
 
+let shownAt = 0;
+
 function apply(s: Snapshot) {
+  if (s.at < shownAt) return;
+  shownAt = s.at;
   batch(() => {
     groups.value = s.groups;
     accounts.value = s.accounts;
@@ -35,20 +39,9 @@ export async function follow(): Promise<boolean> {
   return !!saved;
 }
 
-/** Asks the background for fresh data; it waits behind a running sync. */
+/** Asks the background for a fresh snapshot; it waits behind a running sync. */
 export async function load() {
-  const [g, a, f, c] = await Promise.all([
-    send<GroupSummary[]>({ t: 'status' }),
-    send<PublicAccount[]>({ t: 'accounts' }),
-    send<Folder[]>({ t: 'folders' }),
-    send<Capabilities>({ t: 'capabilities' }),
-  ]);
-  batch(() => {
-    groups.value = g;
-    accounts.value = a;
-    folders.value = f;
-    caps.value = c;
-  });
+  apply(await send<Snapshot>({ t: 'snapshot' }));
 }
 
 /** Ticks so relative times like "2 min ago" stay current. */

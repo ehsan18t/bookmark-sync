@@ -127,7 +127,7 @@ function SyncCard({ g }: { g: GroupSummary }) {
         <dt>Stored in</dt>
         <dd>{storageWithAccount(account)}</dd>
         <dt>Shared with</dt>
-        <dd class={others?.length ? '' : 'muted'}>{!others ? 'Checking…' : others.length ? others.join(', ') : 'No other browsers yet'}</dd>
+        <dd class={others?.length ? '' : 'muted'}>{!others ? 'Not known yet' : others.length ? others.join(', ') : 'No other browsers yet'}</dd>
       </dl>
       <p class="muted small">
         {[plural(g.bookmarks, 'bookmark', 'bookmarks'), g.lastSyncAt ? `synced ${relativeTime(g.lastSyncAt, now.value)}` : 'not synced yet', `${plural(g.pendingChanges, 'change', 'changes')} waiting to upload`].join(' · ')}
@@ -642,7 +642,7 @@ function DeviceList({ g }: { g: GroupSummary }) {
                   label="Remove"
                   kind="ghost"
                   confirm={`Remove ${d.name} from this sync? Do this after uninstalling the extension there, or if you no longer use that browser.`}
-                  run={() => send({ t: 'removeDevice', groupId: g.groupId, deviceId: d.deviceId })}
+                  run={async () => (await send({ t: 'removeDevice', groupId: g.groupId, deviceId: d.deviceId }), load())}
                 />
               )}
             </li>
