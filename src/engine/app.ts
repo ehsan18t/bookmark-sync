@@ -653,11 +653,12 @@ export class SyncApp {
       for (const e of this.engines.values()) await e.recordLocalChanges({ confirmed: true });
       if (refused) throw refused.reason;
     });
-    void done.then(() =>
+    // Uploads what was recorded even when one removal was refused.
+    const upload = () =>
       this.run(async () => {
         for (const e of [...this.engines.values()]) await this.syncOne(e);
-      }),
-    );
+      });
+    void done.then(upload, upload);
     return done;
   }
 
