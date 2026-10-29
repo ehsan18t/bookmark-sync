@@ -11,10 +11,11 @@ import { RadioCards } from '../../../../ui/components/RadioCards.js';
 import { useDebounced } from '../../../../ui/hooks/useDebounced.js';
 import { errorText } from '../../../../ui/lib/format.js';
 import { send, withTakeover } from '../../../../ui/lib/messaging.js';
-import { type FoundSync, folders, groups, load, type PublicAccount } from '../../../../ui/state/store.js';
+import { type FoundSync, folders, load, type PublicAccount } from '../../../../ui/state/store.js';
 import { FolderTree } from '../../folder-picker/FolderTree.js';
 import { Placements } from '../../folder-picker/Placements.js';
-import { groupItems, localItems, placementChoices } from '../../folder-picker/treeItems.js';
+import { groupItems, placementChoices } from '../../folder-picker/treeItems.js';
+import { useLocalItems } from '../../folder-picker/useLocalItems.js';
 import { BackButton } from '../BackButton.js';
 import { previewText } from '../joinPreview.js';
 import { StepHead } from '../StepHead.js';
@@ -40,7 +41,10 @@ export function JoinStep({ account, sync, go }: JoinStepProps) {
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState('');
 
-  const items = useMemo(() => (group ? groupItems(group.mode, group.folders, folders.value) : []), [group]);
+  const local = folders.value;
+  const localTree = useLocalItems();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each snapshot replaces the folders and groups arrays, so they are real deps
+  const items = useMemo(() => (group ? groupItems(group.mode, group.folders, local) : []), [group, local]);
   const tops = useMemo(() => items.filter((i) => i.parent === null).map((i) => i.id), [items]);
   const wholeTicked = tops.length > 0 && ticked.length === tops.length && tops.every((t) => ticked.includes(t));
 
@@ -115,16 +119,7 @@ export function JoinStep({ account, sync, go }: JoinStepProps) {
         <p class="muted small">Everything is ticked. Untick what this browser doesn’t need, or tick single folders deeper down.</p>
         <FolderTree items={items} multi value={ticked} onChange={tick} label="Folders to sync in this browser" />
         <h3>Where each folder goes here</h3>
-        <Placements
-          mode={group.mode}
-          groupFolders={group.folders}
-          items={items}
-          local={folders.value}
-          localTree={localItems(folders.value, groups.value)}
-          picked={ticked}
-          chosen={chosen}
-          onChange={setChosen}
-        />
+        <Placements mode={group.mode} groupFolders={group.folders} items={items} local={local} localTree={localTree} picked={ticked} chosen={chosen} onChange={setChosen} />
       </>
     );
 
@@ -171,7 +166,7 @@ export function JoinStep({ account, sync, go }: JoinStepProps) {
               <div class="hint">Instead of the bookmarks bar and other bookmarks. Only when everything is ticked.</div>
             </span>
           </label>
-          {into && <FolderTree items={localItems(folders.value, groups.value)} multi={false} value={intoFolder} onChange={setIntoFolder} label="Folder for the synced bookmarks" />}
+          {into && <FolderTree items={localTree} multi={false} value={intoFolder} onChange={setIntoFolder} label="Folder for the synced bookmarks" />}
         </Advanced>
       )}
       <Banner kind="info" icon="info-circle">

@@ -6,11 +6,10 @@ import type { GroupSummary } from '../../../../engine/app.js';
 import { Action } from '../../../../ui/components/Action.js';
 import { Banner } from '../../../../ui/components/Banner.js';
 import { plural } from '../../../../ui/lib/format.js';
-import { send, withTakeover } from '../../../../ui/lib/messaging.js';
+import { send } from '../../../../ui/lib/messaging.js';
 import { REASON_TEXT } from '../../../../ui/lib/reasons.js';
-import { accounts, folders, groups, load, sendAndReload } from '../../../../ui/state/store.js';
-import { FolderTree } from '../../folder-picker/FolderTree.js';
-import { localItems } from '../../folder-picker/treeItems.js';
+import { accounts, sendAndReload } from '../../../../ui/state/store.js';
+import { ReplaceFolder } from './ReplaceFolder.js';
 
 interface PauseBannerProps {
   g: GroupSummary;
@@ -21,7 +20,6 @@ export function PauseBanner({ g, onAddFolders }: PauseBannerProps) {
   const [pass, setPass] = useState('');
   const [remember, setRemember] = useState(true);
   const [picking, setPicking] = useState(false);
-  const [picked, setPicked] = useState<string[]>([]);
   if (g.status.state !== 'paused') return null;
   const reason = g.status.reason;
   const detail = g.status.detail;
@@ -94,21 +92,7 @@ export function PauseBanner({ g, onAddFolders }: PauseBannerProps) {
         />
       </>
     );
-    if (picking)
-      extra = (
-        <div class="stack">
-          <FolderTree items={localItems(folders.value, groups.value, g.groupId)} multi={false} value={picked} onChange={setPicked} label="New folder for it" />
-          <Action
-            label="Use this folder"
-            kind="primary"
-            run={async () => {
-              if (!picked[0]) throw new Error('Pick a folder.');
-              await withTakeover((takeover) => send({ t: 'movePart', groupId: g.groupId, part: detail, folderId: picked[0]!, takeover }));
-              await load();
-            }}
-          />
-        </div>
-      );
+    if (picking) extra = <ReplaceFolder groupId={g.groupId} part={detail} />;
   } else if (reason === 'nothing-held') {
     buttons = (
       <button type="button" onClick={onAddFolders}>

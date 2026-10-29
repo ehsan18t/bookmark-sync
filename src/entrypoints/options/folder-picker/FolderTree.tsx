@@ -1,5 +1,4 @@
-import { useSignal } from '@preact/signals';
-import { useId, useMemo } from 'preact/hooks';
+import { useId, useMemo, useState } from 'preact/hooks';
 import { Icon } from '../../../ui/components/Icon.js';
 import type { TreeItem } from './treeItems.js';
 import { ancestors, toggle } from './treeSelection.js';
@@ -23,24 +22,28 @@ export function FolderTree({ items, multi, value, onChange, label }: FolderTreeP
     const kids = new Map<string | null, TreeItem[]>();
     for (const i of items) {
       const p = i.parent !== null && byId.has(i.parent) ? i.parent : null;
-      kids.set(p, [...(kids.get(p) ?? []), i]);
+      const list = kids.get(p);
+      if (list) list.push(i);
+      else kids.set(p, [i]);
     }
     return { byId, kids };
   }, [items]);
-  const open = useSignal<Set<string>>(new Set([...(kids.get(null) ?? []).map((i) => i.id), ...value.flatMap((id) => ancestors(byId, id))]));
-  const setOpen = (id: string, on: boolean) => {
-    const next = new Set(open.value);
-    if (on) next.add(id);
-    else next.delete(id);
-    open.value = next;
-  };
+  const picked = useMemo(() => new Set(value), [value]);
+  const [open, setOpenIds] = useState(() => new Set([...(kids.get(null) ?? []).map((i) => i.id), ...value.flatMap((id) => ancestors(byId, id))]));
+  const setOpen = (id: string, on: boolean) =>
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
 
   const branch = (parent: string | null, depth: number) => (
     <ul role={parent === null ? 'tree' : 'group'} aria-label={parent === null ? label : undefined}>
       {(kids.get(parent) ?? []).map((item) => {
         const children = kids.has(item.id);
-        const expanded = open.value.has(item.id);
-        const included = multi && ancestors(byId, item.id).some((a) => value.includes(a));
+        const expanded = open.has(item.id);
+        const included = multi && ancestors(byId, item.id).some((a) => picked.has(a));
         return (
           // biome-ignore lint/a11y/useFocusableInteractive: keyboard focus goes to the twisty and the checkbox inside the row
           <li key={item.id} role="treeitem" aria-expanded={children ? expanded : undefined}>
@@ -57,7 +60,7 @@ export function FolderTree({ items, multi, value, onChange, label }: FolderTreeP
                   type={multi ? 'checkbox' : 'radio'}
                   name={name}
                   value={item.id}
-                  checked={value.includes(item.id) || included}
+                  checked={picked.has(item.id) || included}
                   disabled={!!item.blocked || included}
                   onChange={(e) => onChange(toggle(items, multi, value, item.id, e.currentTarget.checked))}
                 />
