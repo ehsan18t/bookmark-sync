@@ -7,7 +7,7 @@ import { EVERYTHING_ROOTS, type PlaceHint, type RandomBytes, ROOT_GROUP, type Ro
 import { sameNameKey } from '../core/names.js';
 import type { Excluded, LiveNode } from '../core/reconcile.js';
 import { ProviderAuthError } from '../storage/webdav.js';
-import { recreate, removeAll } from './apply.js';
+import { recreate, removeEach } from './apply.js';
 import {
   type EnginePorts,
   type GroupConfig,
@@ -627,12 +627,18 @@ export class SyncApp {
       const synced = (id: string) => syncedIds.has(id);
       const at = await this.deps.bookmarks.positions();
       const index = (id: string) => at.get(id) ?? { parentId: '', index: -1 };
+      let refused: PromiseRejectedResult | undefined;
       if ('remove' in action) {
         entry.label = `Removed ${action.remove.length} ${action.remove.length === 1 ? 'duplicate' : 'duplicates'}`;
-        const unsynced = action.remove.filter((id) => !synced(id));
-        const nodes = await Promise.all(unsynced.map((id) => this.deps.bookmarks.getSubTree(id)));
-        entry.removed.push(...unsynced.map((id, i) => ({ ...index(id), node: nodes[i]! })));
-        await removeAll(this.deps.bookmarks, action.remove);
+        const unsynced = new Set(action.remove.filter((id) => !synced(id)));
+        const nodes = await Promise.all(action.remove.map((id) => (unsynced.has(id) ? this.deps.bookmarks.getSubTree(id).catch(() => null) : null)));
+        const results = await removeEach(this.deps.bookmarks, action.remove);
+        // Whatever was removed keeps its undo entry and is recorded below; the first refusal is reported after that.
+        refused = results.find((r) => r.status === 'rejected');
+        for (const [i, id] of action.remove.entries()) {
+          const node = nodes[i];
+          if (node && results[i]!.status === 'fulfilled') entry.removed.push({ ...index(id), node });
+        }
       } else {
         entry.label = `Moved ${action.move.length} ${action.move.length === 1 ? 'duplicate' : 'duplicates'}`;
         for (const id of action.move) {
@@ -645,6 +651,7 @@ export class SyncApp {
         await this.saveMeta();
       }
       for (const e of this.engines.values()) await e.recordLocalChanges({ confirmed: true });
+      if (refused) throw refused.reason;
     });
     void done.then(() =>
       this.run(async () => {

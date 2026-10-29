@@ -506,6 +506,17 @@ describe('the app layer', () => {
     expect(await titles(a.bookmarks)).toEqual(['Doc loose']);
   });
 
+  it('keeps undo for the duplicates it removed when another removal is refused', async () => {
+    const { a } = await pair();
+    const one = await a.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'One', url: 'https://doc.example/' });
+    const two = await a.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'Two', url: 'https://doc.example/' });
+    a.bookmarks.refuseRemove = (id) => id === two;
+    await expect(a.app.applyDedupe({ remove: [one, two] })).rejects.toThrow('refused remove');
+    expect(await titles(a.bookmarks)).toEqual(['Two']);
+    await a.app.undoLocal(a.app.localUndo()[0]!.id);
+    expect(await titles(a.bookmarks)).toEqual(['One', 'Two']);
+  });
+
   it('switches a group to encrypted and both browsers follow', async () => {
     const { a, b, accA, accB } = await pair();
     const groupId = await a.app.createGroup({ accountId: accA, name: 'Main', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });

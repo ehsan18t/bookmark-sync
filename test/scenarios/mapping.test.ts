@@ -1,5 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
+import { recreate } from '../../src/engine/apply.js';
 import { type Action, performEdit, WITH_SEPARATORS } from '../sim/actions.js';
 import { FAKE_ROOTS, FakeBookmarks } from '../sim/fakeBookmarks.js';
 import { type SimDevice, Simulator } from '../sim/simulator.js';
@@ -210,5 +211,24 @@ describe('refused folders, edits and deletes', () => {
     refuse = false;
     await sim.quiet();
     expect(await titlesIn(b.bookmarks, FAKE_ROOTS.toolbar)).toEqual([]);
+  });
+});
+
+describe('recreating saved items', () => {
+  it('makes everything it can, in order, and reports the first refusal afterwards', async () => {
+    const bm = new FakeBookmarks('b');
+    bm.refuseCreate = (args) => args.title === 'Refused';
+    const link = (title: string) => ({ localId: '', kind: 'bookmark' as const, title, url: `https://${title}.example/` });
+    const tree = [
+      { localId: '', kind: 'folder' as const, title: 'A', url: '', children: [link('a1'), link('Refused'), link('a2')] },
+      link('Refused'),
+      { localId: '', kind: 'folder' as const, title: 'B', url: '', children: [link('b1')] },
+    ];
+    await expect(recreate(bm, FAKE_ROOTS.toolbar, tree)).rejects.toThrow('refused create');
+    const top = (await bm.getSubTree(FAKE_ROOTS.toolbar)).children ?? [];
+    expect(top.map((c) => [c.title, (c.children ?? []).map((k) => k.title)])).toEqual([
+      ['A', ['a1', 'a2']],
+      ['B', ['b1']],
+    ]);
   });
 });
