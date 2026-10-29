@@ -3,7 +3,7 @@ name: Website
 on:
   push:
     branches: [main]
-    paths: [site/**, .env, scripts/build-site.mjs, public/icon/**, .github/workflows/pages.yml]
+    paths: [site/**, .env.example, scripts/build-site.mjs, public/icon/**, .github/workflows/pages.yml]
   workflow_dispatch:
 
 permissions:
@@ -27,6 +27,17 @@ jobs:
         with:
           node-version: 22
       - run: node scripts/build-site.mjs .output/site
+        env:
+          WXT_APP_NAME: ${{ vars.WXT_APP_NAME }}
+          WXT_APP_DESCRIPTION: ${{ vars.WXT_APP_DESCRIPTION }}
+          WXT_HOMEPAGE_URL: ${{ vars.WXT_HOMEPAGE_URL }}
+          WXT_PRIVACY_URL: ${{ vars.WXT_PRIVACY_URL }}
+          WXT_SUPPORT_EMAIL: ${{ vars.WXT_SUPPORT_EMAIL }}
+          WXT_SOURCE_URL: ${{ vars.WXT_SOURCE_URL }}
+          WXT_CHROME_STORE_URL: ${{ vars.WXT_CHROME_STORE_URL }}
+          WXT_EDGE_STORE_URL: ${{ vars.WXT_EDGE_STORE_URL }}
+          WXT_FIREFOX_STORE_URL: ${{ vars.WXT_FIREFOX_STORE_URL }}
+          WXT_PRIVACY_UPDATED: ${{ vars.WXT_PRIVACY_UPDATED }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -67,7 +67,7 @@ The Chromium extension ID is fixed by `WXT_CHROMIUM_KEY`, so the Google redirect
 
 ## Go-live settings
 
-Every value to change before going live is in `.env`, and nothing else needs editing: the name and description, the homepage, privacy policy and support email (shown in Settings when set), the website's store and source links, the Firefox add-on ID, the Chromium key, the default server folder, and the Google client IDs. The Google client secrets go in `.env.local`, which git ignores (see `.env.local.example`). `pnpm zip` refuses to build release packages while the Google clients, homepage or privacy policy are missing, or while the Firefox ID is still the `example.com` placeholder.
+Every value to change before going live is in `.env`, which git ignores: copy `.env.example` to `.env` and fill it in. Nothing else needs editing: the name and description, the homepage, privacy policy and support email (shown in Settings when set), the website's store and source links, the Firefox add-on ID, the Chromium key, the default server folder, and the Google client IDs. The Google client secrets go in `.env.local`, which git ignores (see `.env.local.example`). `pnpm zip` refuses to build release packages while the Google clients, homepage or privacy policy are missing, or while the Firefox ID is still the `example.com` placeholder.
 
 ## Tests
 

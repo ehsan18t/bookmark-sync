@@ -26,7 +26,8 @@ You don't need a GitHub profile site. Any public repository can publish its own 
 
 1. Push this repository to GitHub as a public repository.
 2. In the repository, open **Settings**, **Pages**, and under **Build and deployment** set **Source** to **GitHub Actions**.
-3. Push to `main`, or run the **Website** workflow from the **Actions** tab. It builds the pages from `.env` and publishes them.
+3. `.env` isn't in the repository, so the workflow reads the site's values from repository variables. Under **Settings**, **Secrets and variables**, **Actions**, **Variables**, add each `WXT_` value from the table above, plus `WXT_APP_NAME` and `WXT_APP_DESCRIPTION`, with the same value as in your `.env`.
+4. Push to `main`, or run the **Website** workflow from the **Actions** tab. It builds the pages and publishes them.
 
 The site is then at `https://YOUR-USERNAME.github.io/bookmark-sync/`, with the privacy policy at `.../privacy.html`.
 

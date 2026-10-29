@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { parseEnv } from 'node:util';
 
 const out = process.argv[2] ?? '.output/site';
-const fromFiles = Object.assign({}, ...['.env', '.env.local'].filter((f) => existsSync(f)).map((f) => parseEnv(readFileSync(f, 'utf8'))));
+const fromFiles = Object.assign({}, ...['.env.example', '.env', '.env.local'].filter((f) => existsSync(f)).map((f) => parseEnv(readFileSync(f, 'utf8'))));
 const value = (name) => (process.env[name] ?? fromFiles[name] ?? '').trim();
 
 const vars = {};
