@@ -37,10 +37,11 @@ export interface Settings {
   historyDays: number;
   guardPercent: number;
   guardMin: number;
-  pullMinutes: number;
+  activeCheckSeconds: number;
+  awayCheckSeconds: number;
 }
 
-export const DEFAULT_APP_SETTINGS: Settings = { historyDays: 7, guardPercent: 20, guardMin: 10, pullMinutes: 5 };
+export const DEFAULT_APP_SETTINGS: Settings = { historyDays: 7, guardPercent: 20, guardMin: 10, activeCheckSeconds: 30, awayCheckSeconds: 300 };
 
 interface UndoEntry {
   id: string;
@@ -188,6 +189,8 @@ export class SyncApp {
         groups: [],
         localUndo: [],
       };
+      const { pullMinutes, ...saved } = this.meta.settings as Settings & { pullMinutes?: number };
+      this.meta.settings = { ...DEFAULT_APP_SETTINGS, ...(pullMinutes ? { awayCheckSeconds: pullMinutes * 60 } : {}), ...saved };
       for (const g of [...this.meta.groups]) {
         try {
           this.engines.set(g, await GroupEngine.open(this.ports(await this.accountOfGroup(g)), g));

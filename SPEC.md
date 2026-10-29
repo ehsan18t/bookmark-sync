@@ -98,7 +98,7 @@ groups/<group-id>/
 
 - **Capture:** every bookmark event marks the affected folders as changed. A single queue then compares those folders with the mirror and records the differences as changes. All capture, syncing, joins, restores and cleanups run through this one queue, one task at a time.
 - **Push:** about 3 seconds after the last local change, the recorded changes become the next batch. If the browser closes within that time, the batch goes up on next start. Nothing is lost.
-- **Pull:** on background start, every 5 minutes, and when a browser window gains focus (at most every 10 seconds). A device reads other devices' batches strictly in order and never skips a number. A batch that fails to download or parse is retried, never skipped. If a device has fallen behind what was already compacted, it loads the newest snapshot instead.
+- **Pull:** on background start, every 30 seconds while the browser is in use, every 5 minutes once none of its windows has had focus for 10 minutes or the computer is locked or idle, and when a browser window gains focus (at most every 10 seconds, with a second pull 15 seconds later). Both intervals are settings, in seconds or minutes, from 30 seconds to 60 minutes. A device reads other devices' batches strictly in order and never skips a number. A batch that fails to download or parse is retried, never skipped. If a device has fallen behind what was already compacted, it loads the newest snapshot instead.
 - **Catch-up:** on every background start, before the first pull, every mapped folder is compared with the mirror. This covers edits made while the extension was off, imports, sorts, and changes from native sync.
 - **Own edits are not re-recorded:** changes the extension makes to the browser update the mirror first, so the events they cause match the mirror and record nothing. Anything else (for example the user editing at the same moment) is recorded as a real local change.
 
@@ -242,7 +242,7 @@ Each statement can be checked by hand or by an automated test.
 
 ## Assumptions
 
-- Push happens about 3 seconds after the last change. Pull happens on background start, every 5 minutes, and on window focus at most every 10 seconds.
+- Push happens about 3 seconds after the last change. Pull happens on background start, every 30 seconds while in use (5 minutes when not in use), and on window focus at most every 10 seconds.
 - Synced fields are title, URL, folder and position, plus separators from Firefox.
 - Stack: TypeScript with WXT. The UI framework is not chosen yet.
 - Large change guard threshold: 20% of items, minimum 10, configurable.

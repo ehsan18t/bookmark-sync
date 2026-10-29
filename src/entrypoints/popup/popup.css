@@ -14,6 +14,12 @@ body.popup main {
   margin-bottom: 12px;
 }
 
+.popup-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .popup-card {
   background: var(--surface);
   border: 1px solid var(--border);

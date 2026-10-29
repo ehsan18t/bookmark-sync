@@ -74,6 +74,15 @@ async function pair() {
 }
 
 describe('the app layer', () => {
+  it('keeps a saved check interval in minutes as the not-in-use interval', async () => {
+    const { app, store } = browser('chrome', new MemoryProvider(() => now));
+    const settings = { historyDays: 3, guardPercent: 20, guardMin: 10, pullMinutes: 2 } as unknown as AppMeta['settings'];
+    store.meta = { deviceName: 'chrome', settings, accounts: [], groups: [], localUndo: [] };
+    await app.init();
+    expect(app.settings()).toMatchObject({ historyDays: 3, activeCheckSeconds: 30, awayCheckSeconds: 120 });
+    expect(store.meta.settings).not.toHaveProperty('pullMinutes');
+  });
+
   it('creates a group, lets another browser discover, preview and join it, and syncs', async () => {
     const { a, b, accA, accB } = await pair();
     await a.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'From Chrome', url: 'https://c.example/' });

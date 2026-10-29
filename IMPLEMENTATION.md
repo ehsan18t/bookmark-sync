@@ -271,7 +271,7 @@ One database, `bsync`. Schema changes are forward-only upgrade steps, each teste
 | Store | Key | Contents |
 |---|---|---|
 | `meta` | fixed | device ID, HLC `last`, schema version, session ID |
-| `settings` | fixed | history days (7; 0 = off), guard percent (20), guard minimum (10), device name, pull minutes (5) |
+| `settings` | fixed | history days (7; 0 = off), guard percent (20), guard minimum (10), device name, check seconds while in use (30) and when not in use (300) |
 | `accounts` | accountId | provider type, WebDAV URL and credentials, or Drive tokens; display name |
 | `groups` | groupId | accountId, name, mode, mapping, status, pause reason, encrypted flag, `opSeq`, `lastBatchNo`, `lastBatchHash`, remember-key flag |
 | `keys` | groupId | non-extractable `CryptoKey`, session ID it belongs to (or `persistent`) |
@@ -412,15 +412,16 @@ interface StorageProvider {
 
 ### 8.1 Background lifecycle and the queue
 
-- **Listeners:** all listeners (`bookmarks.*`, `alarms.onAlarm`, `windows.onFocusChanged`, `runtime.onStartup`, `runtime.onInstalled`, `runtime.onMessage`, `runtime.onConnect`, `notifications.onClicked`) are registered synchronously at the top level of `background.ts`.
+- **Listeners:** all listeners (`bookmarks.*`, `alarms.onAlarm`, `windows.onFocusChanged`, `idle.onStateChanged`, `runtime.onStartup`, `runtime.onInstalled`, `runtime.onMessage`, `runtime.onConnect`, `notifications.onClicked`) are registered synchronously at the top level of `background.ts`.
 - **The queue:** one global FIFO task queue (`engine/queue.ts`) runs everything one task at a time: reconcile, sync cycles, apply, join, restore, revert, cleanup, migration and UI commands. It is global, not per group, because a move between two groups touches both.
 - **On every background start:**
   - wait for the database to load
-  - `alarms.get('pull')`, creating the alarm (5 minutes) only if it is missing, since re-creating it would reset its timer
+  - `alarms.get('pull')`, creating the alarm only if it is missing or its period changed, since re-creating it would reset its timer
   - finish any unfinished `applyJournal`
   - queue a full catch-up for every active group, then a sync cycle
 - **`runtime.onStartup`:** generate a new session ID in `meta` and in `storage.session`. Keys tagged with an older session ID are ignored and deleted.
-- **Throttling:** the focus trigger is limited to once per 10 seconds, with the last pull time stored in `storage.session` so it survives worker restarts.
+- **Check interval:** the `pull` alarm uses the in-use interval while a window of this browser has focus or had it in the last 10 minutes and `idle.queryState` is `active`; otherwise the not-in-use interval. Losing focus stores `blurredAt` in `storage.session` and sets a one-shot `away` alarm 10 minutes later that re-evaluates. Both intervals are clamped to 30 seconds to 60 minutes, since Chrome fires alarms at most every 30 seconds.
+- **Coming back:** a window gaining focus, or `idle.onStateChanged` returning to `active` with a focused window, pulls at once, re-creates the `pull` alarm at the in-use interval, and pulls again 15 seconds later. This is limited to once per 10 seconds, with the last pull time stored in `storage.session` so it survives worker restarts.
 - **Push timing:** the push is debounced by 3 seconds with `setTimeout`. If the worker is stopped first, the outbox is pushed on the next start.
 - **Keeping the worker alive:** long jobs run while the UI holds a `runtime.connect` port, which keeps the Chromium worker alive, and report progress over it.
 
@@ -533,7 +534,7 @@ cycle(group):
   maybeCompact (9.7)
 ```
 
-- **Triggers:** background start; the `pull` alarm; `windows.onFocusChanged` to a real window (at most every 10 seconds); 3 seconds after the last reconcile that recorded ops (push, then a pull).
+- **Triggers:** background start; the `pull` alarm; `windows.onFocusChanged` to a real window or a return from idle (at most every 10 seconds, plus a pull 15 seconds later); 3 seconds after the last reconcile that recorded ops (push, then a pull).
 - **Errors:** network errors back off for 1, 5, then 15 minutes. HTTP 401 or 403 pauses with reason `auth`. A full or read-only provider pauses with reason `provider`.
 
 ### 9.2 Groups (`engine/groups.ts`)
@@ -768,7 +769,7 @@ type Command =
 
 | Item | Chromium | Firefox |
 |---|---|---|
-| `permissions` | `bookmarks`, `storage`, `unlimitedStorage`, `alarms`, `notifications`, `identity` | same |
+| `permissions` | `bookmarks`, `storage`, `unlimitedStorage`, `alarms`, `idle`, `notifications`, `identity` | same |
 | `host_permissions` | `https://www.googleapis.com/*`, `https://oauth2.googleapis.com/*` | same |
 | `optional_host_permissions` | `https://*/*`, `http://*/*` (WebDAV, requested per server; plain HTTP is for servers on the local network) | same |
 | Background | service worker | event page (`background.scripts`), MV3 |
