@@ -47,6 +47,9 @@ describe('Duplicates', () => {
     vi.stubGlobal('confirm', () => true);
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(mock).toHaveBeenCalledWith({ t: 'applyDedupe', action: { remove: ['a-local', 'c1'] } }));
+    await screen.findByText(/Nothing to remove · 1 set left as it is/);
+    expect(screen.getByText('1 set of duplicates')).toBeTruthy();
+    expect(mock.mock.calls.filter(([c]) => c.t === 'scanDuplicates')).toHaveLength(1);
     vi.unstubAllGlobals();
   });
 

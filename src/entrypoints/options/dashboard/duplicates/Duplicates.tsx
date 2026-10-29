@@ -31,6 +31,11 @@ export function Duplicates() {
   const acted = sets.filter((d) => keep[setKey(d)] !== KEEP_ALL);
   const remove = acted.flatMap((d) => d.items.map((i) => i.localId).filter((id) => id !== keep[setKey(d)]));
   const setAll = (choose: (d: DuplicateGroup) => string) => setKeep(Object.fromEntries(sets.map((d) => [setKey(d), choose(d)])));
+  /** Each bookmark is in one set only, so handled sets drop out without searching again. */
+  const drop = (done: DuplicateGroup[]) => {
+    setFound((f) => f?.filter((d) => !done.includes(d)) ?? null);
+    undo.reload();
+  };
   return (
     <>
       <SectionTitle>
@@ -77,13 +82,13 @@ export function Duplicates() {
                   confirm={`Remove ${plural(remove.length, 'bookmark', 'bookmarks')}? Synced ones are removed in your other browsers too. You can undo this.`}
                   run={async () => {
                     await send({ t: 'applyDedupe', action: { remove } });
-                    await scan();
+                    drop(acted);
                   }}
                 />
               </div>
             </div>
             {found.map((d) => (
-              <DuplicateCard key={setKey(d)} d={d} keep={keep[setKey(d)] ?? KEEP_ALL} onKeep={(id) => setKeep((k) => ({ ...k, [setKey(d)]: id }))} rescan={scan} />
+              <DuplicateCard key={setKey(d)} d={d} keep={keep[setKey(d)] ?? KEEP_ALL} onKeep={(id) => setKeep((k) => ({ ...k, [setKey(d)]: id }))} onMoved={() => drop([d])} />
             ))}
           </div>
         ) : (
