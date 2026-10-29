@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HlcClock, parseHlc } from './hlc.js';
-import { ROOT_OTHER, ROOT_TOOLBAR } from './ids.js';
+import { linkId, randomId, ROOT_OTHER, ROOT_TOOLBAR } from './ids.js';
 import { assignKeys } from './position.js';
 import { reconcile, type LiveNode, type Mirror } from './reconcile.js';
 
@@ -28,6 +28,17 @@ describe('HLC', () => {
     const remote = new HlcClock('b', () => 9_000).tick();
     c.observe(remote);
     expect(c.tick() > remote).toBe(true);
+  });
+});
+
+describe('linkId', () => {
+  it('gives the same id back when linked twice, in either direction', () => {
+    const id = randomId();
+    const other = linkId(id, 'groupA', 'groupB');
+    expect(other).not.toBe(id);
+    expect(other).toMatch(/^[0-9a-hjkmnp-tv-z]+$/);
+    expect(linkId(other, 'groupB', 'groupA')).toBe(id);
+    expect(linkId(id, 'groupA', 'groupC')).not.toBe(other);
   });
 });
 

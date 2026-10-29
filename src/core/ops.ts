@@ -52,6 +52,8 @@ export interface DeleteOp extends OpBase {
   type: 'delete';
   seen: Record<string, number>;
   before: SubtreeSnapshot;
+  /** The item still exists on that device, outside this group's folders: a move out, not a removal. */
+  left?: true;
 }
 
 export interface UndeleteOp extends OpBase {

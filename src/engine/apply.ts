@@ -7,6 +7,16 @@ export interface ApplyResult {
   mirror: Mirror;
   idmap: Map<string, string>;
   changed: boolean;
+  /** Local items kept for another group instead of deleted. */
+  released: string[];
+}
+
+/** How a group shares local items with other groups on this device. */
+export interface Sharing {
+  /** A local item another group already holds as this node's twin, to take over instead of creating a copy. */
+  adopt(sid: string): string | null;
+  /** Whether a deleted node's local item stays because another group still holds it. */
+  release(sid: string, localId: string): boolean;
 }
 
 export async function applyMerged(
@@ -15,6 +25,7 @@ export async function applyMerged(
   mirror: Mirror,
   merged: Tree,
   excluded: ReadonlySet<string>,
+  sharing?: Sharing,
 ): Promise<ApplyResult> {
   const retried = new Map([...mirror.nodes].filter(([, m]) => m.localId !== '' || (m.kind === 'separator' && !port.supportsSeparators)));
   const diff = diffTrees({ roots: mirror.roots, nodes: retried }, merged);
@@ -35,6 +46,17 @@ export async function applyMerged(
     if ((n.kind === 'separator' && !port.supportsSeparators) || !parent) {
       localOf.set(n.id, '');
       continue;
+    }
+    const twin = sharing?.adopt(n.id);
+    if (twin && (await port.exists(twin))) {
+      try {
+        await port.move(twin, { parentId: parent });
+        await port.update(twin, n.kind === 'bookmark' ? { title: n.title, url: n.url } : { title: n.title });
+        localOf.set(n.id, twin);
+        continue;
+      } catch {
+        // Falls back to a copy of its own.
+      }
     }
     try {
       localOf.set(n.id, await port.create({ parentId: parent, kind: n.kind, title: n.title, url: n.url }));
@@ -63,9 +85,14 @@ export async function applyMerged(
   }
   const deleted = new Set(diff.deletes.map((n) => n.id));
   const refusedDeletes = new Set<string>();
+  const released: string[] = [];
   for (const n of diff.deletes) {
     if (virtual(n.id) || deleted.has(retried.get(n.id)!.parent)) continue;
     const localId = retried.get(n.id)!.localId;
+    if (sharing?.release(n.id, localId)) {
+      released.push(localId);
+      continue;
+    }
     try {
       await port.removeTree(localId);
     } catch {
@@ -94,7 +121,7 @@ export async function applyMerged(
     nodes.set(n.id, old);
     idmap.set(old.localId, n.id);
   }
-  return { mirror: { roots: merged.roots, nodes }, idmap, changed };
+  return { mirror: { roots: merged.roots, nodes }, idmap, changed, released };
 }
 
 async function reorder(port: BookmarksPort, merged: Tree, localOf: Map<string, string>, excluded: ReadonlySet<string>): Promise<void> {
