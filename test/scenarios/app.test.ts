@@ -598,4 +598,23 @@ describe('the app layer', () => {
     await a.app.syncAll();
     expect((await a.app.status())[0]).toMatchObject({ lastSyncAt: now, lastError: null });
   });
+
+  it('shares one waiting sync between requests made while another task runs', async () => {
+    const { provider, a, accA } = await pair();
+    const groupId = await a.app.createGroup({ accountId: accA, name: 'Main', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
+    let release!: () => void;
+    const busy = a.app.run(() => new Promise<void>((r) => (release = r)));
+    await vi.waitFor(() => expect(release).toBeDefined());
+    const listings = vi.spyOn(provider as unknown as { listDevices(g: string): string[] }, 'listDevices');
+    const requests = [a.app.syncAll(), a.app.syncGroup(groupId), a.app.syncAll()];
+    const one = [a.app.syncGroup(groupId), a.app.syncGroup(groupId)];
+    release();
+    await Promise.all([busy, ...requests, ...one]);
+    expect(requests[1]).toBe(requests[0]);
+    expect(requests[2]).toBe(requests[0]);
+    expect(one[0]).toBe(requests[0]);
+    const passes = listings.mock.calls.length;
+    await a.app.syncGroup(groupId);
+    expect(listings.mock.calls.length - passes).toBe(passes);
+  });
 });
