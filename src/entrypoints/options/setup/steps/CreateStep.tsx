@@ -6,9 +6,9 @@ import { Field } from '../../../../ui/components/Field.js';
 import { RadioCards } from '../../../../ui/components/RadioCards.js';
 import { send } from '../../../../ui/lib/messaging.js';
 import { storageWithAccount } from '../../../../ui/lib/storageLabels.js';
-import { folders, groups, load, type PublicAccount } from '../../../../ui/state/store.js';
+import { load, type PublicAccount } from '../../../../ui/state/store.js';
 import { FolderTree } from '../../folder-picker/FolderTree.js';
-import { localItems } from '../../folder-picker/treeItems.js';
+import { useLocalItems } from '../../folder-picker/useLocalItems.js';
 import { BackButton } from '../BackButton.js';
 import { StepHead } from '../StepHead.js';
 import type { Go } from '../steps.js';
@@ -26,6 +26,7 @@ export function CreateStep({ account, name, go }: CreateStepProps) {
   const [encrypt, setEncrypt] = useState(false);
   const [pass, setPass] = useState('');
   const [again, setAgain] = useState('');
+  const localTree = useLocalItems();
   const start = async () => {
     if (encrypt) {
       if (pass.length < 8) throw new Error('Use a passphrase of at least 8 characters.');
@@ -58,7 +59,7 @@ export function CreateStep({ account, name, go }: CreateStepProps) {
             Tick as many as you like. A ticked folder syncs with everything inside it. Other browsers can put each one wherever they want. A folder another sync uses can be ticked too: changes in it
             then reach both syncs.
           </p>
-          <FolderTree items={localItems(folders.value, groups.value)} multi value={picked} onChange={setPicked} label="Folders to sync" />
+          <FolderTree items={localTree} multi value={picked} onChange={setPicked} label="Folders to sync" />
         </div>
       )}
       <label class="check">
