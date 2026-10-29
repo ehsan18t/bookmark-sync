@@ -93,7 +93,22 @@ describe('convergence (properties 1, 2, 5)', () => {
         expect(sim.canonicalMirror(p)).toEqual(canonical(subtree(sim.mirrorTree(full[0]!), part)));
         expect(await sim.canonicalLive(p)).toEqual(sim.canonicalLocalMirror(p));
       }),
-      { numRuns: 40 },
+      {
+        numRuns: 40,
+        // The partial holder renames inside its folder while another browser deletes the folder.
+        examples: [
+          [
+            432759527,
+            [
+              { k: 55, a: 0, b: 0, c: 0 },
+              { k: 0, a: 136, b: 0, c: 0 },
+              { k: 55, a: 511, b: 0, c: 0 },
+              { k: 0, a: 227, b: 46, c: 0 },
+              { k: 0, a: 615, b: 0, c: 0 },
+            ],
+          ],
+        ],
+      },
     );
     expect(checked).toBeGreaterThan(10);
   });

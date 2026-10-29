@@ -683,10 +683,18 @@ export class GroupEngine {
       if (parts.length) await this.attachParts(parts);
     }
     if (!this.roots.length) {
+      await this.pushBeforeLettingGo();
       await this.pause('nothing-held');
       return false;
     }
     return true;
+  }
+
+  /** Edits recorded while a part was held belong to the group; a paused device never uploads them. */
+  private async pushBeforeLettingGo(): Promise<void> {
+    if (!this.local.outbox.length && !this.local.pendingBatch) return;
+    await this.push();
+    await this.publish(false);
   }
 
   private notice(text: string): void {
@@ -770,7 +778,10 @@ export class GroupEngine {
       config.declined = [...new Set([...(config.declined ?? []), part])];
     }
     this.unmap(part);
-    if (!this.roots.length) this.local.status = { state: 'paused', reason: 'nothing-held' };
+    if (!this.roots.length) {
+      await this.pushBeforeLettingGo();
+      this.local.status = { state: 'paused', reason: 'nothing-held' };
+    }
     await this.persist();
     if (everywhere) {
       await this.push();

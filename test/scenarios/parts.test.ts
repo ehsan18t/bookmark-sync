@@ -87,6 +87,27 @@ describe('holding parts of a group', () => {
     expect(b.engine.notices.map((n) => n.text)).toEqual([expect.stringContaining('“Work favs” was removed')]);
   });
 
+  it('uploads an edit made in the last held folder before letting go of it and pausing', async () => {
+    const { sim, a, b, bmA, bmB, fav, mine } = await allBookmarksWithFavorites(75);
+    await bmA.removeTree(fav);
+    await sim.sync(a);
+    const f1Here = (await bmB.getSubTree(mine)).children!.find((c) => c.title === 'f1')!.localId;
+    await bmB.update(f1Here, { title: 'f1 renamed' });
+    await sim.quiet();
+    expect(b.engine.status).toMatchObject({ state: 'paused', reason: 'nothing-held' });
+    expect(b.engine.state.outbox).toEqual([]);
+    expect(await titlesIn(bmA, FAKE_ROOTS.toolbar)).toEqual([]);
+  });
+
+  it('uploads what was recorded when this browser stops syncing its last folder', async () => {
+    const { sim, a, b, bmA, bmB, fav, mine } = await allBookmarksWithFavorites(76);
+    await bookmarkIn(bmB, mine, 'b2');
+    await b.engine.removePart(sidOf(a, fav), false);
+    expect(b.engine.state.outbox).toEqual([]);
+    await sim.quiet();
+    expect(await titlesIn(bmA, fav)).toEqual(['f1', 'b1', 'b2']);
+  });
+
   it('pauses a browser whose two held folders end up inside each other in the group', async () => {
     const sim = new Simulator({ devices: 0, seed: 74 });
     const bmA = new FakeBookmarks('a_');
