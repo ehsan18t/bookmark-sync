@@ -104,10 +104,13 @@ export default defineBackground({
         await browser.action.setBadgeBackgroundColor({ color: '#c2410c' });
         const json = JSON.stringify(body);
         if (last && json === lastJson) return last;
-        last = { ...body, at: Math.max(Date.now(), (last?.at ?? 0) + 1) };
+        // Continue from the saved stamp: a restarted worker under a clock set back would go below what pages show.
+        const prevAt = last?.at ?? ((await browser.storage.local.get(SNAPSHOT_KEY))[SNAPSHOT_KEY] as Snapshot | undefined)?.at ?? 0;
+        const next: Snapshot = { ...body, at: Math.max(Date.now(), prevAt + 1) };
+        await browser.storage.local.set({ [SNAPSHOT_KEY]: next });
+        last = next;
         lastJson = json;
-        await browser.storage.local.set({ [SNAPSHOT_KEY]: last });
-        return last;
+        return next;
       } catch (e) {
         console.error('Saving the status snapshot failed', e);
         return null;

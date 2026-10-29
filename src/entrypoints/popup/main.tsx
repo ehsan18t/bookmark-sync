@@ -3,7 +3,7 @@ import { render } from 'preact';
 import { browser } from 'wxt/browser';
 import { APP_NAME } from '../../config.js';
 import type { GroupSummary } from '../../engine/app.js';
-import { follow, groups, load, now, SHORT_REASON } from '../options/shared.js';
+import { follow, groups, load, now, refreshError, SHORT_REASON } from '../options/shared.js';
 import { Action, Brand, ErrorText, Icon, Pill } from '../../ui/components.js';
 import { errorText, relativeTime, send } from '../../ui/util.js';
 import '../../ui/styles.css';
@@ -17,7 +17,7 @@ const failure = signal('');
 async function start() {
   if (await follow()) {
     ready.value = true;
-    void load().catch((e) => (failure.value = errorText(e)));
+    void load().catch((e) => (refreshError.value = errorText(e)));
   } else {
     await load();
     ready.value = true;
@@ -80,6 +80,7 @@ function SyncCard({ g }: { g: GroupSummary }) {
 function Popup() {
   if (failure.value) return <ErrorText>{failure.value}</ErrorText>;
   if (!ready.value) return null;
+  const stale = refreshError.value && <ErrorText>{refreshError.value} What you see may be out of date.</ErrorText>;
   const list = groups.value;
   if (!list.length)
     return (
@@ -87,6 +88,7 @@ function Popup() {
         <div class="popup-head">
           <Brand />
         </div>
+        {stale}
         <div class="popup-card stack center">
           <div class="done-mark" style="width:48px;height:48px;background:var(--accent-bg);color:var(--accent-text)">
             <Icon name="cloud-upload" class="lg" />
@@ -105,6 +107,7 @@ function Popup() {
         <Brand />
         <Action label="Sync now" kind="ghost" icon="refresh" busy="Syncing…" run={async () => (await send({ t: 'syncNow' }), load())} />
       </div>
+      {stale}
       {list.map((g) => (
         <SyncCard key={g.groupId} g={g} />
       ))}

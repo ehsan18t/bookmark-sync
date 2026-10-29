@@ -15,11 +15,14 @@ export const caps = signal<Capabilities>({ google: false, googleBlocked: false, 
 export const devices = signal<Snapshot['devices']>({});
 
 let shownAt = 0;
+/** Why the last refresh failed, while the page still shows the saved snapshot. Cleared by the next snapshot. */
+export const refreshError = signal('');
 
 function apply(s: Snapshot) {
   if (s.at < shownAt) return;
   shownAt = s.at;
   batch(() => {
+    refreshError.value = '';
     groups.value = s.groups;
     accounts.value = s.accounts;
     folders.value = s.folders;

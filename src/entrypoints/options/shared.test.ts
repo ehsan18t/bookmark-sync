@@ -14,7 +14,7 @@ vi.mock('wxt/browser', () => ({
   },
 }));
 
-const { follow, groups, devices } = await import('./shared.js');
+const { follow, groups, devices, refreshError } = await import('./shared.js');
 
 const snapshot = (name: string, at: number): Snapshot => ({
   at,
@@ -45,5 +45,11 @@ describe('follow', () => {
   it('never replaces a newer snapshot with an older one', async () => {
     for (const f of listeners) f({ [SNAPSHOT_KEY]: { newValue: snapshot('Old', 2) } }, 'local');
     expect(groups.value[0]?.name).toBe('Home');
+  });
+
+  it('clears a failed refresh once a newer snapshot arrives', () => {
+    refreshError.value = 'The extension did not answer.';
+    for (const f of listeners) f({ [SNAPSHOT_KEY]: { newValue: snapshot('Later', 5) } }, 'local');
+    expect(refreshError.value).toBe('');
   });
 });
