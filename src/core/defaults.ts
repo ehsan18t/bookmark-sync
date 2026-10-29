@@ -41,7 +41,7 @@ export function findDefaultBookmarks(roots: readonly LiveNode[], family: Browser
   const rule = RULES[family];
   const ownHost = (u: string) => {
     const h = host(u);
-    return h !== null && rule.hosts.some((x) => h === x || h.endsWith('.' + x));
+    return h !== null && rule.hosts.some((x) => h === x || h.endsWith(`.${x}`));
   };
   const out: string[] = [];
   const visit = (n: LiveNode) => {

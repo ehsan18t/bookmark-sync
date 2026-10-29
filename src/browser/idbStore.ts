@@ -19,7 +19,7 @@ function open(): Promise<IDBDatabase> {
   });
 }
 
-function tx<T>(db: IDBDatabase, store: string, mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T> | void): Promise<T | undefined> {
+function tx<T>(db: IDBDatabase, store: string, mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T> | undefined): Promise<T | undefined> {
   return new Promise((resolve, reject) => {
     const t = db.transaction(store, mode);
     let result: T | undefined;

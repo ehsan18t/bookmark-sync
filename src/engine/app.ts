@@ -498,7 +498,10 @@ export class SyncApp {
       if (a.type !== 'gdrive' || a.email || this.emailTried.has(a.id)) continue;
       this.emailTried.add(a.id);
       const email = await this.providerOf(a).whoAmI?.().catch(() => null);
-      if (email) (a.email = email), (changed = true);
+      if (email) {
+        a.email = email;
+        changed = true;
+      }
     }
     if (changed) await this.saveMeta();
   }

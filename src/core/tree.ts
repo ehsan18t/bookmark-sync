@@ -53,7 +53,10 @@ export function childrenIndex(t: Tree): Map<string, TreeNode[]> {
   for (const r of t.roots) idx.set(r, []);
   for (const n of t.nodes.values()) {
     let list = idx.get(n.parent);
-    if (!list) idx.set(n.parent, (list = []));
+    if (!list) {
+      list = [];
+      idx.set(n.parent, list);
+    }
     list.push(n);
   }
   for (const list of idx.values()) list.sort(compareSiblings);

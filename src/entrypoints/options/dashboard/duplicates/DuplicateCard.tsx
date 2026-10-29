@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { DuplicateGroup } from '../../../../core/dedupe.js';
+import type { Command } from '../../../../messages.js';
 import { Action } from '../../../../ui/components/Action.js';
 import { send } from '../../../../ui/lib/messaging.js';
 import { folders } from '../../../../ui/state/store.js';
@@ -12,6 +13,10 @@ interface DuplicateCardProps {
 export function DuplicateCard({ d, rescan }: DuplicateCardProps) {
   const [keep, setKeep] = useState(d.items[0]!.localId);
   const [folder, setFolder] = useState(folders.value[0]?.id ?? '');
+  const apply = async (action: Extract<Command, { t: 'applyDedupe' }>['action']) => {
+    await send({ t: 'applyDedupe', action });
+    await rescan();
+  };
   return (
     <div class="card stack">
       <div class="row spread">
@@ -36,7 +41,7 @@ export function DuplicateCard({ d, rescan }: DuplicateCardProps) {
         <Action
           label="Keep this one, remove the rest"
           kind="primary"
-          run={async () => (await send({ t: 'applyDedupe', action: { remove: d.items.map((i) => i.localId).filter((id) => id !== keep) } }), rescan())}
+          run={() => apply({ remove: d.items.map((i) => i.localId).filter((id) => id !== keep) })}
         />
         <span class="muted">or</span>
         <select class="narrow" value={folder} onChange={(e) => setFolder(e.currentTarget.value)}>
@@ -46,7 +51,7 @@ export function DuplicateCard({ d, rescan }: DuplicateCardProps) {
             </option>
           ))}
         </select>
-        <Action label="Move them all here" run={async () => (await send({ t: 'applyDedupe', action: { move: d.items.map((i) => i.localId), folderId: folder } }), rescan())} />
+        <Action label="Move them all here" run={() => apply({ move: d.items.map((i) => i.localId), folderId: folder })} />
       </div>
     </div>
   );

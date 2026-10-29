@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
-import type { Target } from '../../../../engine/app.js';
+import type { JoinInput, Target } from '../../../../engine/app.js';
 import type { GroupFolder, JoinPreview } from '../../../../engine/group.js';
 import { Action } from '../../../../ui/components/Action.js';
 import { Advanced } from '../../../../ui/components/Advanced.js';
@@ -60,40 +60,50 @@ export function JoinStep({ account, sync, go }: JoinStepProps) {
       },
       (e) => live && setGroupError(errorText(e)),
     );
-    return () => (live = false);
-  }, [pass]);
+    return () => {
+      live = false;
+    };
+  }, [pass, account.id, sync.groupId, sync.encrypted]);
 
-  const target = (): Target | null => {
+  const request = useMemo((): JoinInput | null => {
     if (!group || !ticked.length) return null;
-    if (group.mode === 'everything' && wholeTicked && !Object.keys(chosen).length) return into ? { kind: 'everything-into', folderId: intoFolder[0] ?? '' } : { kind: 'whole' };
-    return { kind: 'parts', parts: placementChoices(group.mode, group.folders, ticked, chosen), followTops: isFolder && wholeTicked };
-  };
-  const input = (t: Target) => ({ accountId: account.id, groupId: sync.groupId, target: t, mode: how, ignoreDefaults: defaults, passphrase: sync.encrypted ? pass : undefined, rememberKey: remember });
+    const target: Target =
+      group.mode === 'everything' && wholeTicked && !Object.keys(chosen).length
+        ? into
+          ? { kind: 'everything-into', folderId: intoFolder[0] ?? '' }
+          : { kind: 'whole' }
+        : { kind: 'parts', parts: placementChoices(group.mode, group.folders, ticked, chosen), followTops: isFolder && wholeTicked };
+    return { accountId: account.id, groupId: sync.groupId, target, mode: how, ignoreDefaults: defaults, passphrase: sync.encrypted ? pass : undefined };
+  }, [group, ticked, chosen, wholeTicked, into, intoFolder, isFolder, account.id, sync.groupId, sync.encrypted, how, defaults, pass]);
 
   useDebounced(() => {
     let live = true;
-    const t = target();
     if (sync.encrypted && !pass) setPreview('Enter the passphrase to see what will change.');
-    else if (!t) setPreview(group ? 'Tick at least one folder to sync here.' : 'Reading the folders in this sync…');
-    else if (t.kind === 'everything-into' && !t.folderId) setPreview('Pick the folder to keep the synced bookmarks in.');
+    else if (!request) setPreview(group ? 'Tick at least one folder to sync here.' : 'Reading the folders in this sync…');
+    else if (request.target.kind === 'everything-into' && !request.target.folderId) setPreview('Pick the folder to keep the synced bookmarks in.');
     else {
       setPreview('Checking what will change…');
-      send<JoinPreview>({ t: 'previewJoin', input: input(t) }).then(
+      send<JoinPreview>({ t: 'previewJoin', input: request }).then(
         (p) => live && setPreview(previewText(p)),
         (e) => live && setPreview(errorText(e)),
       );
     }
-    return () => (live = false);
-  }, [group, ticked, chosen, how, defaults, into, intoFolder, pass]);
+    return () => {
+      live = false;
+    };
+  }, [request, group, sync.encrypted, pass]);
 
   const join = async () => {
     if (sync.encrypted && !pass) throw new Error('Enter the passphrase for this sync.');
-    const t = target();
-    if (!t) throw new Error('Tick at least one folder to sync here.');
-    if (t.kind === 'everything-into' && !t.folderId) throw new Error('Pick the folder to keep the synced bookmarks in.');
-    await withTakeover((takeover) => send({ t: 'join', input: { ...input(t), takeover } }));
+    if (!request) throw new Error('Tick at least one folder to sync here.');
+    if (request.target.kind === 'everything-into' && !request.target.folderId) throw new Error('Pick the folder to keep the synced bookmarks in.');
+    await withTakeover((takeover) => send({ t: 'join', input: { ...request, rememberKey: remember, takeover } }));
     await load();
     go({ id: 'done', account, groupId: sync.groupId, joined: true });
+  };
+  const tick = (ids: string[]) => {
+    setTicked(ids);
+    setChosen(Object.fromEntries(Object.entries(chosen).filter(([k]) => ids.includes(k))));
   };
 
   let what: ComponentChildren;
@@ -103,7 +113,7 @@ export function JoinStep({ account, sync, go }: JoinStepProps) {
     what = (
       <>
         <p class="muted small">Everything is ticked. Untick what this browser doesn’t need, or tick single folders deeper down.</p>
-        <FolderTree items={items} multi value={ticked} onChange={(ids) => (setTicked(ids), setChosen(Object.fromEntries(Object.entries(chosen).filter(([k]) => ids.includes(k)))))} label="Folders to sync in this browser" />
+        <FolderTree items={items} multi value={ticked} onChange={tick} label="Folders to sync in this browser" />
         <h3>Where each folder goes here</h3>
         <Placements mode={group.mode} groupFolders={group.folders} items={items} local={folders.value} localTree={localItems(folders.value, groups.value)} picked={ticked} chosen={chosen} onChange={setChosen} />
       </>

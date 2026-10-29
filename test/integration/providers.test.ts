@@ -89,7 +89,11 @@ describe('google drive specifics', () => {
     const drive = new FakeDrive();
     let refreshed = 0;
     let token = 'expired';
-    const p = new DriveProvider({ token: async () => token, refresh: async () => (refreshed++, (token = 'good')) }, drive.fetch);
+    const p = new DriveProvider({ token: async () => token, refresh: async () => {
+        refreshed++;
+        token = 'good';
+        return token;
+      } }, drive.fetch);
     await p.overwrite('groups/g/devices/d/device.json', bytes('x'));
     await p.overwrite('groups/g/devices/d/device.json', bytes('x'));
     expect(refreshed).toBe(1);
@@ -202,7 +206,7 @@ describe('profile copies on Google Drive', () => {
         await new Promise<void>((resolve) => {
           waiting.push(resolve);
           if (waiting.length === 2) {
-            waiting.forEach((r) => r());
+            for (const r of waiting) r();
             waiting = [];
           }
           setTimeout(resolve, 500);

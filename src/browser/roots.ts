@@ -99,7 +99,7 @@ export function browserRoots(engine: Engine): RootsPort {
       for (let id: string | undefined = localId; id; ) {
         const found: Node[] = await browser.bookmarks.get(id).catch(() => []);
         const n = found[0];
-        if (!n || !n.parentId) break;
+        if (!n?.parentId) break;
         chain.unshift(n);
         id = n.parentId;
       }
@@ -145,7 +145,7 @@ export function browserRoots(engine: Engine): RootsPort {
       for (let id: string | undefined = localId; id; ) {
         const found: Node[] = await browser.bookmarks.get(id).catch(() => []);
         const n = found[0];
-        if (!n || !n.parentId) break;
+        if (!n?.parentId) break;
         parts.unshift(n.title || '(untitled)');
         id = n.parentId;
       }

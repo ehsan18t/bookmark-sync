@@ -17,12 +17,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "check": "tsc --noEmit && vitest run",
+    "lint": "biome check",
+    "format": "biome check --write",
+    "check": "tsc --noEmit && biome check && vitest run",
     "test:e2e": "cross-env BSYNC_E2E=1 wxt build && vitest run --config vitest.e2e.config.ts"
   },
   "license": "UNLICENSED",
   "packageManager": "pnpm@10.33.3",
   "devDependencies": {
+    "@biomejs/biome": "2.6.4",
     "@preact/preset-vite": "^2.10.6",
     "@tabler/icons": "^3.49.0",
     "@testing-library/preact": "^3.2.6",

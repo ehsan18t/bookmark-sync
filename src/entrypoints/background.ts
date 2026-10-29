@@ -91,7 +91,10 @@ export default defineBackground({
     const publish = (): Promise<Snapshot | null> => {
       if (pending) return publishing;
       pending = true;
-      publishing = publishing.then(() => ((pending = false), writeSnapshot()));
+      publishing = publishing.then(() => {
+        pending = false;
+        return writeSnapshot();
+      });
       return publishing;
     };
     logged(ready.then(publish));
@@ -148,7 +151,10 @@ export default defineBackground({
     const extra = browser.bookmarks as unknown as Record<string, { addListener(f: () => void): void } | undefined>;
     extra.onChildrenReordered?.addListener(scheduleSync);
     extra.onImportBegan?.addListener(() => app.setImporting(true));
-    extra.onImportEnded?.addListener(() => (app.setImporting(false), void publish()));
+    extra.onImportEnded?.addListener(() => {
+      app.setImporting(false);
+      void publish();
+    });
 
     browser.alarms.onAlarm.addListener((alarm) => {
       if (alarm.name === 'pull') logged(ready.then(() => app.syncAll()).then(publish));

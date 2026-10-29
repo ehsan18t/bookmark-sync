@@ -2,8 +2,7 @@ import { useState } from 'preact/hooks';
 import type { GroupSummary } from '../../../../engine/app.js';
 import { Action } from '../../../../ui/components/Action.js';
 import { Icon } from '../../../../ui/components/Icon.js';
-import { send } from '../../../../ui/lib/messaging.js';
-import { load } from '../../../../ui/state/store.js';
+import { sendAndReload } from '../../../../ui/state/store.js';
 import { AddFromSync } from './AddFromSync.js';
 import { AddLocal } from './AddLocal.js';
 import { MovePart } from './MovePart.js';
@@ -36,14 +35,14 @@ export function FoldersPanel({ g }: FoldersPanelProps) {
                   label="Stop syncing it here"
                   kind="ghost"
                   confirm="Stop syncing this folder in this browser? It stays here as it is, and other browsers keep syncing it."
-                  run={async () => (await send({ t: 'removePart', groupId: g.groupId, part: p.part, everywhere: false }), load())}
+                  run={() => sendAndReload({ t: 'removePart', groupId: g.groupId, part: p.part, everywhere: false })}
                 />
                 {p.top && (
                   <Action
                     label="Remove for every browser"
                     kind="danger"
                     confirm="Remove this folder from the sync for every browser? Each browser keeps its copy, but it no longer syncs anywhere."
-                    run={async () => (await send({ t: 'removePart', groupId: g.groupId, part: p.part, everywhere: true }), load())}
+                    run={() => sendAndReload({ t: 'removePart', groupId: g.groupId, part: p.part, everywhere: true })}
                   />
                 )}
               </div>

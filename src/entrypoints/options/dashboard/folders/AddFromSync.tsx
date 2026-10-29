@@ -17,7 +17,7 @@ interface AddFromSyncProps {
 }
 
 export function AddFromSync({ g, onClose }: AddFromSyncProps) {
-  const r = useLoad(() => send<{ mode: 'everything' | 'folder'; folders: GroupFolder[] }>({ t: 'groupFolders', accountId: g.accountId, groupId: g.groupId }), [g.groupId]);
+  const r = useLoad(() => send<{ mode: 'everything' | 'folder'; folders: GroupFolder[] }>({ t: 'groupFolders', accountId: g.accountId, groupId: g.groupId }), [g.accountId, g.groupId]);
   const [picked, setPicked] = useState<string[]>([]);
   const [chosen, setChosen] = useState<Record<string, string>>({});
   if (r.error) return <ErrorText>{r.error}</ErrorText>;

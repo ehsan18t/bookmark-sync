@@ -2,8 +2,7 @@ import type { GroupSummary } from '../../../../engine/app.js';
 import { Action } from '../../../../ui/components/Action.js';
 import { Icon } from '../../../../ui/components/Icon.js';
 import { relativeTime } from '../../../../ui/lib/format.js';
-import { send } from '../../../../ui/lib/messaging.js';
-import { devices, load, now } from '../../../../ui/state/store.js';
+import { devices, now, sendAndReload } from '../../../../ui/state/store.js';
 
 interface DeviceListProps {
   g: GroupSummary;
@@ -32,7 +31,7 @@ export function DeviceList({ g }: DeviceListProps) {
                   label="Remove"
                   kind="ghost"
                   confirm={`Remove ${d.name} from this sync? Do this after uninstalling the extension there, or if you no longer use that browser.`}
-                  run={async () => (await send({ t: 'removeDevice', groupId: g.groupId, deviceId: d.deviceId }), load())}
+                  run={() => sendAndReload({ t: 'removeDevice', groupId: g.groupId, deviceId: d.deviceId })}
                 />
               )}
             </li>

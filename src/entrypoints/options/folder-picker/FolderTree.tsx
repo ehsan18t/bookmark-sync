@@ -42,6 +42,7 @@ export function FolderTree({ items, multi, value, onChange, label }: FolderTreeP
         const expanded = open.value.has(item.id);
         const included = multi && ancestors(byId, item.id).some((a) => value.includes(a));
         return (
+          // biome-ignore lint/a11y/useFocusableInteractive: keyboard focus goes to the twisty and the checkbox inside the row
           <li key={item.id} role="treeitem" aria-expanded={children ? expanded : undefined}>
             <div class={`tree-row${item.blocked ? ' blocked' : ''}${included ? ' included' : ''}`} style={`--depth:${depth}`}>
               {children ? (

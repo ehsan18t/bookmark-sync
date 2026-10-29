@@ -1,9 +1,8 @@
 import { Action } from '../../../../ui/components/Action.js';
 import { EmptyState } from '../../../../ui/components/EmptyState.js';
 import { Icon } from '../../../../ui/components/Icon.js';
-import { send } from '../../../../ui/lib/messaging.js';
 import { storageLabel, storageWithAccount } from '../../../../ui/lib/storageLabels.js';
-import { accounts, groups, load } from '../../../../ui/state/store.js';
+import { accounts, groups, sendAndReload } from '../../../../ui/state/store.js';
 import { SectionTitle } from '../SectionTitle.js';
 
 export function StorageList() {
@@ -33,7 +32,7 @@ export function StorageList() {
                     label="Remove"
                     kind="ghost"
                     confirm={`Remove ${storageLabel(a)} from this browser? Nothing is deleted from the storage.`}
-                    run={async () => (await send({ t: 'removeAccount', id: a.id }), load())}
+                    run={() => sendAndReload({ t: 'removeAccount', id: a.id })}
                   />
                 </li>
               );

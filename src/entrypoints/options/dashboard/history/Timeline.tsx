@@ -16,6 +16,7 @@ interface TimelineProps {
 }
 
 export function Timeline({ g }: TimelineProps) {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetches after each sync
   const r = useLoad(() => send<TimelineEntry[]>({ t: 'timeline', groupId: g.groupId }), [g.groupId, g.lastSyncAt]);
   if (r.error) return <ErrorText>{r.error}</ErrorText>;
   if (!r.data) return <Loading>Loading history…</Loading>;

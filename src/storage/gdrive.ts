@@ -130,7 +130,7 @@ export class DriveProvider implements StorageProvider {
   }
 
   private async upload(method: string, url: string, meta: object, data: Uint8Array, allowConflict = false): Promise<Response> {
-    const boundary = 'bsync' + Math.random().toString(36).slice(2);
+    const boundary = `bsync${Math.random().toString(36).slice(2)}`;
     const enc = new TextEncoder();
     const head = enc.encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: application/octet-stream\r\n\r\n`);
     const tail = enc.encode(`\r\n--${boundary}--`);

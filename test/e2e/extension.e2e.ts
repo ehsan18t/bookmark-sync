@@ -5,8 +5,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium, type BrowserContext, type Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { browser } from 'wxt/browser';
 
-declare const chrome: any;
+declare const chrome: typeof browser;
 
 const require = createRequire(import.meta.url);
 const { v2: webdav } = require('webdav-server');
@@ -122,7 +123,7 @@ describe('the extension in two Chromium profiles', () => {
       await command(b, { t: 'join', input: { accountId: accB, groupId, target: { kind: 'whole' }, mode: 'merge', ignoreDefaults: true, passphrase: 'long passphrase' } });
       expect(await bar(b)).toEqual([['Recipes', ['Pasta']]]);
 
-      await b.page.evaluate((id) => chrome.bookmarks.removeTree(id), (await b.page.evaluate(() => chrome.bookmarks.search({ title: 'Recipes' })))[0].id);
+      await b.page.evaluate((id) => chrome.bookmarks.removeTree(id), (await b.page.evaluate(() => chrome.bookmarks.search({ title: 'Recipes' })))[0]!.id);
       await command(b, { t: 'syncNow' });
       await command(a, { t: 'syncNow' });
       expect(await bar(a)).toEqual([]);

@@ -13,7 +13,7 @@ vars.ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10v11l-5 -3l-5 3v-11a3 3 0 0 1 3 -3h4a3 3 0 0 1 3 3" /><path d="M11 3h5a3 3 0 0 1 3 3v11" /></svg>';
 if (!vars.SUPPORT_EMAIL && !vars.SOURCE_URL) console.warn('Warning: set WXT_SUPPORT_EMAIL or WXT_SOURCE_URL in .env, or the privacy policy has no contact.');
 
-const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 function render(html) {
   let prev;
@@ -23,7 +23,7 @@ function render(html) {
   } while (html !== prev);
   return html.replace(/\{\{(\w+)\}\}/g, (_, name) => {
     if (!(name in vars)) throw new Error(`site uses {{${name}}}, which isn't in .env`);
-    return name === 'ICON' ? vars.ICON : escape(vars[name]);
+    return name === 'ICON' ? vars.ICON : escapeHtml(vars[name]);
   });
 }
 

@@ -1,0 +1,87 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": ["src/**", "test/**", "scripts/**", "*.ts", "!**/*.css", "!**/*.html", "!**/*.json"]
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 200
+  },
+  "javascript": {
+    "formatter": { "quoteStyle": "single", "jsxQuoteStyle": "double", "trailingCommas": "all", "semicolons": "always", "arrowParentheses": "always" }
+  },
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "linter": {
+    "rules": {
+      "preset": "recommended",
+      "complexity": {
+        "useMathMinMax": "off"
+      },
+      "correctness": {
+        "useExhaustiveDependencies": {
+          "level": "error",
+          "options": {
+            "hooks": [{ "name": "useLoad", "closureIndex": 0, "dependenciesIndex": 1 }, { "name": "useDebounced", "closureIndex": 0, "dependenciesIndex": 1 }]
+          }
+        },
+        "useHookAtTopLevel": "error",
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error"
+      },
+      "style": {
+        "noNonNullAssertion": "off",
+        "useImportType": "error",
+        "useConst": "error"
+      },
+      "suspicious": {
+        "noConsole": { "level": "error", "options": { "allow": ["warn", "error"] } }
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["scripts/**", "test/**"],
+      "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
+    },
+    {
+      "includes": ["test/e2e/**"],
+      "linter": { "rules": { "performance": { "useDomNodeTextContent": "off" } } }
+    },
+    {
+      "includes": ["src/core/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "wxt/browser": "core/ is pure TypeScript: no browser APIs.",
+                  "preact": "core/ has no UI.",
+                  "@preact/signals": "core/ has no UI."
+                },
+                "patterns": [{ "group": ["../browser/*", "../storage/*", "../engine/*", "../ui/*", "../entrypoints/*"], "message": "core/ depends on nothing outside core/." }]
+              }
+            },
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                "deniedGlobals": {
+                  "browser": "core/ is pure TypeScript: no browser APIs.",
+                  "chrome": "core/ is pure TypeScript: no browser APIs.",
+                  "indexedDB": "core/ has no IndexedDB access.",
+                  "fetch": "core/ has no network access.",
+                  "XMLHttpRequest": "core/ has no network access.",
+                  "window": "core/ is pure TypeScript: no browser APIs.",
+                  "document": "core/ is pure TypeScript: no browser APIs."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

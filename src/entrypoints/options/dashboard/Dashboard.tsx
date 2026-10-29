@@ -1,8 +1,7 @@
 import { Action } from '../../../ui/components/Action.js';
 import { Brand } from '../../../ui/components/Brand.js';
 import { Icon } from '../../../ui/components/Icon.js';
-import { send } from '../../../ui/lib/messaging.js';
-import { load } from '../../../ui/state/store.js';
+import { sendAndReload } from '../../../ui/state/store.js';
 import { Browsers } from './browsers/Browsers.js';
 import { Duplicates } from './duplicates/Duplicates.js';
 import { History } from './history/History.js';
@@ -22,15 +21,17 @@ export function Dashboard({ tab }: DashboardProps) {
     <div class="page wide">
       <div class="topbar">
         <Brand />
-        <Action label="Sync now" icon="refresh" busy="Syncing…" run={async () => (await send({ t: 'syncNow' }), load())} />
+        <Action label="Sync now" icon="refresh" busy="Syncing…" run={() => sendAndReload({ t: 'syncNow' })} />
       </div>
-      <nav class="tabs" role="tablist">
-        {TABS.map((t) => (
-          <button type="button" key={t.id} role="tab" aria-selected={t.id === tab} onClick={() => (location.hash = t.id)}>
-            <Icon name={t.icon} />
-            {t.label}
-          </button>
-        ))}
+      <nav aria-label="Dashboard">
+        <div class="tabs" role="tablist">
+          {TABS.map((t) => (
+            <button type="button" key={t.id} role="tab" aria-selected={t.id === tab} onClick={() => (location.hash = t.id)}>
+              <Icon name={t.icon} />
+              {t.label}
+            </button>
+          ))}
+        </div>
       </nav>
       <div class="stack lg">
         <Panel />

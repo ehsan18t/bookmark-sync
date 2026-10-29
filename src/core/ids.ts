@@ -84,5 +84,5 @@ export async function derivedId(
 ): Promise<string> {
   const input = [groupId, parentStableId, kind, title, url, String(occurrence)].join('\u0000');
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
-  return 'j' + base32(new Uint8Array(digest)).slice(0, 26);
+  return `j${base32(new Uint8Array(digest)).slice(0, 26)}`;
 }

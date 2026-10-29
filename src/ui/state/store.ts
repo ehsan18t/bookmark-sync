@@ -1,7 +1,7 @@
 import { batch, signal } from '@preact/signals';
 import { browser } from 'wxt/browser';
 import type { FoundGroup, GroupSummary, LocalFolder } from '../../engine/app.js';
-import { SNAPSHOT_KEY, type Capabilities, type PublicAccount, type Snapshot } from '../../messages.js';
+import { type Capabilities, type Command, type PublicAccount, SNAPSHOT_KEY, type Snapshot } from '../../messages.js';
 import { send } from '../lib/messaging.js';
 
 export type { Capabilities, PublicAccount };
@@ -50,3 +50,9 @@ export async function load() {
 /** Ticks so relative times like "2 min ago" stay current. */
 export const now = signal(Date.now());
 setInterval(() => (now.value = Date.now()), 30_000);
+
+/** Runs a command, then shows the snapshot it leads to. */
+export async function sendAndReload(cmd: Command): Promise<void> {
+  await send(cmd);
+  await load();
+}

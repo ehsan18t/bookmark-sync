@@ -536,7 +536,8 @@ export class GroupEngine {
       const bytes = await provider.get(path);
       if (!bytes) continue;
       const info = await decode<DeviceInfo>(bytes, 'device', this.crypt(path));
-      const cursor = (this.local.cursors[d] ??= { batchNo: 0, hash: '', opSeq: 0, markers: {} });
+      const cursor = this.local.cursors[d] ?? { batchNo: 0, hash: '', opSeq: 0, markers: {} };
+      this.local.cursors[d] = cursor;
       cursor.info = info;
       await this.readMarkers(d, info, cursor);
     }
@@ -896,7 +897,8 @@ export class GroupEngine {
       const infoBytes = await provider.get(deviceInfoPath(groupId, d));
       if (!infoBytes) continue;
       const info = await decode<DeviceInfo>(infoBytes, 'device', this.crypt(deviceInfoPath(groupId, d)));
-      const cursor = (this.local.cursors[d] ??= { batchNo: 0, hash: '', opSeq: 0, markers: {} });
+      const cursor = this.local.cursors[d] ?? { batchNo: 0, hash: '', opSeq: 0, markers: {} };
+      this.local.cursors[d] = cursor;
       cursor.info = info;
       await this.readMarkers(d, info, cursor);
       if (this.local.forked[d] !== undefined) continue;
@@ -1419,8 +1421,13 @@ export class GroupEngine {
     const defaults = opts.ignoreDefaults ? findDefaultBookmarks(roots.map((r) => r.live), this.local.config.browser) : [];
     const excluded = new Map([...this.local.excluded, ...(opts.excluded ?? [])]);
     const parentOf = new Map<string, string>();
-    const index = (n: LiveNode) => (n.children ?? []).forEach((c) => (parentOf.set(c.localId, n.localId), index(c)));
-    roots.forEach((r) => index(r.live));
+    const index = (n: LiveNode) => {
+      for (const c of n.children ?? []) {
+        parentOf.set(c.localId, n.localId);
+        index(c);
+      }
+    };
+    for (const r of roots) index(r.live);
     for (const l of defaults) excluded.set(l, { parent: parentOf.get(l)!, sticky: false });
 
     const merged = this.mergedTree();

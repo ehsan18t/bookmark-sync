@@ -29,10 +29,12 @@ export function ChooseStep({ account, go }: ChooseStepProps) {
   const [name, setName] = useState('');
   const box = useRef<HTMLDivElement>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refocuses when the pick changes
   useEffect(() => {
     if (found) box.current?.querySelector<HTMLElement>('input[type=text], input[type=radio]:checked, input[type=radio]:not(:disabled)')?.focus();
   }, [found, pick]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` re-runs the lookup on Try again
   useEffect(() => {
     setFound(null);
     setFailed('');

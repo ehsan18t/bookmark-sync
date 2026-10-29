@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GroupSummary } from '../../../../engine/app.js';
 import { Action } from '../../../../ui/components/Action.js';
 import { Field } from '../../../../ui/components/Field.js';
-import { send } from '../../../../ui/lib/messaging.js';
-import { load } from '../../../../ui/state/store.js';
+import { sendAndReload } from '../../../../ui/state/store.js';
 
 interface RenamePanelProps {
   g: GroupSummary;
@@ -20,7 +19,10 @@ export function RenamePanel({ g, onDone }: RenamePanelProps) {
         <input type="text" value={name} onInput={(e) => setName(e.currentTarget.value)} ref={input} />
       </Field>
       <div class="row">
-        <Action label="Save name" kind="primary" busy="Renaming…" run={async () => (await send({ t: 'rename', groupId: g.groupId, name }), await load(), onDone())} />
+        <Action label="Save name" kind="primary" busy="Renaming…" run={async () => {
+            await sendAndReload({ t: 'rename', groupId: g.groupId, name });
+            onDone();
+          }} />
       </div>
     </div>
   );

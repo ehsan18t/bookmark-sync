@@ -35,8 +35,8 @@ export class WebDavProvider implements StorageProvider {
     config: WebDavConfig,
     private readonly fetchImpl: typeof fetch = (...args) => fetch(...args),
   ) {
-    this.base = new URL(config.url.endsWith('/') ? config.url : config.url + '/');
-    this.auth = 'Basic ' + toBase64(new TextEncoder().encode(`${config.username}:${config.password}`));
+    this.base = new URL(config.url.endsWith('/') ? config.url : `${config.url}/`);
+    this.auth = `Basic ${toBase64(new TextEncoder().encode(`${config.username}:${config.password}`))}`;
   }
 
   serverDate(): number {
@@ -52,7 +52,7 @@ export class WebDavProvider implements StorageProvider {
   }
 
   async listFiles(dir: string): Promise<string[]> {
-    const d = dir.endsWith('/') ? dir : dir + '/';
+    const d = dir.endsWith('/') ? dir : `${dir}/`;
     return (await this.list(d)).filter((e) => !e.collection && !e.name.startsWith(TMP_PREFIX)).map((e) => d + e.name);
   }
 
@@ -102,7 +102,7 @@ export class WebDavProvider implements StorageProvider {
   private async ensureParents(path: string): Promise<void> {
     const parts = path.split('/').slice(0, -1);
     for (let i = 0; i <= parts.length; i++) {
-      const dir = i === 0 ? '' : parts.slice(0, i).join('/') + '/';
+      const dir = i === 0 ? '' : `${parts.slice(0, i).join('/')}/`;
       if (this.knownDirs.has(dir)) continue;
       const res = await this.request('MKCOL', dir);
       if (res.status !== 201 && res.status !== 405 && res.status !== 301) await this.check(res, 'MKCOL', dir);

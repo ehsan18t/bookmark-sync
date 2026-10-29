@@ -2,9 +2,8 @@ import { Action } from '../../ui/components/Action.js';
 import { Brand } from '../../ui/components/Brand.js';
 import { ErrorText } from '../../ui/components/ErrorText.js';
 import { Icon } from '../../ui/components/Icon.js';
-import { send } from '../../ui/lib/messaging.js';
 import { failure, ready } from '../../ui/state/boot.js';
-import { groups, load, refreshError } from '../../ui/state/store.js';
+import { groups, refreshError, sendAndReload } from '../../ui/state/store.js';
 import { openPage } from './openPage.js';
 import { PopupSyncCard } from './PopupSyncCard.js';
 
@@ -36,7 +35,7 @@ export function Popup() {
     <>
       <div class="popup-head">
         <Brand />
-        <Action label="Sync now" kind="ghost" icon="refresh" busy="Syncing…" run={async () => (await send({ t: 'syncNow' }), load())} />
+        <Action label="Sync now" kind="ghost" icon="refresh" busy="Syncing…" run={() => sendAndReload({ t: 'syncNow' })} />
       </div>
       {stale}
       {list.map((g) => (
