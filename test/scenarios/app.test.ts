@@ -30,7 +30,7 @@ class MemoryAppStore extends MemoryStore implements AppStore {
 let now = 1_800_000_000_000;
 const clock = { now: () => now };
 
-function browser(name: string, provider: MemoryProvider, fail?: { auth: boolean }) {
+function browser(name: string, provider: MemoryProvider, fail?: { auth: boolean; down?: boolean }) {
   const bookmarks = new FakeBookmarks(`${name}_`);
   const store = new MemoryAppStore();
   const app = new SyncApp({
@@ -46,6 +46,7 @@ function browser(name: string, provider: MemoryProvider, fail?: { auth: boolean 
             ? t.serverDate
             : async (...args: unknown[]) => {
                 if (fail.auth) throw new ProviderAuthError('401');
+                if (fail.down) throw new Error('offline');
                 return (t[k] as (...a: unknown[]) => unknown)(...args);
               },
       }) as StorageProvider;
@@ -545,5 +546,26 @@ describe('the app layer', () => {
     release();
     await blocked;
     expect(reads).not.toBe('waited');
+  });
+
+  it('waits only a minute after a failure once the sync worked again', async () => {
+    const fail = { auth: false, down: false };
+    const a = browser('chrome', new MemoryProvider(() => now), fail);
+    await a.app.init();
+    const acc = await a.app.addAccount({ type: 'webdav', name: 'Server', url: 'mem://', username: 'u', password: 'p' });
+    await a.app.createGroup({ accountId: acc, name: 'Main', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
+    fail.down = true;
+    for (const wait of [61_000, 301_000, 901_000]) {
+      await a.app.syncAll();
+      now += wait;
+    }
+    fail.down = false;
+    await a.app.syncAll();
+    fail.down = true;
+    await a.app.syncAll();
+    now += 61_000;
+    fail.down = false;
+    await a.app.syncAll();
+    expect((await a.app.status())[0]).toMatchObject({ lastSyncAt: now, lastError: null });
   });
 });

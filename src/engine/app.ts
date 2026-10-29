@@ -712,6 +712,7 @@ export class SyncApp {
       this.lastError.delete(g);
       this.rawError.delete(g);
       this.backoffUntil.delete(g);
+      this.failures.delete(g);
       if (res.migratedTo) {
         this.engines.delete(g);
         this.engines.set(res.migratedTo, e);
