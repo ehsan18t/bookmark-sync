@@ -38,7 +38,7 @@ export default defineConfig({
       description: env('WXT_APP_DESCRIPTION'),
       default_locale: 'en',
       ...(env('WXT_HOMEPAGE_URL') ? { homepage_url: env('WXT_HOMEPAGE_URL') } : {}),
-      permissions: ['bookmarks', 'storage', 'unlimitedStorage', 'alarms', 'notifications', 'identity'],
+      permissions: ['bookmarks', 'storage', 'unlimitedStorage', 'alarms', 'idle', 'notifications', 'identity'],
       host_permissions: ['https://www.googleapis.com/*', 'https://oauth2.googleapis.com/*', ...(process.env.BSYNC_E2E ? ['http://127.0.0.1/*'] : [])],
       optional_host_permissions: ['https://*/*', 'http://*/*'],
       action: { default_title: env('WXT_APP_NAME') },

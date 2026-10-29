@@ -35,7 +35,12 @@ export function Popup() {
     <>
       <div class="popup-head">
         <Brand />
-        <Action label="Sync now" kind="ghost" icon="refresh" busy="Syncing…" run={() => sendAndReload({ t: 'syncNow' })} />
+        <div class="popup-head-actions">
+          <Action label="Sync now" kind="ghost" icon="refresh" busy="Syncing…" run={() => sendAndReload({ t: 'syncNow' })} />
+          <button type="button" class="ghost" aria-label="Settings" title="Settings" onClick={openPage('settings')}>
+            <Icon name="settings" />
+          </button>
+        </div>
       </div>
       {stale}
       {list.map((g) => (

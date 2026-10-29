@@ -195,6 +195,17 @@ select {
   box-shadow: none;
 }
 
+.unit-field select {
+  width: auto;
+  min-height: 34px;
+  border: 0;
+  border-left: 1px solid var(--field-border);
+  border-radius: 0;
+  background-color: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
+}
+
 .unit-field .unit {
   display: flex;
   align-items: center;

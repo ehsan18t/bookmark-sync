@@ -7,6 +7,7 @@ import { IdbStore } from '../browser/idbStore.js';
 import { providerFactory } from '../browser/providers.js';
 import { browserRoots } from '../browser/roots.js';
 import { APP_NAME } from '../config.js';
+import { AWAY_AFTER_MINUTES, clampCheckSeconds } from '../core/checkTimes.js';
 import type { BrowserFamily } from '../core/defaults.js';
 import { BridgeTakenError } from '../core/errors.js';
 import { SyncApp } from '../engine/app.js';
@@ -68,16 +69,45 @@ export default defineBackground({
       notify: (groupId, status) => logged(onStatus(groupId, status)),
       describeError: friendlyError,
     });
-    const ready = app.init().then(() => ensureAlarm());
+    const ready = app.init().then(() => schedule(false));
 
     function logged(work: Promise<unknown>) {
       work.catch((e: unknown) => console.error(e));
     }
 
-    async function ensureAlarm() {
-      const minutes = app.settings().pullMinutes;
+    const sync = () => ready.then(() => app.syncAll()).then(publish);
+
+    /** In use: the computer is active and a window of this browser had focus in the last few minutes. */
+    async function inUse(): Promise<boolean> {
+      if ((await browser.idle.queryState(AWAY_AFTER_MINUTES * 60)) !== 'active') return false;
+      // Chromium rejects when no window is open.
+      if ((await browser.windows.getLastFocused().catch(() => null))?.focused) return true;
+      let { blurredAt } = (await browser.storage.session.get('blurredAt')) as { blurredAt?: number };
+      if (blurredAt === undefined) {
+        blurredAt = Date.now();
+        await browser.storage.session.set({ blurredAt });
+        await browser.alarms.create('away', { delayInMinutes: AWAY_AFTER_MINUTES });
+      }
+      return Date.now() - blurredAt < AWAY_AFTER_MINUTES * 60_000;
+    }
+
+    /** Re-creating the alarm resets its timer, so it happens only on a new period or when asked. */
+    async function schedule(restart: boolean) {
+      const s = app.settings();
+      const minutes = clampCheckSeconds((await inUse()) ? s.activeCheckSeconds : s.awayCheckSeconds) / 60;
       const existing = await browser.alarms.get('pull');
-      if (!existing || existing.periodInMinutes !== minutes) await browser.alarms.create('pull', { periodInMinutes: minutes });
+      if (restart || !existing || existing.periodInMinutes !== minutes) await browser.alarms.create('pull', { periodInMinutes: minutes });
+    }
+
+    /** Checks at once, then again shortly after, for a change the other browser was still uploading. */
+    async function comeBack() {
+      await ready;
+      const { lastFocusSync = 0 } = (await browser.storage.session.get('lastFocusSync')) as { lastFocusSync?: number };
+      if (Date.now() - lastFocusSync < 10_000) return schedule(false);
+      await browser.storage.session.set({ lastFocusSync: Date.now() });
+      await schedule(true);
+      logged(sync());
+      setTimeout(() => logged(sync()), 15_000);
     }
 
     const caps = (): Capabilities => ({ google: googleAvailable(env.engine) && identityAvailable(), googleBlocked: googleAvailable(env.engine) && !identityAvailable(), browser: env.name });
@@ -141,7 +171,7 @@ export default defineBackground({
     let timer: ReturnType<typeof setTimeout> | undefined;
     const scheduleSync = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => logged(ready.then(() => app.syncAll()).then(publish)), 3000);
+      timer = setTimeout(() => logged(sync()), 3000);
     };
 
     browser.bookmarks.onCreated.addListener(scheduleSync);
@@ -157,22 +187,31 @@ export default defineBackground({
     });
 
     browser.alarms.onAlarm.addListener((alarm) => {
-      if (alarm.name === 'pull') logged(ready.then(() => app.syncAll()).then(publish));
+      if (alarm.name === 'pull') logged(sync());
+      if (alarm.name === 'away') logged(ready.then(() => schedule(false)));
     });
 
-    browser.windows.onFocusChanged.addListener(async (windowId) => {
-      if (windowId === browser.windows.WINDOW_ID_NONE) return;
-      const { lastFocusSync = 0 } = (await browser.storage.session.get('lastFocusSync')) as { lastFocusSync?: number };
-      if (Date.now() - lastFocusSync < 10_000) return;
-      await browser.storage.session.set({ lastFocusSync: Date.now() });
-      logged(ready.then(() => app.syncAll()).then(publish));
+    browser.windows.onFocusChanged.addListener((windowId) => {
+      if (windowId !== browser.windows.WINDOW_ID_NONE) return logged(browser.alarms.clear('away').then(comeBack));
+      logged(browser.storage.session.set({ blurredAt: Date.now() }).then(() => browser.alarms.create('away', { delayInMinutes: AWAY_AFTER_MINUTES })));
+    });
+
+    browser.idle.setDetectionInterval(AWAY_AFTER_MINUTES * 60);
+    browser.idle.onStateChanged.addListener((state) => {
+      if (state !== 'active') return logged(ready.then(() => schedule(false)));
+      logged(
+        browser.windows
+          .getLastFocused()
+          .catch(() => null)
+          .then((w) => (w?.focused ? comeBack() : ready.then(() => schedule(false)))),
+      );
     });
 
     browser.runtime.onInstalled.addListener(({ reason }) => {
       if (reason === 'install') void browser.tabs.create({ url: browser.runtime.getURL('/options.html#setup') });
     });
 
-    browser.runtime.onStartup.addListener(() => logged(ready.then(() => app.syncAll()).then(publish)));
+    browser.runtime.onStartup.addListener(() => logged(sync()));
     browser.notifications.onClicked.addListener((id) => {
       if (id.startsWith('bsync:')) void browser.runtime.openOptionsPage();
     });
@@ -255,7 +294,7 @@ export default defineBackground({
           return app.settings();
         case 'updateSettings':
           await app.updateSettings(cmd.patch);
-          return ensureAlarm();
+          return schedule(false);
         case 'scanDuplicates':
           return app.scanDuplicates();
         case 'applyDedupe':

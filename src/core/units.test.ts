@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { clampCheckSeconds } from './checkTimes.js';
 import { HlcClock, parseHlc } from './hlc.js';
 import { ROOT_OTHER, ROOT_TOOLBAR } from './ids.js';
 import { assignKeys } from './position.js';
@@ -105,5 +106,13 @@ describe('codec', () => {
     const sealed = await encode('batch', { ops: [1] }, { key, path: 'p' });
     expect(await decode(sealed, 'batch', { key, path: 'p' })).toEqual({ ops: [1] });
     await expect(decode(sealed, 'batch', { key, path: 'other' })).rejects.toBeInstanceOf(CorruptFileError);
+  });
+});
+
+describe('check intervals', () => {
+  it('raises short intervals to the browser floor and lowers long ones to an hour', () => {
+    expect(clampCheckSeconds(5)).toBe(30);
+    expect(clampCheckSeconds(45)).toBe(45);
+    expect(clampCheckSeconds(2 * 60 * 60)).toBe(3600);
   });
 });
