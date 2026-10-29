@@ -501,14 +501,23 @@ export class SyncApp {
     if (!on) void this.syncAll();
   }
 
+  /** Sync requests still waiting in the queue; a later request for the same work shares them. */
+  private waitingAll: Promise<void> | null = null;
+  private readonly waitingGroup = new Map<string, Promise<void>>();
+
   syncAll(): Promise<void> {
-    return this.run(async () => {
+    if (this.waitingAll) return this.waitingAll;
+    const pass = this.run(async () => {
+      this.waitingAll = null;
+      this.waitingGroup.clear();
       if (this.importing) return;
       await this.fillEmails();
       await this.checkMappingOverlaps();
       for (const e of [...this.engines.values()]) await this.syncOne(e);
       await this.syncBridged();
     });
+    this.waitingAll = pass;
+    return pass;
   }
 
   /** Google accounts connected before the email was recorded; tried once per run of the extension. */
@@ -529,10 +538,15 @@ export class SyncApp {
   }
 
   syncGroup(groupId: string): Promise<void> {
-    return this.run(async () => {
+    const waiting = this.waitingAll ?? this.waitingGroup.get(groupId);
+    if (waiting) return waiting;
+    const pass = this.run(async () => {
+      this.waitingGroup.delete(groupId);
       await this.syncOne(this.engine(groupId));
       await this.syncBridged();
     });
+    this.waitingGroup.set(groupId, pass);
+    return pass;
   }
 
   /**
