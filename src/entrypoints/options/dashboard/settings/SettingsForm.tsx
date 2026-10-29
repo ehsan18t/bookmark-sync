@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { Settings } from '../../../../engine/app.js';
 import { Action } from '../../../../ui/components/Action.js';
 import { send } from '../../../../ui/lib/messaging.js';
@@ -16,6 +16,11 @@ export function SettingsForm({ initial }: SettingsFormProps) {
   const [min, setMin] = useState(String(initial.guardMin));
   const [pull, setPull] = useState(String(initial.pullMinutes));
   const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (!saved) return;
+    const t = setTimeout(() => setSaved(false), 2000);
+    return () => clearTimeout(t);
+  }, [saved]);
   const save = async () => {
     const n = (v: string, lo: number, hi: number, what: string) => {
       const x = Number(v);
@@ -33,7 +38,6 @@ export function SettingsForm({ initial }: SettingsFormProps) {
       },
     });
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
   };
   return (
     <div class="stack">

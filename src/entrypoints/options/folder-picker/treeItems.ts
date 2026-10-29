@@ -15,20 +15,34 @@ export interface TreeItem {
 /** This browser's folders, noting the ones another sync already holds or contains. Syncs may share folders. */
 export function localItems(folders: LocalFolder[], groups: GroupSummary[], except?: string): TreeItem[] {
   const parentOf = new Map(folders.map((f) => [f.id, f.parentId]));
+  const childrenOf = new Map<string, string[]>();
+  for (const f of folders) {
+    if (f.parentId === null) continue;
+    const list = childrenOf.get(f.parentId);
+    if (list) list.push(f.id);
+    else childrenOf.set(f.parentId, [f.id]);
+  }
   const notes = new Map<string, string>();
   for (const g of groups) {
     if (g.groupId === except) continue;
     for (const id of g.held) {
-      for (const f of folders) {
-        for (let cur: string | null | undefined = f.id; cur; cur = parentOf.get(cur)) {
-          if (cur === id) notes.set(f.id, `Also synced by “${g.name}”`);
-        }
+      const also = `Also synced by “${g.name}”`;
+      const seen = new Set<string>();
+      const stack = [id];
+      for (let cur = stack.pop(); cur !== undefined; cur = stack.pop()) {
+        if (seen.has(cur)) continue;
+        seen.add(cur);
+        if (parentOf.has(cur)) notes.set(cur, also);
+        stack.push(...(childrenOf.get(cur) ?? []));
       }
       for (let cur = parentOf.get(id); cur; cur = parentOf.get(cur)) if (!notes.has(cur)) notes.set(cur, `Has a folder synced by “${g.name}”`);
     }
   }
   return folders.map((f) => ({ id: f.id, parent: f.parentId, title: f.title, ...(notes.has(f.id) ? { note: notes.get(f.id) } : {}) }));
 }
+
+/** Folders this sync already holds here can't be picked again. */
+export const blockHeld = (items: TreeItem[], held: string[]): TreeItem[] => items.map((i) => (held.includes(i.id) ? { ...i, blocked: 'Synced here' } : i));
 
 const FIXED: { id: string; root: RootType; fallback: string }[] = [
   { id: 'root:toolbar', root: 'toolbar', fallback: 'Bookmarks bar' },

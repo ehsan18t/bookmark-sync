@@ -25,9 +25,12 @@ export function SettingsTab() {
               run={async () => {
                 const data = await send({ t: 'diagnostics' });
                 const a = document.createElement('a');
-                a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+                const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+                a.href = url;
                 a.download = 'bookmark-sync-diagnostics.json';
                 a.click();
+                // Firefox cancels the download when the URL is revoked before it starts.
+                setTimeout(() => URL.revokeObjectURL(url), 10_000);
               }}
             />
           </Setting>

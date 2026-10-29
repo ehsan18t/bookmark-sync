@@ -1,3 +1,4 @@
+import { useMemo } from 'preact/hooks';
 import type { GroupSummary } from '../../../../engine/app.js';
 import type { TimelineEntry } from '../../../../engine/group.js';
 import { Action } from '../../../../ui/components/Action.js';
@@ -18,11 +19,13 @@ interface TimelineProps {
 export function Timeline({ g }: TimelineProps) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: refetches after each sync
   const r = useLoad(() => send<TimelineEntry[]>({ t: 'timeline', groupId: g.groupId }), [g.groupId, g.lastSyncAt]);
+  const list = devices.value[g.groupId];
+  const byId = useMemo(() => new Map((list ?? []).map((v) => [v.deviceId, v])), [list]);
   if (r.error) return <ErrorText>{r.error}</ErrorText>;
   if (!r.data) return <Loading>Loading history…</Loading>;
   const entries = r.data;
   const who = (d: string) => {
-    const x = devices.value[g.groupId]?.find((v) => v.deviceId === d);
+    const x = byId.get(d);
     return x ? (x.self ? 'This browser' : x.name) : 'A removed browser';
   };
   const restoreTo = async (hlc: string) => {
