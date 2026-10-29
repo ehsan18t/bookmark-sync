@@ -19,6 +19,8 @@ export interface StorageProvider {
   createOnce(path: string, data: Uint8Array): Promise<CreateOnceResult>;
   overwrite(path: string, data: Uint8Array): Promise<void>;
   delete(path: string): Promise<void>;
+  /** Several files at once; throws the first failure after trying every one. */
+  deleteMany?(paths: string[]): Promise<void>;
   listFiles(dir: string): Promise<string[]>;
   serverDate(): number;
   /** The signed-in account, such as an email address, when the storage can tell. */

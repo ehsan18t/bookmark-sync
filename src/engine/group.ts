@@ -281,6 +281,19 @@ function readMany(provider: StorageProvider, paths: string[]): Promise<PromiseSe
   return provider.getMany ? provider.getMany(paths) : settleLimited(paths, PARALLEL_READS, (p) => provider.get(p));
 }
 
+function deleteMany(provider: StorageProvider, paths: string[]): Promise<void> {
+  if (!paths.length) return Promise.resolve();
+  if (provider.deleteMany) return provider.deleteMany(paths);
+  return settleLimited(paths, PARALLEL_READS, (p) => provider.delete(p)).then((rs) => {
+    const failed = rs.find((r) => r.status === 'rejected');
+    if (failed) throw failed.reason;
+  });
+}
+
+async function listMany(provider: StorageProvider, dirs: string[]): Promise<string[]> {
+  return (await Promise.all(dirs.map((d) => provider.listFiles(d)))).flat();
+}
+
 function settled<T>(r: PromiseSettledResult<T>): T {
   if (r.status === 'rejected') throw r.reason;
   return r.value;
@@ -554,17 +567,22 @@ export class GroupEngine {
   async refreshMarkers(): Promise<void> {
     const { provider } = this.ports;
     const { groupId, deviceId } = this.local.config;
-    for (const d of await provider.listDevices(groupId)) {
-      if (d === deviceId) continue;
-      const path = deviceInfoPath(groupId, d);
-      const bytes = await provider.get(path);
-      if (!bytes) continue;
-      const info = await decode<DeviceInfo>(bytes, 'device', this.crypt(path));
-      const cursor = this.local.cursors[d] ?? { batchNo: 0, hash: '', opSeq: 0, markers: {} };
-      this.local.cursors[d] = cursor;
-      cursor.info = info;
-      await this.readMarkers(d, info, cursor);
-    }
+    const devices = (await provider.listDevices(groupId)).filter((d) => d !== deviceId);
+    const reads = await readMany(
+      provider,
+      devices.map((d) => deviceInfoPath(groupId, d)),
+    );
+    await Promise.all(
+      devices.map(async (d, i) => {
+        const bytes = settled(reads[i]!);
+        if (!bytes) return;
+        const info = await decode<DeviceInfo>(bytes, 'device', this.crypt(deviceInfoPath(groupId, d)));
+        const cursor = this.local.cursors[d] ?? { batchNo: 0, hash: '', opSeq: 0, markers: {} };
+        this.local.cursors[d] = cursor;
+        cursor.info = info;
+        await this.readMarkers(d, info, cursor);
+      }),
+    );
     await this.persist();
   }
 
@@ -631,14 +649,11 @@ export class GroupEngine {
       await this.pause('nothing-held');
       return false;
     }
-    for (const r of this.roots) {
-      const local = this.local.config.mapping[r];
-      if (!local || !(await this.ports.bookmarks.exists(local))) {
-        await this.pause(this.local.config.mode === 'everything' && isRootId(r) ? 'root-changed' : 'mapped-folder-missing', r);
-        return false;
-      }
-    }
-    return true;
+    const present = await Promise.all(this.roots.map((r) => !!this.local.config.mapping[r] && this.ports.bookmarks.exists(this.local.config.mapping[r]!)));
+    const missing = this.roots.find((_, i) => !present[i]);
+    if (missing === undefined) return true;
+    await this.pause(this.local.config.mode === 'everything' && isRootId(missing) ? 'root-changed' : 'mapped-folder-missing', missing);
+    return false;
   }
 
   /**
@@ -935,14 +950,31 @@ export class GroupEngine {
       this.ports.provider,
       devices.map((d) => deviceInfoPath(groupId, d)),
     );
-    for (const [i, d] of devices.entries()) {
-      const infoBytes = settled(infoReads[i]!);
-      if (!infoBytes) continue;
-      const info = await decode<DeviceInfo>(infoBytes, 'device', this.crypt(deviceInfoPath(groupId, d)));
-      const cursor = this.local.cursors[d] ?? { batchNo: 0, hash: '', opSeq: 0, markers: {} };
-      this.local.cursors[d] = cursor;
-      cursor.info = info;
-      await this.readMarkers(d, info, cursor);
+    // Each device's info, markers and first new batches are fetched at once; their ops are then taken in device order.
+    const fetched = await Promise.all(
+      devices.map(async (d, i) => {
+        const infoBytes = settled(infoReads[i]!);
+        if (!infoBytes) return null;
+        const info = await decode<DeviceInfo>(infoBytes, 'device', this.crypt(deviceInfoPath(groupId, d)));
+        const cursor = this.local.cursors[d] ?? { batchNo: 0, hash: '', opSeq: 0, markers: {} };
+        this.local.cursors[d] = cursor;
+        cursor.info = info;
+        await this.readMarkers(d, info, cursor);
+        const wanted = this.local.forked[d] === undefined && info.lastBatchNo > cursor.batchNo && (base.coverage[d] ?? 0) < info.lastOpSeq && info.firstRetainedOpSeq <= cursor.opSeq + 1;
+        const first = cursor.batchNo + 1;
+        const upTo = Math.min(info.lastBatchNo, first + BATCHES_PER_READ - 1);
+        const ahead = wanted
+          ? await readMany(
+              provider,
+              Array.from({ length: upTo - first + 1 }, (_, k) => batchPath(groupId, d, first + k)),
+            )
+          : null;
+        return { d, info, cursor, ahead };
+      }),
+    );
+    for (const f of fetched) {
+      if (!f) continue;
+      const { d, info, cursor, ahead } = f;
       if (this.local.forked[d] !== undefined) continue;
       if (info.lastBatchNo > cursor.batchNo && (base.coverage[d] ?? 0) >= info.lastOpSeq) {
         cursor.batchNo = info.lastBatchNo;
@@ -961,10 +993,13 @@ export class GroupEngine {
         const path = batchPath(groupId, d, b);
         if ((b - first) % BATCHES_PER_READ === 0) {
           const upTo = Math.min(info.lastBatchNo, b + BATCHES_PER_READ - 1);
-          reads = await readMany(
-            this.ports.provider,
-            Array.from({ length: upTo - b + 1 }, (_, k) => batchPath(groupId, d, b + k)),
-          );
+          reads =
+            b === first && ahead
+              ? ahead
+              : await readMany(
+                  provider,
+                  Array.from({ length: upTo - b + 1 }, (_, k) => batchPath(groupId, d, b + k)),
+                );
         }
         let bytes: Uint8Array | null;
         try {
@@ -1469,20 +1504,21 @@ export class GroupEngine {
     this.local.confirmed = this.local.confirmed.filter((k) => !covered(k));
     this.local.restorePoints = this.local.restorePoints.filter((r) => r.hlc >= c);
     await this.publish(true);
-    for (const b of drop) await this.ports.provider.delete(batchPath(this.groupId, this.deviceId, b.batchNo));
-    const mine = (await this.ports.provider.listFiles(snapshotsDir(this.groupId, this.deviceId))).filter((p) => p !== path);
+    const { provider } = this.ports;
+    await deleteMany(
+      provider,
+      drop.map((b) => batchPath(this.groupId, this.deviceId, b.batchNo)),
+    );
+    const mine = (await provider.listFiles(snapshotsDir(this.groupId, this.deviceId))).filter((p) => p !== path);
+    const reads = await readMany(provider, mine);
     const others: { path: string; frontier: Hlc }[] = [];
-    for (const p of mine) {
-      const bytes = await this.ports.provider.get(p);
+    for (const [i, p] of mine.entries()) {
+      const bytes = settled(reads[i]!);
       if (bytes) others.push({ path: p, frontier: (await decode<Snapshot>(bytes, 'snapshot', this.crypt(p))).frontier });
     }
     others.sort((a, b) => (a.frontier < b.frontier ? 1 : -1));
-    for (const o of others.slice(1)) await this.ports.provider.delete(o.path);
-    for (const [d, info] of infos) {
-      if ((info.left || removed.has(d)) && info.lastOpSeq <= (snap.coverage[d] ?? 0)) {
-        for (const p of await this.ports.provider.listFiles(batchesDir(this.groupId, d))) await this.ports.provider.delete(p);
-      }
-    }
+    const gone = [...infos].filter(([d, info]) => (info.left || removed.has(d)) && info.lastOpSeq <= (snap.coverage[d] ?? 0)).map(([d]) => batchesDir(this.groupId, d));
+    await deleteMany(provider, [...others.slice(1).map((o) => o.path), ...(await listMany(provider, gone))]);
     await this.persist();
     return true;
   }
@@ -1491,7 +1527,8 @@ export class GroupEngine {
     const header = await GroupEngine.readHeader(this.ports.provider, this.groupId);
     if (!header) throw new UserError('That sync no longer exists on this storage.');
     if (header.encryption && !this.key) throw new LockedError();
-    if (!(await this.waitForConsistentView())) throw new UserError('That sync is busy with changes from another browser. Try again in a minute.');
+    // A preview reads once; the join itself waits until the listing stops changing.
+    if (!this.dryRun && !(await this.waitForConsistentView())) throw new UserError('That sync is busy with changes from another browser. Try again in a minute.');
     this.observe(hlcFloor(this.ports.provider.serverDate()));
     await this.pull();
     if (await this.loadNewestSnapshot()) await this.pull();
@@ -1707,10 +1744,14 @@ export class GroupEngine {
   async deleteEverywhere(): Promise<void> {
     await this.writeMarker('group-deleted', { hlc: this.clock.tick() } satisfies GroupDeletedMarker);
     const { provider } = this.ports;
-    for (const d of await provider.listDevices(this.groupId)) {
-      for (const p of await provider.listFiles(batchesDir(this.groupId, d))) await provider.delete(p);
-      for (const p of await provider.listFiles(snapshotsDir(this.groupId, d))) await provider.delete(p);
-    }
+    const devices = await provider.listDevices(this.groupId);
+    await deleteMany(
+      provider,
+      await listMany(
+        provider,
+        devices.flatMap((d) => [batchesDir(this.groupId, d), snapshotsDir(this.groupId, d)]),
+      ),
+    );
     await this.ports.store.delete(this.groupId);
   }
 
@@ -1859,8 +1900,7 @@ export class GroupEngine {
     await this.publish(true);
     await this.persist();
 
-    for (const p of await this.ports.provider.listFiles(batchesDir(g1, self))) await this.ports.provider.delete(p);
-    for (const p of await this.ports.provider.listFiles(snapshotsDir(g1, self))) await this.ports.provider.delete(p);
+    await deleteMany(this.ports.provider, await listMany(this.ports.provider, [batchesDir(g1, self), snapshotsDir(g1, self)]));
     await this.ports.store.delete(g1);
     return g2;
   }

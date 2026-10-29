@@ -5,6 +5,7 @@ import { BridgeTakenError, UserError } from '../core/errors.js';
 import { DAY } from '../core/frontier.js';
 import { EVERYTHING_ROOTS, type PlaceHint, type RandomBytes, ROOT_GROUP, type RootType, randomId } from '../core/ids.js';
 import { sameNameKey } from '../core/names.js';
+import { settleLimited } from '../core/pool.js';
 import type { Excluded, LiveNode } from '../core/reconcile.js';
 import { ProviderAuthError } from '../storage/webdav.js';
 import { recreate, removeEach } from './apply.js';
@@ -28,6 +29,7 @@ import {
 import { type BookmarksPort, type Clock, PermissionMissingError, type StorageProvider } from './ports.js';
 
 const PULL_CACHE_MS = 5 * 60_000;
+const PARALLEL_GROUP_READS = 4;
 
 export type Account =
   | { id: string; type: 'webdav'; name: string; url: string; username: string; password: string }
@@ -244,14 +246,18 @@ export class SyncApp {
   }
 
   private async liveGroups(provider: StorageProvider): Promise<FoundGroup[]> {
-    const out: FoundGroup[] = [];
-    for (const g of await provider.listGroups()) {
+    const found = await settleLimited(await provider.listGroups(), PARALLEL_GROUP_READS, async (g): Promise<FoundGroup | null> => {
       const h = await GroupEngine.readHeader(provider, g);
-      if (!h) continue;
+      if (!h) return null;
       const { deleted, browsers } = await GroupEngine.readMembers(provider, g, !!h.encryption);
-      if (!deleted) out.push({ groupId: g, name: h.name, mode: h.mode, encrypted: !!h.encryption, joined: this.engines.has(g), browsers });
-    }
-    return out;
+      return deleted ? null : { groupId: g, name: h.name, mode: h.mode, encrypted: !!h.encryption, joined: this.engines.has(g), browsers };
+    });
+    return found
+      .map((r) => {
+        if (r.status === 'rejected') throw r.reason;
+        return r.value;
+      })
+      .filter((g) => g !== null);
   }
 
   // Groups
@@ -805,7 +811,7 @@ export class SyncApp {
     const inside = await this.insideCheck();
     const partners = [...this.engines.values()].filter((p) => p !== e && this.shareFolders(e, p, inside));
     // Decide on fresh claims, so a release happens before this pass carries anything across.
-    for (const x of [e, ...partners]) await x.refreshMarkers().catch(() => {});
+    await Promise.all([e, ...partners].map((x) => x.refreshMarkers().catch(() => {})));
     const links = { ...e.ownLinks() };
     for (const id of Object.keys(links)) {
       const p = this.engines.get(id);
@@ -888,7 +894,7 @@ export class SyncApp {
   /** Refuses folders of `groupId` that another sync here shares while another browser links the two, unless taking over. */
   private async checkBridge(groupId: string, mapping: Record<string, string>, takeover = false): Promise<void> {
     if (takeover) return;
-    for (const e of this.engines.values()) await e.refreshMarkers().catch(() => {});
+    await Promise.all([...this.engines.values()].map((e) => e.refreshMarkers().catch(() => {})));
     const inside = await this.insideCheck();
     const mine = Object.values(mapping)
       .map((l) => pendingAnchor(l) ?? l)

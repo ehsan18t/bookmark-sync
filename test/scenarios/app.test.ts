@@ -559,6 +559,14 @@ describe('the app layer', () => {
     expect((await a.app.status())[0]!.status).toMatchObject({ state: 'paused', reason: 'auth' });
   });
 
+  it('previews a join from one read, without waiting for the storage to settle', async () => {
+    const { a, b, accA, accB } = await pair();
+    const groupId = await a.app.createGroup({ accountId: accA, name: 'Main', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
+    const before = now;
+    await b.app.previewJoin({ accountId: accB, groupId, target: { kind: 'whole' }, mode: 'merge', ignoreDefaults: true });
+    expect(now).toBe(before);
+  });
+
   it('answers status and history reads while a sync is still running', async () => {
     const { a, accA } = await pair();
     const groupId = await a.app.createGroup({ accountId: accA, name: 'Main', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
