@@ -1,3 +1,4 @@
+import { settleLimited } from '../core/pool.js';
 import { type CreateOnceResult, DuplicateFileError, type StorageProvider } from '../engine/ports.js';
 import { ProviderAuthError, ProviderError } from './webdav.js';
 
@@ -23,6 +24,7 @@ interface DriveFile {
 }
 
 const API = 'https://www.googleapis.com/drive/v3';
+const PARALLEL_DOWNLOADS = 6;
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
 
 /**
@@ -62,9 +64,33 @@ export class DriveProvider implements StorageProvider {
     return [...new Set((await this.query({ dir: d })).map((f) => f.appProperties!.p!))].sort();
   }
 
-  /** Byte-identical copies (a retried upload) count as one file; differing copies mean two writers. */
   async get(path: string): Promise<Uint8Array | null> {
-    const files = (await this.query({ p: path })).sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+    return this.read(path, await this.query({ p: path }));
+  }
+
+  /** One listing per folder instead of one lookup per file, then several downloads at once. */
+  async getMany(paths: string[]): Promise<PromiseSettledResult<Uint8Array | null>[]> {
+    const dirs = [...new Set(paths.map(dirname))];
+    const listed = new Map<string, Map<string, DriveFile[]>>();
+    await Promise.all(
+      dirs.map(async (d) => {
+        const byPath = new Map<string, DriveFile[]>();
+        for (const f of await this.query({ dir: d })) byPath.set(f.appProperties!.p!, [...(byPath.get(f.appProperties!.p!) ?? []), f]);
+        listed.set(d, byPath);
+      }),
+    );
+    return settleLimited(paths, PARALLEL_DOWNLOADS, (p) => this.read(p, listed.get(dirname(p))!.get(p) ?? []));
+  }
+
+  async copiedPaths(dir: string): Promise<string[]> {
+    const counts = new Map<string, number>();
+    for (const f of await this.query({ dir: dir.endsWith('/') ? dir.slice(0, -1) : dir })) counts.set(f.appProperties!.p!, (counts.get(f.appProperties!.p!) ?? 0) + 1);
+    return [...counts].filter(([, n]) => n > 1).map(([p]) => p);
+  }
+
+  /** Byte-identical copies (a retried upload) count as one file; differing copies mean two writers. */
+  private async read(path: string, found: DriveFile[]): Promise<Uint8Array | null> {
+    const files = [...found].sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
     if (!files[0]) return null;
     const first = await this.download(files[0].id);
     for (const extra of files.slice(1)) {
@@ -155,6 +181,10 @@ export class DriveProvider implements StorageProvider {
     if (res.status === 401 || res.status === 403) throw new GoogleAuthError(`${method} ${url}: ${res.status}`);
     throw new ProviderError(`${method} ${url}: ${res.status} ${await res.text()}`, res.status);
   }
+}
+
+function dirname(path: string): string {
+  return path.slice(0, path.lastIndexOf('/'));
 }
 
 function basename(path: string): string {
