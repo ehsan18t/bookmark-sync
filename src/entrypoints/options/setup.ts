@@ -5,7 +5,8 @@ import { originPattern } from '../../browser/providers.js';
 import { APP_NAME, SERVER_FOLDER } from '../../config.js';
 import { action, brand, errorText, field, h, send } from '../../ui/dom.js';
 import { icon, type IconName } from '../../ui/icons.js';
-import { folderTree, groupItems, localItems, placements, type FolderTree } from './folderTree.js';
+import { folderTree, placements } from './FolderPicker.js';
+import { groupItems, localItems } from './folders.js';
 import { sameNameKey } from '../../core/names.js';
 import { load, state, storageLabel, storageWithAccount, type FoundSync, type PublicAccount } from './shared.js';
 
@@ -346,7 +347,7 @@ export function renderSetup(root: HTMLElement, finish: () => void) {
     pass.addEventListener('input', () => (scheduleFolders(), schedulePreview()));
 
     const what = h('div', { class: 'stack' }, h('p', { class: 'muted' }, sync.encrypted ? 'Enter the passphrase to see the folders in this sync.' : 'Reading the folders in this sync…'));
-    let picker: { tree: FolderTree; place: ReturnType<typeof placements>; tops: string[]; everyRoot: boolean } | null = null;
+    let picker: { tree: ReturnType<typeof folderTree>; place: ReturnType<typeof placements>; tops: string[]; everyRoot: boolean } | null = null;
     let folderTimer: ReturnType<typeof setTimeout> | undefined;
     function scheduleFolders() {
       clearTimeout(folderTimer);

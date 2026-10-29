@@ -6,7 +6,8 @@ import { originPattern } from '../../browser/providers.js';
 import { APP_NAME, HOMEPAGE_URL, PRIVACY_URL, SUPPORT_EMAIL } from '../../config.js';
 import { action, brand, errorText, field, h, hlcTime, relativeTime, send } from '../../ui/dom.js';
 import { icon, type IconName } from '../../ui/icons.js';
-import { folderTree, groupItems, localItems, placements } from './folderTree.js';
+import { folderTree, placements } from './FolderPicker.js';
+import { groupItems, localItems } from './folders.js';
 import { load, REASON_TEXT, state, storageLabel, storageWithAccount } from './shared.js';
 
 type Tab = 'overview' | 'history' | 'browsers' | 'duplicates' | 'settings';
