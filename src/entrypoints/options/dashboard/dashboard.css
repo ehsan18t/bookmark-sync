@@ -88,6 +88,21 @@
   color: var(--text-2);
 }
 
+.dupe-bar {
+  position: sticky;
+  top: 8px;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
+}
+
 .url {
   color: var(--text-3);
   font-size: 12.5px;

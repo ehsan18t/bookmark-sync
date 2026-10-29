@@ -8,15 +8,29 @@ import { plural, relativeTime } from '../../../../ui/lib/format.js';
 import { send } from '../../../../ui/lib/messaging.js';
 import { now } from '../../../../ui/state/store.js';
 import { SectionTitle } from '../SectionTitle.js';
-import { DuplicateCard } from './DuplicateCard.js';
+import { DuplicateCard, KEEP_ALL } from './DuplicateCard.js';
+
+const setKey = (d: DuplicateGroup) => `${d.key}:${d.items.map((i) => i.localId).join()}`;
+
+/** A copy that syncs, so other browsers keep it too. */
+const syncedCopy = (d: DuplicateGroup) => (d.items.find((i) => i.group) ?? d.items[0]!).localId;
+
+const defaultChoice = (d: DuplicateGroup) => (d.level === 'exact' ? syncedCopy(d) : KEEP_ALL);
 
 export function Duplicates() {
   const [found, setFound] = useState<DuplicateGroup[] | null>(null);
+  const [keep, setKeep] = useState<Record<string, string>>({});
   const undo = useLoad(() => send<{ id: string; at: number; label: string }[]>({ t: 'localUndo' }), []);
   const scan = async () => {
-    setFound(await send<DuplicateGroup[]>({ t: 'scanDuplicates' }));
+    const groups = await send<DuplicateGroup[]>({ t: 'scanDuplicates' });
+    setFound(groups);
+    setKeep(Object.fromEntries(groups.map((d) => [setKey(d), defaultChoice(d)])));
     undo.reload();
   };
+  const sets = found ?? [];
+  const acted = sets.filter((d) => keep[setKey(d)] !== KEEP_ALL);
+  const remove = acted.flatMap((d) => d.items.map((i) => i.localId).filter((id) => id !== keep[setKey(d)]));
+  const setAll = (choose: (d: DuplicateGroup) => string) => setKeep(Object.fromEntries(sets.map((d) => [setKey(d), choose(d)])));
   return (
     <>
       <SectionTitle>
@@ -43,8 +57,33 @@ export function Duplicates() {
         (found.length ? (
           <div class="stack">
             <h3>{plural(found.length, 'set', 'sets')} of duplicates</h3>
+            <div class="dupe-bar">
+              <span class="grow" role="status">
+                {remove.length ? `Removes ${plural(remove.length, 'bookmark', 'bookmarks')} from ${plural(acted.length, 'set', 'sets')}` : 'Nothing to remove'}
+                {sets.length > acted.length && ` · ${plural(sets.length - acted.length, 'set', 'sets')} left as ${sets.length - acted.length === 1 ? 'it is' : 'they are'}`}
+              </span>
+              <div class="row snug">
+                <button type="button" class="ghost" onClick={() => setAll(syncedCopy)}>
+                  Keep the synced copy everywhere
+                </button>
+                <button type="button" class="ghost" onClick={() => setAll(() => KEEP_ALL)}>
+                  Leave all as they are
+                </button>
+                <Action
+                  label="Apply"
+                  kind="primary"
+                  busy="Removing…"
+                  disabled={!remove.length}
+                  confirm={`Remove ${plural(remove.length, 'bookmark', 'bookmarks')}? Synced ones are removed in your other browsers too. You can undo this.`}
+                  run={async () => {
+                    await send({ t: 'applyDedupe', action: { remove } });
+                    await scan();
+                  }}
+                />
+              </div>
+            </div>
             {found.map((d) => (
-              <DuplicateCard key={`${d.key}:${d.items.map((i) => i.localId).join()}`} d={d} rescan={scan} />
+              <DuplicateCard key={setKey(d)} d={d} keep={keep[setKey(d)] ?? KEEP_ALL} onKeep={(id) => setKeep((k) => ({ ...k, [setKey(d)]: id }))} rescan={scan} />
             ))}
           </div>
         ) : (
