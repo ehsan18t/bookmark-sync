@@ -739,12 +739,13 @@ export class SyncApp {
   }
 
   /**
-   * Other devices' claims to bridge `a` and `b`. A claim counts only when it is in both groups with the same time:
+   * Other devices' claims to bridge `a` and `b`. A claim counts only when it is in both groups from the same device name with the same time:
    * someone who can write to just one of them can't make this device release.
    */
   private claimsFor(a: GroupEngine, b: GroupEngine) {
-    const inB = new Set(b.otherLinks().filter((l) => l.group === a.groupId).map((l) => l.at));
-    return a.otherLinks().filter((l) => l.group === b.groupId && inB.has(l.at));
+    // Device ids differ per group, so the device name and time identify the same claim in both.
+    const inB = new Set(b.otherLinks().filter((l) => l.group === a.groupId).map((l) => `${l.device} ${l.at}`));
+    return a.otherLinks().filter((l) => l.group === b.groupId && inB.has(`${l.device} ${l.at}`));
   }
 
   /** The latest claim another device holds for bridging `groupId` with `partner`; using the pair then needs a takeover. */
