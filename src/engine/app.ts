@@ -715,6 +715,8 @@ export class SyncApp {
       if (res.migratedTo) {
         this.engines.delete(g);
         this.engines.set(res.migratedTo, e);
+        this.lastSyncAt.set(res.migratedTo, this.lastSyncAt.get(g)!);
+        this.lastSyncAt.delete(g);
         this.meta.groups = [...this.meta.groups.filter((x) => x !== g), res.migratedTo];
         await this.deps.store.deleteKey(g);
         await this.saveMeta();
