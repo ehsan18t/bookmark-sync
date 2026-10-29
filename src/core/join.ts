@@ -20,19 +20,29 @@ export async function planJoin(group: Tree, roots: { groupRoot: string; live: Li
   const idx = childrenIndex(group);
   const plan: JoinPlan = { drafts: [], mirror: new Map(), idmap: new Map(), added: 0, matched: 0 };
 
+  // A folder matches by title and a bookmark by URL, each with the first group item left that fits.
+  const matchKey = (n: { kind: string; title: string; url: string }) => (n.kind === 'folder' ? `f\u0000${n.title}` : n.kind === 'bookmark' ? `b\u0000${n.url}` : null);
+
   const visit = async (local: LiveNode, parentSid: string, groupKids: TreeNode[]) => {
-    const unmatched = [...groupKids];
+    const unmatched = new Map<string, TreeNode[]>();
+    for (const g of groupKids) {
+      const k = matchKey(g);
+      if (k !== null) unmatched.set(k, [...(unmatched.get(k) ?? []), g]);
+    }
     let lastKey = groupKids.length ? groupKids[groupKids.length - 1]!.pos : null;
     const occurrences = new Map<string, number>();
-    for (const c of local.children ?? []) {
-      if (excluded.has(c.localId)) continue;
-      const sig = `${c.kind}\u0000${c.title}\u0000${c.kind === 'bookmark' ? c.url : ''}`;
-      const occurrence = occurrences.get(sig) ?? 0;
-      occurrences.set(sig, occurrence + 1);
-
-      const i = unmatched.findIndex((g) => (c.kind === 'folder' ? g.kind === 'folder' && g.title === c.title : c.kind === 'bookmark' && g.kind === 'bookmark' && g.url === c.url));
-      if (i >= 0) {
-        const g = unmatched.splice(i, 1)[0]!;
+    const kids = (local.children ?? [])
+      .filter((c) => !excluded.has(c.localId))
+      .map((c) => {
+        const sig = `${c.kind}\u0000${c.title}\u0000${c.kind === 'bookmark' ? c.url : ''}`;
+        const occurrence = occurrences.get(sig) ?? 0;
+        occurrences.set(sig, occurrence + 1);
+        const k = matchKey(c);
+        return { c, occurrence, match: k === null ? undefined : unmatched.get(k)?.shift() };
+      });
+    const sids = await Promise.all(kids.map(({ c, occurrence, match }) => (match ? null : derivedId(groupId, parentSid, c.kind, c.title, c.kind === 'bookmark' ? c.url : '', occurrence))));
+    for (const [i, { c, match: g }] of kids.entries()) {
+      if (g) {
         plan.matched++;
         plan.idmap.set(c.localId, g.id);
         plan.mirror.set(g.id, { ...g, title: c.title, url: c.kind === 'bookmark' ? c.url : '', localId: c.localId });
@@ -40,7 +50,7 @@ export async function planJoin(group: Tree, roots: { groupRoot: string; live: Li
         continue;
       }
 
-      const sid = await derivedId(groupId, parentSid, c.kind, c.title, c.kind === 'bookmark' ? c.url : '', occurrence);
+      const sid = sids[i]!;
       const pos = keyBetween(lastKey, null);
       lastKey = pos;
       const fields = c.kind === 'bookmark' ? { title: c.title, url: c.url } : { title: c.title };

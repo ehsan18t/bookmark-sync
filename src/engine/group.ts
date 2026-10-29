@@ -217,6 +217,7 @@ export interface GroupLocal {
 
 export interface GroupStore {
   load(groupId: string): Promise<GroupLocal | null>;
+  /** Copies `local` before resolving; the engine keeps changing it. */
   save(local: GroupLocal): Promise<void>;
   delete(groupId: string): Promise<void>;
 }
@@ -464,7 +465,7 @@ export class GroupEngine {
 
   /** Every folder of the group below its fixed roots, in tree order. */
   folders(): GroupFolder[] {
-    const t = visibleTree(replay(this.baseState(), this.local.ops), this.local.config.mode === 'everything' ? EVERYTHING_ROOTS : [ROOT_GROUP]);
+    const t = visibleTree(this.replayed(), this.local.config.mode === 'everything' ? EVERYTHING_ROOTS : [ROOT_GROUP]);
     return preorder(t)
       .filter((n) => n.kind === 'folder')
       .map((n) => ({ id: n.id, parent: n.parent, title: n.title, hint: n.parent === ROOT_GROUP ? decodeHint(n.url) : null }));
@@ -661,7 +662,7 @@ export class GroupEngine {
    * stays), parts moved inside one another pause the group, and new tops are placed when following them.
    */
   private async reviewParts(): Promise<boolean> {
-    const state = replay(this.baseState(), this.local.ops);
+    const state = this.replayed();
     const visible = visibleSet(state);
     for (const r of this.roots.filter((x) => !isRootId(x) && !visible.has(x))) {
       const local = this.localRoot(r);
@@ -735,7 +736,7 @@ export class GroupEngine {
     for (const p of parts) this.local.config.mapping[p.part] = p.localId;
     const live = await Promise.all(parts.map(async (p) => ({ groupRoot: p.part, live: await this.ports.bookmarks.getSubTree(p.localId) })));
     const merged = visibleTree(
-      replay(this.baseState(), this.local.ops),
+      this.replayed(),
       parts.map((p) => p.part),
     );
     const plan = await planJoin(merged, live, this.groupId, new Map(this.local.excluded));
@@ -745,7 +746,7 @@ export class GroupEngine {
   }
 
   private topDrafts(tops: NewTop[]): OpDraft[] {
-    const existing = childrenIndex(visibleTree(replay(this.baseState(), this.local.ops), [ROOT_GROUP])).get(ROOT_GROUP) ?? [];
+    const existing = childrenIndex(visibleTree(this.replayed(), [ROOT_GROUP])).get(ROOT_GROUP) ?? [];
     let last = existing.at(-1)?.pos ?? null;
     return tops.map((t): OpDraft => {
       const pos = keyBetween(last, null);
@@ -758,7 +759,7 @@ export class GroupEngine {
   async addParts(parts: { part: string; localId: string }[]): Promise<void> {
     await this.recordLocalChanges();
     await this.pull();
-    const visible = visibleSet(replay(this.baseState(), this.local.ops));
+    const visible = visibleSet(this.replayed());
     if (parts.some((p) => !isRootId(p.part) && !visible.has(p.part))) throw new UserError('That folder is no longer in this sync.');
     const { config } = this.local;
     if (config.declined) config.declined = config.declined.filter((d) => !parts.some((p) => p.part === d));
@@ -787,7 +788,7 @@ export class GroupEngine {
     const isTop = config.mode === 'folder' && this.folders().some((f) => f.id === part && f.parent === ROOT_GROUP);
     if (everywhere) {
       if (!isTop) throw new UserError('Only a top folder of this sync can be removed for every browser.');
-      const t = visibleTree(replay(this.baseState(), this.local.ops), [ROOT_GROUP]);
+      const t = visibleTree(this.replayed(), [ROOT_GROUP]);
       this.recordDrafts([{ type: 'delete', node: part, before: snapshot(t.nodes.get(part)!, childrenIndex(t)) }], true);
     } else if (isTop && config.followTops) {
       config.declined = [...new Set([...(config.declined ?? []), part])];
@@ -848,10 +849,11 @@ export class GroupEngine {
       await this.ports.provider.listDevices(this.groupId);
       if (!(await this.checkClock())) throw new ClockSkewError();
     }
-    if (this.local.applyInProgress) await this.adoptInterruptedApply();
-    if (!(await this.rebuildIdMapIfLost())) return 0;
+    const roots = await this.liveRoots();
+    if (this.local.applyInProgress) this.adoptInterruptedApply(roots);
+    this.rebuildIdMapIfLost(roots);
     const result = reconcile({
-      roots: await this.liveRoots(),
+      roots,
       mirror: this.mirror(),
       idmap: new Map(this.local.idmap),
       excluded: new Map(this.local.excluded),
@@ -873,19 +875,19 @@ export class GroupEngine {
    * Mirror entries whose local ID vanished are matched again by parent, kind, title and URL. If most
    * cannot be matched it was an ordinary delete-and-add, which reconcile records as usual.
    */
-  private async rebuildIdMapIfLost(): Promise<boolean> {
+  private rebuildIdMapIfLost(roots: { live: LiveNode }[]): void {
     const live = new Map<string, LiveNode>();
     const index = (n: LiveNode) => {
       live.set(n.localId, n);
       for (const c of n.children ?? []) index(c);
     };
-    for (const r of await this.liveRoots()) index(r.live);
+    for (const r of roots) index(r.live);
     const real = this.local.mirror.filter((m) => m.localId);
     const lost = real.filter((m) => !live.has(m.localId));
-    if (lost.length < 3 || lost.length < real.length * 0.3) return true;
+    if (lost.length < 3 || lost.length < real.length * 0.3) return;
     const known = new Set([...this.local.idmap.map(([l]) => l), ...this.local.excluded.map(([l]) => l), ...this.roots.map((r) => this.localRoot(r))]);
     const unmapped = [...live.keys()].filter((l) => !known.has(l)).length;
-    if (unmapped < lost.length * 0.5) return true;
+    if (unmapped < lost.length * 0.5) return;
 
     const mirror = new Map(this.local.mirror.map((m) => [m.id, { ...m }]));
     const taken = new Set(real.filter((m) => live.has(m.localId)).map((m) => m.localId));
@@ -903,13 +905,12 @@ export class GroupEngine {
       localOf.set(n.id, c.localId);
       rematched++;
     }
-    if (rematched < lost.length * 0.5) return true;
+    if (rematched < lost.length * 0.5) return;
     this.local.mirror = [...mirror.values()];
     this.local.idmap = [...mirror.values()].filter((m) => m.localId).map((m) => [m.localId, m.id]);
-    return true;
   }
 
-  private async adoptInterruptedApply(): Promise<void> {
+  private adoptInterruptedApply(roots: { live: LiveNode }[]): void {
     const merged = this.mergedTree();
     const mirror = new Map(this.local.mirror.map((m) => [m.id, m]));
     const idmap = new Map(this.local.idmap);
@@ -920,7 +921,7 @@ export class GroupEngine {
       live.set(n.localId, n);
       for (const c of n.children ?? []) index(c);
     };
-    for (const r of await this.liveRoots()) index(r.live);
+    for (const r of roots) index(r.live);
     for (const n of preorder(merged)) {
       if (mirror.has(n.id)) continue;
       const parent = localOf.get(n.parent);
@@ -1019,17 +1020,15 @@ export class GroupEngine {
           this.local.forked[d] = b;
           break;
         }
-        const confirmed = new Set(this.local.confirmed);
         for (const op of batch.ops) {
           this.observe(op.hlc);
           const key = opKey(op);
           if (known.has(key) || coveredBy(base.coverage, op)) continue;
           known.add(key);
           this.local.ops.push(op);
-          if (batch.confirmed) confirmed.add(key);
+          if (batch.confirmed) this.local.confirmed.push(key);
           added++;
         }
-        this.local.confirmed = [...confirmed];
         cursor.batchNo = b;
         cursor.hash = await hashBytes(bytes);
         if (batch.ops.length) cursor.opSeq = batch.ops[batch.ops.length - 1]!.opSeq;
@@ -1839,7 +1838,7 @@ export class GroupEngine {
       encryption: winner.marker.encryption,
     };
     await this.ports.provider.createOnce(groupHeaderPath(g2), await encode('group', header));
-    const state = replay(this.baseState(), this.local.ops);
+    const state = this.replayed();
     const seed = seedState(state, visibleSet(state));
     const seedPath = snapshotPath(g2, this.deviceId, 'seed');
     const snap: Snapshot = { frontier: this.clock.tick(), state: serializeState(seed) };
@@ -1906,15 +1905,29 @@ export class GroupEngine {
   }
 
   mergedTree(): Tree {
-    return visibleTree(replay(this.baseState(), this.local.ops), this.roots);
+    return visibleTree(this.replayed(), this.roots);
   }
 
   mirror(): Mirror {
     return { roots: this.roots, nodes: new Map(this.local.mirror.map((m) => [m.id, m])) };
   }
 
+  private baseCache: { from: SerializedState; state: GroupState } | null = null;
+  private replayCache: { base: SerializedState; ops: Op[]; count: number; state: GroupState } | null = null;
+
+  /** Read-only: replay and compact copy it. Rebuilt when a snapshot or compaction replaces the base. */
   private baseState(): GroupState {
-    return deserializeState(this.local.base);
+    if (this.baseCache?.from !== this.local.base) this.baseCache = { from: this.local.base, state: deserializeState(this.local.base) };
+    return this.baseCache.state;
+  }
+
+  /** Read-only replay of every op; ops are only appended in place or replaced as a whole array. */
+  private replayed(): GroupState {
+    const c = this.replayCache;
+    if (c && c.base === this.local.base && c.ops === this.local.ops && c.count === this.local.ops.length) return c.state;
+    const state = replay(this.baseState(), this.local.ops);
+    this.replayCache = { base: this.local.base, ops: this.local.ops, count: this.local.ops.length, state };
+    return state;
   }
 
   private crypt(path: string): Crypt {
@@ -1953,7 +1966,7 @@ export class GroupEngine {
   private async persist(): Promise<void> {
     if (this.dryRun) return;
     this.local.hlc = this.clock.snapshot();
-    await this.ports.store.save(structuredClone(this.local));
+    await this.ports.store.save(this.local);
   }
 }
 

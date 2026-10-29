@@ -32,15 +32,17 @@ function tx<T>(db: IDBDatabase, store: string, mode: IDBTransactionMode, run: (s
 }
 
 export class IdbStore implements AppStore {
-  private db: Promise<IDBDatabase> = open();
+  private opened: IDBDatabase | null = null;
+  private db: Promise<IDBDatabase> = open().then((db) => (this.opened = db));
   private readonly memoryKeys = new Map<string, CryptoKey>();
 
   async load(groupId: string): Promise<GroupLocal | null> {
     return ((await tx<GroupLocal>(await this.db, 'groups', 'readonly', (s) => s.get(groupId))) as GroupLocal | undefined) ?? null;
   }
 
+  /** `put` copies `local` when called, so it runs before any await once the database is open. */
   async save(local: GroupLocal): Promise<void> {
-    await tx(await this.db, 'groups', 'readwrite', (s) => void s.put(local, local.config.groupId));
+    await tx(this.opened ?? (await this.db), 'groups', 'readwrite', (s) => void s.put(local, local.config.groupId));
   }
 
   async delete(groupId: string): Promise<void> {
