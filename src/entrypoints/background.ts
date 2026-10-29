@@ -10,7 +10,7 @@ import { IdbStore } from '../browser/idbStore.js';
 import { providerFactory } from '../browser/providers.js';
 import { friendlyError } from '../browser/friendlyError.js';
 import { browserRoots } from '../browser/roots.js';
-import type { Command, Reply } from '../messages.js';
+import { SNAPSHOT_KEY, type Capabilities, type Command, type PublicAccount, type Reply, type Snapshot } from '../messages.js';
 
 function detect(): { engine: Engine; family: BrowserFamily; name: string } {
   const ua = navigator.userAgent;
@@ -63,10 +63,14 @@ export default defineBackground({
       clock: { now: () => Date.now() },
       browser: env.family,
       defaultDeviceName: `${env.name} on ${platformName()}`,
-      notify: (groupId, status) => void onStatus(groupId, status),
+      notify: (groupId, status) => logged(onStatus(groupId, status)),
       describeError: friendlyError,
     });
     const ready = app.init().then(() => ensureAlarm());
+
+    function logged(work: Promise<unknown>) {
+      work.catch((e: unknown) => console.error(e));
+    }
 
     async function ensureAlarm() {
       const minutes = app.settings().pullMinutes;
@@ -74,15 +78,51 @@ export default defineBackground({
       if (!existing || existing.periodInMinutes !== minutes) await browser.alarms.create('pull', { periodInMinutes: minutes });
     }
 
-    async function refreshBadge() {
-      const groups = await app.status();
-      const attention = groups.some((g) => g.status.state === 'paused' && g.status.reason !== 'migration');
-      await browser.action.setBadgeText({ text: attention ? '!' : '' });
-      await browser.action.setBadgeBackgroundColor({ color: '#c2410c' });
+    const caps = (): Capabilities => ({ google: googleAvailable(env.engine) && identityAvailable(), googleBlocked: googleAvailable(env.engine) && !identityAvailable(), browser: env.name });
+
+    /** Saves what the pages show, so they draw it at once instead of waiting behind a sync. */
+    let last: Snapshot | null = null;
+    let lastJson = '';
+    let publishing: Promise<Snapshot | null> = Promise.resolve(null);
+    let pending = false;
+    /** One pass waits at most; requests made before it starts share it. */
+    const publish = (): Promise<Snapshot | null> => {
+      if (pending) return publishing;
+      pending = true;
+      publishing = publishing.then(() => ((pending = false), writeSnapshot()));
+      return publishing;
+    };
+    logged(ready.then(publish));
+    async function writeSnapshot(): Promise<Snapshot | null> {
+      try {
+        const groups = await app.status();
+        const devices: Snapshot['devices'] = {};
+        for (const g of groups) {
+          // The group can be left or migrated between the two queue slots.
+          const list = await app.devices(g.groupId).catch(() => null);
+          if (list) devices[g.groupId] = list;
+        }
+        const body = { groups, accounts: app.accounts() as PublicAccount[], folders: await app.folders(), caps: caps(), devices };
+        const attention = groups.some((g) => g.status.state === 'paused' && g.status.reason !== 'migration');
+        await browser.action.setBadgeText({ text: attention ? '!' : '' });
+        await browser.action.setBadgeBackgroundColor({ color: '#c2410c' });
+        const json = JSON.stringify(body);
+        if (last && json === lastJson) return last;
+        // Continue from the saved stamp: a restarted worker under a clock set back would go below what pages show.
+        const prevAt = last?.at ?? ((await browser.storage.local.get(SNAPSHOT_KEY))[SNAPSHOT_KEY] as Snapshot | undefined)?.at ?? 0;
+        const next: Snapshot = { ...body, at: Math.max(Date.now(), prevAt + 1) };
+        await browser.storage.local.set({ [SNAPSHOT_KEY]: next });
+        last = next;
+        lastJson = json;
+        return next;
+      } catch (e) {
+        console.error('Saving the status snapshot failed', e);
+        return null;
+      }
     }
 
     async function onStatus(groupId: string, status: GroupStatus) {
-      await refreshBadge();
+      await publish();
       if (status.state !== 'paused' || status.reason === 'migration') return;
       const name = (await app.status()).find((g) => g.groupId === groupId)?.name ?? APP_NAME;
       await browser.notifications.create(`bsync:${groupId}`, {
@@ -96,7 +136,7 @@ export default defineBackground({
     let timer: ReturnType<typeof setTimeout> | undefined;
     const scheduleSync = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => void ready.then(() => app.syncAll()).then(refreshBadge), 3000);
+      timer = setTimeout(() => logged(ready.then(() => app.syncAll()).then(publish)), 3000);
     };
 
     browser.bookmarks.onCreated.addListener(scheduleSync);
@@ -106,10 +146,10 @@ export default defineBackground({
     const extra = browser.bookmarks as unknown as Record<string, { addListener(f: () => void): void } | undefined>;
     extra.onChildrenReordered?.addListener(scheduleSync);
     extra.onImportBegan?.addListener(() => app.setImporting(true));
-    extra.onImportEnded?.addListener(() => app.setImporting(false));
+    extra.onImportEnded?.addListener(() => (app.setImporting(false), void publish()));
 
     browser.alarms.onAlarm.addListener((alarm) => {
-      if (alarm.name === 'pull') void ready.then(() => app.syncAll()).then(refreshBadge);
+      if (alarm.name === 'pull') logged(ready.then(() => app.syncAll()).then(publish));
     });
 
     browser.windows.onFocusChanged.addListener(async (windowId) => {
@@ -117,14 +157,14 @@ export default defineBackground({
       const { lastFocusSync = 0 } = (await browser.storage.session.get('lastFocusSync')) as { lastFocusSync?: number };
       if (Date.now() - lastFocusSync < 10_000) return;
       await browser.storage.session.set({ lastFocusSync: Date.now() });
-      void ready.then(() => app.syncAll()).then(refreshBadge);
+      logged(ready.then(() => app.syncAll()).then(publish));
     });
 
     browser.runtime.onInstalled.addListener(({ reason }) => {
       if (reason === 'install') void browser.tabs.create({ url: browser.runtime.getURL('/options.html#setup') });
     });
 
-    browser.runtime.onStartup.addListener(() => void ready.then(() => app.syncAll()));
+    browser.runtime.onStartup.addListener(() => logged(ready.then(() => app.syncAll()).then(publish)));
     browser.notifications.onClicked.addListener((id) => {
       if (id.startsWith('bsync:')) void browser.runtime.openOptionsPage();
     });
@@ -132,10 +172,15 @@ export default defineBackground({
     async function handle(cmd: Command): Promise<unknown> {
       await ready;
       switch (cmd.t) {
+        case 'snapshot': {
+          const snapshot = await publish();
+          if (!snapshot) throw new Error('The extension couldn’t read its status. Try again.');
+          return snapshot;
+        }
         case 'status':
           return app.status();
         case 'capabilities':
-          return { google: googleAvailable(env.engine) && identityAvailable(), googleBlocked: googleAvailable(env.engine) && !identityAvailable(), browser: env.name };
+          return caps();
         case 'accounts':
           return app.accounts();
         case 'addAccount':
@@ -220,7 +265,7 @@ export default defineBackground({
       handle(msg as Command)
         .then((value) => sendResponse({ ok: true, value }))
         .catch((e: unknown) => sendResponse({ ok: false, error: friendlyError(e) }))
-        .finally(() => void refreshBadge());
+        .finally(() => (msg as Command).t !== 'snapshot' && void publish());
       return true;
     });
   },

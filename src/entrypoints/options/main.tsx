@@ -5,7 +5,7 @@ import { errorText } from '../../ui/util.js';
 import '../../ui/styles.css';
 import { Dashboard, isTab } from './Dashboard.js';
 import { Setup } from './Setup.js';
-import { groups, load } from './shared.js';
+import { follow, groups, load, refreshError } from './shared.js';
 
 const hash = signal(location.hash.slice(1));
 const ready = signal(false);
@@ -30,8 +30,18 @@ function App() {
       </div>
     );
   if (!ready.value) return null;
-  if (hash.value === 'setup' || inSetup.value) return <Setup onFinish={finish} />;
-  return <Dashboard tab={isTab(hash.value) ? hash.value : 'overview'} />;
+  return (
+    <>
+      {refreshError.value && (
+        <div class="page">
+          <Banner kind="danger" icon="alert-triangle">
+            {refreshError.value} What you see may be out of date.
+          </Banner>
+        </div>
+      )}
+      {hash.value === 'setup' || inSetup.value ? <Setup onFinish={finish} /> : <Dashboard tab={isTab(hash.value) ? hash.value : 'overview'} />}
+    </>
+  );
 }
 
 render(<App />, document.getElementById('app')!);
@@ -40,11 +50,15 @@ effect(() => {
   if (ready.value && !groups.value.length) inSetup.value = true;
 });
 
-load().then(
-  () => (ready.value = true),
-  (e) => (failure.value = errorText(e)),
-);
+/** The saved snapshot draws the page at once; the fresh load only has to be waited for when nothing is saved. */
+async function start() {
+  if (await follow()) {
+    ready.value = true;
+    void load().catch((e) => (refreshError.value = errorText(e)));
+  } else {
+    await load();
+    ready.value = true;
+  }
+}
 
-setInterval(() => {
-  if (document.visibilityState === 'visible' && hash.value !== 'setup' && !inSetup.value) void load().catch(() => {});
-}, 5000);
+start().catch((e) => (failure.value = errorText(e)));

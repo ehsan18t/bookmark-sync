@@ -1,7 +1,8 @@
-import type { JoinInput, NewAccount, PartChoice, Settings, Target } from './engine/app.js';
+import type { Account, GroupSummary, JoinInput, LocalFolder, NewAccount, PartChoice, Settings, Target } from './engine/app.js';
 
 export type Command =
   | { t: 'status' }
+  | { t: 'snapshot' }
   | { t: 'capabilities' }
   | { t: 'accounts' }
   | { t: 'addAccount'; account: NewAccount }
@@ -36,3 +37,20 @@ export type Command =
   | { t: 'diagnostics' };
 
 export type Reply<T = unknown> = { ok: true; value: T } | { ok: false; error: string };
+
+export type PublicAccount = Pick<Account, 'id' | 'type' | 'name'> & { url?: string; username?: string; email?: string };
+export type Capabilities = { google: boolean; googleBlocked: boolean; browser: string };
+export type Device = { deviceId: string; name: string; browser: string; lastSeen: number; left: boolean; removed: boolean; self: boolean };
+
+/** What the pages show, saved by the background script so they can draw it before it answers. */
+export interface Snapshot {
+  groups: GroupSummary[];
+  accounts: PublicAccount[];
+  folders: LocalFolder[];
+  caps: Capabilities;
+  devices: Record<string, Device[]>;
+  /** Increases with every saved snapshot, so a page never replaces a newer one with an older one. */
+  at: number;
+}
+
+export const SNAPSHOT_KEY = 'snapshot';
