@@ -526,6 +526,23 @@ export class GroupEngine {
     );
   }
 
+  /** Reads other devices' markers, bridge claims among them, without pulling their changes. */
+  async refreshMarkers(): Promise<void> {
+    const { provider } = this.ports;
+    const { groupId, deviceId } = this.local.config;
+    for (const d of await provider.listDevices(groupId)) {
+      if (d === deviceId) continue;
+      const path = deviceInfoPath(groupId, d);
+      const bytes = await provider.get(path);
+      if (!bytes) continue;
+      const info = await decode<DeviceInfo>(bytes, 'device', this.crypt(path));
+      const cursor = (this.local.cursors[d] ??= { batchNo: 0, hash: '', opSeq: 0, markers: {} });
+      cursor.info = info;
+      await this.readMarkers(d, info, cursor);
+    }
+    await this.persist();
+  }
+
   /** Bridge claims this device holds: the groups it links with this one. */
   ownLinks(): BridgesMarker['links'] {
     return (this.local.markers.bridges?.body as BridgesMarker | undefined)?.links ?? {};

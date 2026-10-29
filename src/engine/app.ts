@@ -674,7 +674,7 @@ export class SyncApp {
     const before = JSON.stringify(e.status);
     try {
       await this.markBridges();
-      await this.settleBridges(e);
+      if (e.bridged || Object.keys(e.ownLinks()).length) await this.settleBridges(e);
       const bridged = await this.recordBeforeBridge(e);
       const res = await e.cycle();
       if (res.applied || res.migratedTo) await this.recordBridged(bridged);
@@ -744,8 +744,8 @@ export class SyncApp {
    */
   private claimsFor(a: GroupEngine, b: GroupEngine) {
     // Device ids differ per group, so the device name and time identify the same claim in both.
-    const inB = new Set(b.otherLinks().filter((l) => l.group === a.groupId).map((l) => `${l.device} ${l.at}`));
-    return a.otherLinks().filter((l) => l.group === b.groupId && inB.has(`${l.device} ${l.at}`));
+    const inB = new Set(b.otherLinks().filter((l) => l.group === a.groupId).map((l) => `${l.device}|${l.at}`));
+    return a.otherLinks().filter((l) => l.group === b.groupId && inB.has(`${l.device}|${l.at}`));
   }
 
   /** The latest claim another device holds for bridging `groupId` with `partner`; using the pair then needs a takeover. */
@@ -758,23 +758,30 @@ export class SyncApp {
 
   /** This device claims the pairs it bridges, and releases a pair another device claimed later (docs/design/shared-folders.md, decisions 4 and 5). */
   private async settleBridges(e: GroupEngine, takeover = false): Promise<void> {
+    const partners: GroupEngine[] = [];
+    for (const p of this.engines.values()) if (p !== e && (await this.shareFolders(e, p))) partners.push(p);
+    // Decide on fresh claims, so a release happens before this pass carries anything across.
+    for (const x of [e, ...partners]) await x.refreshMarkers().catch(() => {});
     const links = { ...e.ownLinks() };
     for (const id of Object.keys(links)) {
       const p = this.engines.get(id);
       if (!p || !(await this.shareFolders(e, p))) delete links[id];
     }
-    for (const p of this.engines.values()) {
-      if (p === e || !(await this.shareFolders(e, p))) continue;
+    for (const p of partners) {
       const mine = Math.max(links[p.groupId]?.at ?? 0, p.ownLinks()[e.groupId]?.at ?? 0);
-      const newer = takeover ? undefined : this.claimsFor(e, p).filter((c) => c.at > mine).sort((x, y) => y.at - x.at)[0];
+      const self = this.meta.deviceName;
+      // Equal times go to the later device name, so two claims made at once still settle on one bridge.
+      const newer = takeover ? undefined : this.claimsFor(e, p).filter((c) => c.at > mine || (c.at === mine && c.device > self)).sort((x, y) => y.at - x.at)[0];
       if (newer) {
         await this.release(e, p, newer.device);
         delete links[p.groupId];
-        await p.setLinks(Object.fromEntries(Object.entries(p.ownLinks()).filter(([k]) => k !== e.groupId)));
+        await p.setLinks(Object.fromEntries(Object.entries(p.ownLinks()).filter(([k]) => k !== e.groupId))).catch(() => {});
       } else if (!links[p.groupId] || takeover) {
-        const at = Math.max(this.deps.clock.now(), ...this.claimsFor(e, p).map((c) => c.at + 1));
+        const seen = [...e.otherLinks().filter((l) => l.group === p.groupId), ...p.otherLinks().filter((l) => l.group === e.groupId)];
+        const at = Math.max(this.deps.clock.now(), ...seen.map((c) => c.at + 1));
         links[p.groupId] = { name: p.state.config.name, at };
-        await p.setLinks({ ...p.ownLinks(), [e.groupId]: { name: e.state.config.name, at } });
+        // The partner may live on other storage; its failure is retried on a later pass, not charged to this group.
+        await p.setLinks({ ...p.ownLinks(), [e.groupId]: { name: e.state.config.name, at } }).catch(() => {});
       }
     }
     await e.setLinks(links);
@@ -800,6 +807,7 @@ export class SyncApp {
       }
     }
     if (!drops.length) {
+      if (later.status.state === 'paused' && later.status.reason === 'bridge-moved') return;
       later.addNotice(`${device} now links “${first.state.config.name}” and “${later.state.config.name}”. Both sync all bookmarks here, so “${later.state.config.name}” is paused. Stop syncing one of them here.`);
       await later.pause('bridge-moved', device);
       return;
@@ -825,6 +833,7 @@ export class SyncApp {
   /** Refuses folders of `groupId` that another sync here shares while another browser links the two, unless taking over. */
   private async checkBridge(groupId: string, mapping: Record<string, string>, takeover = false): Promise<void> {
     if (takeover) return;
+    for (const e of this.engines.values()) await e.refreshMarkers().catch(() => {});
     const mine = Object.values(mapping).map((l) => pendingAnchor(l) ?? l).filter((l) => !l.startsWith(PENDING_PREFIX));
     for (const p of this.engines.values()) {
       if (p.groupId === groupId) continue;

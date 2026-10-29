@@ -26,7 +26,7 @@ A folder can belong to more than one sync on a browser. That browser carries cha
 ## Mechanism
 
 - **Claims** are the `bridges` marker of the bridge device in each linked group: `{ links: { [otherGroupId]: { name, at } } }`. Devices read them with the other markers on every pull.
-- **Before each sync pass** of a group, the app works out which local syncs share folders with it, compares its own claims with other devices' claims for each pair, writes a claim where it bridges and has none, and releases pairs another device claimed later.
+- **Before each sync pass** of a group, the app works out which local syncs share folders with it, re-reads the claims in both syncs' storage, compares its own claims with other devices' claims for each pair (equal times go to the later device name), writes a claim where it bridges and has none, and releases pairs another device claimed later.
 - **Up-front check:** creating, joining, adding folders or moving a folder so that two syncs overlap reads both syncs' claims; another device's claim refuses the change unless the request is a takeover.
 - **Recording:** before a bridged sync's cycle, sharing syncs record their pending changes unconfirmed; after the cycle applies, they record again with `confirmed: true`, and sync once more at the end of the pass so the change crosses in one pass.
 
@@ -35,3 +35,5 @@ A folder can belong to more than one sync on a browser. That browser carries cha
 - During a takeover, until the old bridge syncs, both browsers bridge. A bookmark created in the shared folder then can appear twice; the duplicate repair merges copies made within ten minutes.
 - Restoring history, joining, or adding folders on the bridge changes bookmarks outside a sync pass, so the other sync records them unconfirmed and may ask to confirm a big change.
 - Older extension versions refuse shared folders, so they never become bridges and ignore claims.
+- A bridge that disappears without leaving its syncs keeps its claim, so other browsers are refused until one takes over or the browser is removed on the Browsers tab.
+- A claim counts only when both linked syncs hold it, so a browser that can see only one of the two syncs can't make the bridge release.

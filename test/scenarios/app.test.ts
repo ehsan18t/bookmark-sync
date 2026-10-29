@@ -201,6 +201,78 @@ describe('the app layer', () => {
     });
   }
 
+  async function three() {
+    const provider = new MemoryProvider(() => now);
+    const make = async (name: string) => {
+      const x = browser(name, provider);
+      await x.app.init();
+      return { ...x, acc: await x.app.addAccount({ type: 'webdav', name: 'Server', url: 'mem://', username: 'u', password: 'p' }) };
+    };
+    return { a: await make('A'), b: await make('B'), c: await make('C') };
+  }
+  type Dev = Awaited<ReturnType<typeof three>>['a'];
+  const joinTo = async (x: Dev, groupId: string, folderId: string, takeover = false) => {
+    const [top] = (await x.app.groupFolders({ accountId: x.acc, groupId })).folders;
+    await x.app.joinGroup({ accountId: x.acc, groupId, mode: 'merge', ignoreDefaults: false, takeover, target: { kind: 'parts', parts: [{ part: top!.id, folderId }] } });
+  };
+  const copies = async (bm: FakeBookmarks, folder: string, title: string): Promise<number> => {
+    const walk = (n: { title: string; children?: { title: string }[] }): number => (n.title === title ? 1 : 0) + (n.children ?? []).reduce((sum, c) => sum + walk(c), 0);
+    return walk(await bm.getSubTree(folder));
+  };
+
+  it('refuses a second link even before this browser has synced the other sync', async () => {
+    const { a, b, c } = await three();
+    const wa = await a.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Work', url: '' });
+    const wb = await b.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Work', url: '' });
+    const wc = await c.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Work', url: '' });
+    const g1 = await a.app.createGroup({ accountId: a.acc, name: 'G1', mode: 'folder', target: { kind: 'folders', folderIds: [wa] }, ignoreDefaults: false });
+    const g2 = await c.app.createGroup({ accountId: c.acc, name: 'G2', mode: 'folder', target: { kind: 'folders', folderIds: [wc] }, ignoreDefaults: false });
+    await joinTo(b, g1, wb);
+    await b.app.syncAll();
+    await joinTo(a, g2, wa);
+    await a.app.syncAll();
+    await expect(joinTo(b, g2, wb)).rejects.toThrow(/A already links this sync/);
+  });
+
+  it('keeps each bookmark once when a link moves to another browser', async () => {
+    const { a, b, c } = await three();
+    const games = await b.bookmarks.create({ parentId: FAKE_ROOTS.other, kind: 'folder', title: 'Games', url: '' });
+    const outer = await b.app.createGroup({ accountId: b.acc, name: 'Other', mode: 'folder', target: { kind: 'folders', folderIds: [FAKE_ROOTS.other] }, ignoreDefaults: false });
+    const inner = await b.app.createGroup({ accountId: b.acc, name: 'Games', mode: 'folder', target: { kind: 'folders', folderIds: [games] }, ignoreDefaults: false });
+    const boxA = await a.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'folder', title: 'Box', url: '' });
+    const boxC = await c.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'folder', title: 'Box', url: '' });
+    await joinTo(a, inner, boxA);
+    await joinTo(c, outer, boxC);
+    const settle = async (n: number) => {
+      for (let i = 0; i < n; i++) for (const x of [a, b, c]) (now += 700_000), await x.app.syncAll();
+    };
+    await settle(3);
+    const gamesC = (await c.bookmarks.getSubTree(boxC)).children!.find((n) => n.title === 'Games')!.localId;
+    await joinTo(c, inner, gamesC, true);
+    await a.bookmarks.create({ parentId: boxA, kind: 'bookmark', title: 'N', url: 'https://n.example/' });
+    for (const x of [a, c, b]) (now += 700_000), await x.app.syncAll();
+    await settle(4);
+    expect([await copies(a.bookmarks, boxA, 'N'), await copies(b.bookmarks, FAKE_ROOTS.other, 'N'), await copies(c.bookmarks, boxC, 'N')]).toEqual([1, 1, 1]);
+
+    const [top] = (await b.app.groupFolders({ accountId: b.acc, groupId: inner })).folders;
+    await b.app.addParts(inner, [{ part: top!.id, folderId: games }], true);
+    await settle(4);
+    expect([await copies(a.bookmarks, boxA, 'N'), await copies(b.bookmarks, FAKE_ROOTS.other, 'N'), await copies(c.bookmarks, boxC, 'N')]).toEqual([1, 1, 1]);
+  });
+
+  it('pauses once, not on every sync, when two all-bookmark syncs lose their link', async () => {
+    const { b, c } = await three();
+    const g1 = await b.app.createGroup({ accountId: b.acc, name: 'All1', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
+    const g2 = await b.app.createGroup({ accountId: b.acc, name: 'All2', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
+    await b.app.syncAll();
+    await c.app.joinGroup({ accountId: c.acc, groupId: g1, mode: 'merge', ignoreDefaults: false, target: { kind: 'whole' } });
+    await c.app.joinGroup({ accountId: c.acc, groupId: g2, mode: 'merge', ignoreDefaults: false, takeover: true, target: { kind: 'whole' } });
+    for (let i = 0; i < 4; i++) for (const x of [c, b]) (now += 700_000), await x.app.syncAll();
+    const all2 = (await b.app.status()).find((s) => s.groupId === g2)!;
+    expect(all2.status).toMatchObject({ state: 'paused', reason: 'bridge-moved' });
+    expect(all2.notices).toHaveLength(1);
+  });
+
   it('ignores a link claim written to only one of the two syncs', async () => {
     const { a, b } = await nested('outer first');
     const [outer, inner] = (await b.app.status()).map((s) => s.groupId);
