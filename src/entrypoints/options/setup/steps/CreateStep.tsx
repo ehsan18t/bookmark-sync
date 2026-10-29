@@ -2,9 +2,10 @@ import { useState } from 'preact/hooks';
 import type { Target } from '../../../../engine/app.js';
 import { Action } from '../../../../ui/components/Action.js';
 import { Advanced } from '../../../../ui/components/Advanced.js';
-import { Field } from '../../../../ui/components/Field.js';
+import { NewPassphraseFields } from '../../../../ui/components/NewPassphraseFields.js';
 import { RadioCards } from '../../../../ui/components/RadioCards.js';
 import { send } from '../../../../ui/lib/messaging.js';
+import { checkNewPassphrase } from '../../../../ui/lib/passphrase.js';
 import { storageWithAccount } from '../../../../ui/lib/storageLabels.js';
 import { load, type PublicAccount } from '../../../../ui/state/store.js';
 import { FolderTree } from '../../folder-picker/FolderTree.js';
@@ -29,8 +30,7 @@ export function CreateStep({ account, name, go }: CreateStepProps) {
   const localTree = useLocalItems();
   const start = async () => {
     if (encrypt) {
-      if (pass.length < 8) throw new Error('Use a passphrase of at least 8 characters.');
-      if (pass !== again) throw new Error('The passphrases don’t match.');
+      checkNewPassphrase(pass, again);
     }
     if (mode === 'folder' && !picked.length) throw new Error('Tick at least one folder to sync.');
     const target: Target = mode === 'folder' ? { kind: 'folders', folderIds: picked } : { kind: 'whole' };
@@ -77,16 +77,7 @@ export function CreateStep({ account, name, go }: CreateStepProps) {
             <div class="hint">The storage only sees scrambled data. Every browser needs the passphrase, and it can’t be recovered if you lose it.</div>
           </span>
         </label>
-        {encrypt && (
-          <div class="fields-2">
-            <Field label="Passphrase" hint="At least 8 characters.">
-              <input type="password" autocomplete="new-password" value={pass} onInput={(e) => setPass(e.currentTarget.value)} />
-            </Field>
-            <Field label="Repeat passphrase">
-              <input type="password" autocomplete="new-password" value={again} onInput={(e) => setAgain(e.currentTarget.value)} />
-            </Field>
-          </div>
-        )}
+        {encrypt && <NewPassphraseFields pass={pass} again={again} onPass={setPass} onAgain={setAgain} hint="At least 8 characters." />}
       </Advanced>
       <div class="footer">
         <BackButton go={go} to={{ id: 'choose', account }} />
