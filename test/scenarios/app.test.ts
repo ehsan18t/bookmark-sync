@@ -495,6 +495,8 @@ describe('the app layer', () => {
     expect(groups[0]!.items.map((i) => i.group).sort()).toEqual(['Work', 'Work', null].sort());
     const again = groups[0]!.items.find((i) => i.title === 'Doc again')!;
     await a.app.applyDedupe({ remove: [again.localId, loose] });
+    expect(await titles(a.bookmarks)).toEqual([]);
+    await a.app.syncAll();
     await b.app.syncAll();
     expect(await titles(b.bookmarks, workB)).toEqual(['Doc']);
     expect(await titles(a.bookmarks)).toEqual([]);

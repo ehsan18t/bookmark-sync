@@ -11,10 +11,10 @@ interface DuplicateCardProps {
   d: DuplicateGroup;
   keep: string;
   onKeep: (localId: string) => void;
-  rescan: () => Promise<void>;
+  onMoved: () => void;
 }
 
-export function DuplicateCard({ d, keep, onKeep, rescan }: DuplicateCardProps) {
+export function DuplicateCard({ d, keep, onKeep, onMoved }: DuplicateCardProps) {
   const [folder, setFolder] = useState(folders.value[0]?.id ?? '');
   const name = `dup-${d.key}-${d.items[0]!.localId}`;
   return (
@@ -54,7 +54,7 @@ export function DuplicateCard({ d, keep, onKeep, rescan }: DuplicateCardProps) {
           label="Move"
           run={async () => {
             await send({ t: 'applyDedupe', action: { move: d.items.map((i) => i.localId), folderId: folder } });
-            await rescan();
+            onMoved();
           }}
         />
       </div>

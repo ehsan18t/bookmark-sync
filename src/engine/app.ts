@@ -611,9 +611,12 @@ export class SyncApp {
     });
   }
 
-  /** Remove `remove`, or move `move` into `folderId`. Synced items go through the change log; others get a local undo entry. */
+  /**
+   * Remove `remove`, or move `move` into `folderId`. Synced items go through the change log; others get a local undo entry.
+   * Resolves once the bookmarks changed here; the upload follows in the queue.
+   */
   applyDedupe(action: { remove: string[] } | { move: string[]; folderId: string }): Promise<void> {
-    return this.run(async () => {
+    const done = this.run(async () => {
       for (const e of this.engines.values()) await e.recordLocalChanges();
       const entry: UndoEntry = { id: randomId(this.deps.random, 8), at: this.deps.clock.now(), label: '', removed: [], moved: [] };
       const synced = (id: string) => [...this.engines.values()].some((e) => e.state.idmap.some(([l]) => l === id));
@@ -639,11 +642,14 @@ export class SyncApp {
         this.meta.localUndo = [entry, ...this.meta.localUndo].slice(0, 20);
         await this.saveMeta();
       }
-      for (const e of this.engines.values()) {
-        await e.recordLocalChanges({ confirmed: true });
-        await this.syncOne(e);
-      }
+      for (const e of this.engines.values()) await e.recordLocalChanges({ confirmed: true });
     });
+    void done.then(() =>
+      this.run(async () => {
+        for (const e of [...this.engines.values()]) await this.syncOne(e);
+      }),
+    );
+    return done;
   }
 
   localUndo(): { id: string; at: number; label: string }[] {
