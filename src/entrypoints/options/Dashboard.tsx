@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { browser } from 'wxt/browser';
 import { originPattern } from '../../browser/providers.js';
 import { APP_NAME, HOMEPAGE_URL, PRIVACY_URL, SUPPORT_EMAIL } from '../../config.js';
@@ -195,8 +195,8 @@ function SyncCard({ g }: { g: GroupSummary }) {
             />
           </div>
           {panel === 'folders' && <FoldersPanel g={g} />}
-          {panel === 'encryption' && <EncryptionPanel g={g} />}
-          {panel === 'rename' && <RenamePanel g={g} />}
+          {panel === 'encryption' && <EncryptionPanel g={g} onDone={() => setPanel(null)} />}
+          {panel === 'rename' && <RenamePanel g={g} onDone={() => setPanel(null)} />}
         </div>
       </details>
     </div>
@@ -283,6 +283,7 @@ function AddLocal({ g, onClose }: { g: GroupSummary; onClose: () => void }) {
             if (!picked.length) throw new Error('Tick at least one folder.');
             await send({ t: 'addTops', groupId: g.groupId, folderIds: picked });
             await load();
+            onClose();
           }}
         />
         <Cancel onClose={onClose} />
@@ -306,6 +307,7 @@ function MovePart({ g, part, path, onClose }: { g: GroupSummary; part: string; p
             if (!picked[0]) throw new Error('Pick a folder.');
             await send({ t: 'movePart', groupId: g.groupId, part, folderId: picked[0] });
             await load();
+            onClose();
           }}
         />
         <Cancel onClose={onClose} />
@@ -334,6 +336,7 @@ function AddFromSync({ g, onClose }: { g: GroupSummary; onClose: () => void }) {
             if (!picked.length) throw new Error('Tick at least one folder.');
             await send({ t: 'addParts', groupId: g.groupId, parts: placementChoices(mode, groupFolders, picked, chosen) });
             await load();
+            onClose();
           }}
         />
         <Cancel onClose={onClose} />
@@ -442,7 +445,7 @@ function PauseBanner({ g, onAddFolders }: { g: GroupSummary; onAddFolders: () =>
   );
 }
 
-function EncryptionPanel({ g }: { g: GroupSummary }) {
+function EncryptionPanel({ g, onDone }: { g: GroupSummary; onDone: () => void }) {
   const [pass, setPass] = useState('');
   const [again, setAgain] = useState('');
   const run = async () => {
@@ -452,6 +455,7 @@ function EncryptionPanel({ g }: { g: GroupSummary }) {
     }
     await send({ t: 'setEncryption', groupId: g.groupId, passphrase: g.encrypted ? null : pass });
     await load();
+    onDone();
   };
   return (
     <div class="card stack">
@@ -475,15 +479,17 @@ function EncryptionPanel({ g }: { g: GroupSummary }) {
   );
 }
 
-function RenamePanel({ g }: { g: GroupSummary }) {
+function RenamePanel({ g, onDone }: { g: GroupSummary; onDone: () => void }) {
   const [name, setName] = useState(g.name);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => input.current?.select(), []);
   return (
     <div class="card stack">
       <Field label="New name" hint="Every browser in this sync shows the new name after its next sync.">
-        <input type="text" value={name} onInput={(e) => setName(e.currentTarget.value)} ref={(el) => el?.select()} />
+        <input type="text" value={name} onInput={(e) => setName(e.currentTarget.value)} ref={input} />
       </Field>
       <div class="row">
-        <Action label="Save name" kind="primary" busy="Renaming…" run={async () => (await send({ t: 'rename', groupId: g.groupId, name }), load())} />
+        <Action label="Save name" kind="primary" busy="Renaming…" run={async () => (await send({ t: 'rename', groupId: g.groupId, name }), await load(), onDone())} />
       </div>
     </div>
   );
@@ -678,7 +684,7 @@ function Duplicates() {
           <div class="stack">
             <h3>{plural(found.length, 'set', 'sets')} of duplicates</h3>
             {found.map((d) => (
-              <DuplicateCard key={d.key} d={d} rescan={scan} />
+              <DuplicateCard key={`${d.key}:${d.items.map((i) => i.localId).join()}`} d={d} rescan={scan} />
             ))}
           </div>
         ) : (

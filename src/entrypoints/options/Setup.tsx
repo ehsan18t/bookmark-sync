@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { browser } from 'wxt/browser';
 import { originPattern } from '../../browser/providers.js';
 import { APP_NAME, SERVER_FOLDER } from '../../config.js';
@@ -27,8 +27,10 @@ const STEP_INDEX: Record<Step['id'], number> = { storage: 1, google: 2, server: 
 
 export function Setup({ onFinish }: { onFinish: () => void }) {
   const [step, go] = useState<Step>({ id: 'storage' });
+  const page = useRef<HTMLDivElement>(null);
+  useEffect(() => page.current?.querySelector<HTMLElement>('input:not([type=checkbox]):not([type=radio]), .choice')?.focus(), [step]);
   return (
-    <div class="page stack lg">
+    <div class="page stack lg" ref={page}>
       <div class="row spread">
         <Brand />
         {groups.value.length > 0 && step.id !== 'done' && (
@@ -396,11 +398,12 @@ function CreateStep({ account, name, go }: { account: PublicAccount; name: strin
   );
 }
 
-/** Runs `fn` once its inputs have been still for 400 ms. */
-function useDebounced(fn: () => void, deps: unknown[]) {
+/** Runs `fn` once its inputs have been still for 400 ms; its returned cleanup runs when they change again. */
+function useDebounced(fn: () => void | (() => void), deps: unknown[]) {
   useEffect(() => {
-    const t = setTimeout(fn, 400);
-    return () => clearTimeout(t);
+    let cleanup: void | (() => void);
+    const t = setTimeout(() => (cleanup = fn()), 400);
+    return () => (clearTimeout(t), cleanup?.());
   }, deps);
 }
 

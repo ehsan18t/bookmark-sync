@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals';
+import { effect, signal } from '@preact/signals';
 import { render } from 'preact';
 import { Banner } from '../../ui/components.js';
 import { errorText } from '../../ui/util.js';
@@ -10,6 +10,13 @@ import { groups, load } from './shared.js';
 const hash = signal(location.hash.slice(1));
 const ready = signal(false);
 const failure = signal('');
+/** Setup keeps the page until it finishes, even once its own reload shows a sync. */
+const inSetup = signal(false);
+
+const finish = () => {
+  inSetup.value = false;
+  location.hash = 'overview';
+};
 
 window.addEventListener('hashchange', () => (hash.value = location.hash.slice(1)));
 
@@ -23,11 +30,15 @@ function App() {
       </div>
     );
   if (!ready.value) return null;
-  if (hash.value === 'setup' || !groups.value.length) return <Setup key={hash.value} onFinish={() => (location.hash = 'overview')} />;
+  if (hash.value === 'setup' || inSetup.value) return <Setup onFinish={finish} />;
   return <Dashboard tab={isTab(hash.value) ? hash.value : 'overview'} />;
 }
 
 render(<App />, document.getElementById('app')!);
+
+effect(() => {
+  if (ready.value && !groups.value.length) inSetup.value = true;
+});
 
 load().then(
   () => (ready.value = true),
@@ -35,5 +46,5 @@ load().then(
 );
 
 setInterval(() => {
-  if (document.visibilityState === 'visible' && hash.value !== 'setup') void load().catch(() => {});
+  if (document.visibilityState === 'visible' && hash.value !== 'setup' && !inSetup.value) void load().catch(() => {});
 }, 5000);
