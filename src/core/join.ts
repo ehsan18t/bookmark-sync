@@ -16,12 +16,7 @@ export interface JoinPlan {
  * Linked items keep their local titles in the mirror, so the apply that follows updates them to the
  * group's values. New items get derived IDs, so identical simultaneous joins produce the same IDs.
  */
-export async function planJoin(
-  group: Tree,
-  roots: { groupRoot: string; live: LiveNode }[],
-  groupId: string,
-  excluded: ReadonlyMap<string, Excluded>,
-): Promise<JoinPlan> {
+export async function planJoin(group: Tree, roots: { groupRoot: string; live: LiveNode }[], groupId: string, excluded: ReadonlyMap<string, Excluded>): Promise<JoinPlan> {
   const idx = childrenIndex(group);
   const plan: JoinPlan = { drafts: [], mirror: new Map(), idmap: new Map(), added: 0, matched: 0 };
 
@@ -35,9 +30,7 @@ export async function planJoin(
       const occurrence = occurrences.get(sig) ?? 0;
       occurrences.set(sig, occurrence + 1);
 
-      const i = unmatched.findIndex((g) =>
-        c.kind === 'folder' ? g.kind === 'folder' && g.title === c.title : c.kind === 'bookmark' && g.kind === 'bookmark' && g.url === c.url,
-      );
+      const i = unmatched.findIndex((g) => (c.kind === 'folder' ? g.kind === 'folder' && g.title === c.title : c.kind === 'bookmark' && g.kind === 'bookmark' && g.url === c.url));
       if (i >= 0) {
         const g = unmatched.splice(i, 1)[0]!;
         plan.matched++;

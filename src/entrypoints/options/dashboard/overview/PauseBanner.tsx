@@ -8,7 +8,7 @@ import { Banner } from '../../../../ui/components/Banner.js';
 import { plural } from '../../../../ui/lib/format.js';
 import { send, withTakeover } from '../../../../ui/lib/messaging.js';
 import { REASON_TEXT } from '../../../../ui/lib/reasons.js';
-import { accounts, folders, groups, load } from '../../../../ui/state/store.js';
+import { accounts, folders, groups, load, sendAndReload } from '../../../../ui/state/store.js';
 import { FolderTree } from '../../folder-picker/FolderTree.js';
 import { localItems } from '../../folder-picker/treeItems.js';
 
@@ -25,7 +25,7 @@ export function PauseBanner({ g, onAddFolders }: PauseBannerProps) {
   if (g.status.state !== 'paused') return null;
   const reason = g.status.reason;
   const detail = g.status.detail;
-  const resolve = (choice: 'apply' | 'revert' | 'resume') => async () => (await send({ t: 'resolve', groupId: g.groupId, choice }), load());
+  const resolve = (choice: 'apply' | 'revert' | 'resume') => () => sendAndReload({ t: 'resolve', groupId: g.groupId, choice });
   const big = reason === 'large-remote-change' || reason === 'large-local-change';
   let text = REASON_TEXT[reason] ?? 'Syncing is paused.';
   if (big && g.guard) text += ` ${g.guard.count} of ${g.guard.total} bookmarks would be removed, moved, or edited.`;
@@ -47,7 +47,7 @@ export function PauseBanner({ g, onAddFolders }: PauseBannerProps) {
           <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.currentTarget.checked)} />
           Remember in this browser
         </label>
-        <Action label="Unlock" kind="primary" run={async () => (await send({ t: 'unlock', groupId: g.groupId, passphrase: pass, remember }), load())} />
+        <Action label="Unlock" kind="primary" run={() => sendAndReload({ t: 'unlock', groupId: g.groupId, passphrase: pass, remember })} />
       </>
     );
   } else if (reason === 'migration' && g.migration) {
@@ -56,7 +56,7 @@ export function PauseBanner({ g, onAddFolders }: PauseBannerProps) {
       buttons = (
         <>
           <span class="muted">Waiting for {plural(waiting.length, 'other browser', 'other browsers')} to move over.</span>
-          {g.migration.initiator && <Action label="Continue without them" run={async () => (await send({ t: 'continueMigration', groupId: g.groupId, deviceIds: waiting }), load())} />}
+          {g.migration.initiator && <Action label="Continue without them" run={() => sendAndReload({ t: 'continueMigration', groupId: g.groupId, deviceIds: waiting })} />}
         </>
       );
   } else if (reason === 'permission') {

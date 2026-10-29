@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { decode, LockedError } from '../../src/core/codec.js';
 import { FAKE_ROOTS } from '../sim/fakeBookmarks.js';
-import { GROUP_ID, Simulator, type SimDevice } from '../sim/simulator.js';
+import { GROUP_ID, type SimDevice, Simulator } from '../sim/simulator.js';
 
 const titles = (d: SimDevice) => [...d.engine.mirror().nodes.values()].map((n) => n.title).sort();
 

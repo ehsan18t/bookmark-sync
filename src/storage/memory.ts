@@ -1,4 +1,3 @@
-
 import { bytesEqual } from '../core/codec.js';
 import type { CreateOnceResult, StorageProvider } from '../engine/ports.js';
 
@@ -74,7 +73,7 @@ export class MemoryProvider {
   }
 
   private listFiles(dir: string): string[] {
-    const prefix = dir.endsWith('/') ? dir : dir + '/';
+    const prefix = dir.endsWith('/') ? dir : `${dir}/`;
     return [...this.files]
       .filter(([p, f]) => p.startsWith(prefix) && !p.slice(prefix.length).includes('/') && this.visible(f))
       .map(([p]) => p)

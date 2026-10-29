@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { LocalFolder } from '../../../engine/app.js';
 import { FolderTree } from './FolderTree.js';
 import { Placements } from './Placements.js';
-import { toggle } from './treeSelection.js';
 import { localItems, type TreeItem } from './treeItems.js';
+import { toggle } from './treeSelection.js';
 
 afterEach(cleanup);
 

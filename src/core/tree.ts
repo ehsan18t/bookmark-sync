@@ -53,7 +53,10 @@ export function childrenIndex(t: Tree): Map<string, TreeNode[]> {
   for (const r of t.roots) idx.set(r, []);
   for (const n of t.nodes.values()) {
     let list = idx.get(n.parent);
-    if (!list) idx.set(n.parent, (list = []));
+    if (!list) {
+      list = [];
+      idx.set(n.parent, list);
+    }
     list.push(n);
   }
   for (const list of idx.values()) list.sort(compareSiblings);
@@ -117,9 +120,6 @@ export function disturbedIds(d: TreeDiff): Set<string> {
 
 export function canonical(t: Tree, withIds = true): unknown {
   const idx = childrenIndex(t);
-  const render = (parent: string): unknown[] =>
-    (idx.get(parent) ?? []).map((c) =>
-      withIds ? [c.id, c.kind, c.title, c.url, render(c.id)] : [c.kind, c.title, c.url, render(c.id)],
-    );
+  const render = (parent: string): unknown[] => (idx.get(parent) ?? []).map((c) => (withIds ? [c.id, c.kind, c.title, c.url, render(c.id)] : [c.kind, c.title, c.url, render(c.id)]));
   return t.roots.map((r) => [r, render(r)]);
 }

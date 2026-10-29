@@ -49,7 +49,10 @@ export function ServerStep({ go }: ServerStepProps) {
             autocomplete="url"
             spellcheck={false}
             value={url}
-            onInput={(e) => (setUrl(e.currentTarget.value), setInsecureOk(false))}
+            onInput={(e) => {
+              setUrl(e.currentTarget.value);
+              setInsecureOk(false);
+            }}
           />
         </Field>
         <div class="fields-2">

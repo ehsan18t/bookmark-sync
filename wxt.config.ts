@@ -39,15 +39,16 @@ export default defineConfig({
       default_locale: 'en',
       ...(env('WXT_HOMEPAGE_URL') ? { homepage_url: env('WXT_HOMEPAGE_URL') } : {}),
       permissions: ['bookmarks', 'storage', 'unlimitedStorage', 'alarms', 'notifications', 'identity'],
-      host_permissions: [
-        'https://www.googleapis.com/*',
-        'https://oauth2.googleapis.com/*',
-        ...(process.env.BSYNC_E2E ? ['http://127.0.0.1/*'] : []),
-      ],
+      host_permissions: ['https://www.googleapis.com/*', 'https://oauth2.googleapis.com/*', ...(process.env.BSYNC_E2E ? ['http://127.0.0.1/*'] : [])],
       optional_host_permissions: ['https://*/*', 'http://*/*'],
       action: { default_title: env('WXT_APP_NAME') },
       ...(browser === 'firefox'
-        ? { browser_specific_settings: { gecko: { id: env('WXT_GECKO_ID'), strict_min_version: '140.0', data_collection_permissions: { required: ['none'] } }, gecko_android: { strict_min_version: '142.0' } } }
+        ? {
+            browser_specific_settings: {
+              gecko: { id: env('WXT_GECKO_ID'), strict_min_version: '140.0', data_collection_permissions: { required: ['none'] } },
+              gecko_android: { strict_min_version: '142.0' },
+            },
+          }
         : { minimum_chrome_version: '134', key: env('WXT_CHROMIUM_KEY') }),
     };
   },

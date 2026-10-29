@@ -9,13 +9,7 @@ export interface ApplyResult {
   changed: boolean;
 }
 
-export async function applyMerged(
-  port: BookmarksPort,
-  rootLocal: Readonly<Record<string, string>>,
-  mirror: Mirror,
-  merged: Tree,
-  excluded: ReadonlySet<string>,
-): Promise<ApplyResult> {
+export async function applyMerged(port: BookmarksPort, rootLocal: Readonly<Record<string, string>>, mirror: Mirror, merged: Tree, excluded: ReadonlySet<string>): Promise<ApplyResult> {
   const retried = new Map([...mirror.nodes].filter(([, m]) => m.localId !== '' || (m.kind === 'separator' && !port.supportsSeparators)));
   const diff = diffTrees({ roots: mirror.roots, nodes: retried }, merged);
   const localOf = new Map<string, string>(Object.entries(rootLocal));

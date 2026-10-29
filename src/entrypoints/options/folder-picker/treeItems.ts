@@ -36,7 +36,8 @@ const FIXED: { id: string; root: RootType; fallback: string }[] = [
   { id: 'root:menu', root: 'menu', fallback: 'Bookmarks menu' },
 ];
 
-const rootTitle = (folders: LocalFolder[], root: RootType, fallback: string) => folders.find((f) => f.parentId === null && f.root === root)?.title.replace(/ \((account|this device only)\)$/, '') ?? fallback;
+const rootTitle = (folders: LocalFolder[], root: RootType, fallback: string) =>
+  folders.find((f) => f.parentId === null && f.root === root)?.title.replace(/ \((account|this device only)\)$/, '') ?? fallback;
 
 /** A group's folders as tree items: an everything group under its three roots, a folder group by its tops. */
 export function groupItems(mode: 'everything' | 'folder', groupFolders: GroupFolder[], local: LocalFolder[]): TreeItem[] {

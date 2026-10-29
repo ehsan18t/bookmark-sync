@@ -29,7 +29,13 @@ export function Duplicates() {
             <span>
               {u.label} · {relativeTime(u.at, now.value)}
             </span>
-            <Action label="Undo" run={async () => (await send({ t: 'undoLocal', id: u.id }), undo.reload())} />
+            <Action
+              label="Undo"
+              run={async () => {
+                await send({ t: 'undoLocal', id: u.id });
+                undo.reload();
+              }}
+            />
           </div>
         </Banner>
       ))}

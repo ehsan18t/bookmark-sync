@@ -1,59 +1,40 @@
 import {
+  type Batch,
+  type BridgesMarker,
   bytesEqual,
   CorruptFileError,
+  type Crypt,
+  type DeviceInfo,
   decode,
   encode,
   FormatTooNewError,
-  hashBytes,
-  LockedError,
-  type Batch,
-  type Crypt,
-  type DeviceInfo,
-  type BridgesMarker,
   type GroupDeletedMarker,
   type GroupHeader,
+  hashBytes,
+  LockedError,
   type MigratedMarker,
   type MigrationMarker,
   type RemovedMarker,
   type Snapshot,
 } from '../core/codec.js';
-import { newKeyParams, type KeyParams } from '../core/crypto.js';
+import { type KeyParams, newKeyParams } from '../core/crypto.js';
+import { type BrowserFamily, findDefaultBookmarks } from '../core/defaults.js';
 import { UserError } from '../core/errors.js';
-import { findDefaultBookmarks, type BrowserFamily } from '../core/defaults.js';
 import { compactionPoint, DAY, isStale, snapshotComplete, stableFrontier } from '../core/frontier.js';
-import { formatHlc, hlcFloor, hlcWall, HlcClock, HLC_ZERO_STATE, type Hlc, type HlcState } from '../core/hlc.js';
-import { cryptoRandomBytes, decodeHint, encodeHint, EVERYTHING_ROOTS, isRootId, randomId, ROOT_GROUP, type PlaceHint, type RandomBytes } from '../core/ids.js';
+import { formatHlc, HLC_ZERO_STATE, type Hlc, HlcClock, type HlcState, hlcFloor, hlcWall } from '../core/hlc.js';
+import { cryptoRandomBytes, decodeHint, EVERYTHING_ROOTS, encodeHint, isRootId, type PlaceHint, type RandomBytes, ROOT_GROUP, randomId } from '../core/ids.js';
 import { planJoin } from '../core/join.js';
 import { findDuplicatePairs, type RecentCreate } from '../core/nativeSync.js';
-import { compareOps, opKey, type CreateOp, type Op, type OpDraft } from '../core/ops.js';
+import { type CreateOp, compareOps, type Op, type OpDraft, opKey } from '../core/ops.js';
 import { keyBetween } from '../core/position.js';
-import { reconcile, type Excluded, type LiveNode, type Mirror, type MirrorNode } from '../core/reconcile.js';
-import {
-  compact,
-  coveredBy,
-  deserializeState,
-  emptyState,
-  replay,
-  seedState,
-  serializeState,
-  type GroupState,
-  type SerializedState,
-} from '../core/replay.js';
+import { type Excluded, type LiveNode, type Mirror, type MirrorNode, reconcile } from '../core/reconcile.js';
+import { compact, coveredBy, deserializeState, emptyState, type GroupState, replay, type SerializedState, seedState, serializeState } from '../core/replay.js';
 import { planRestoreExact, snapshot } from '../core/restore.js';
-import { childrenIndex, diffTrees, disturbedIds, preorder, visibleTree, type Tree } from '../core/tree.js';
+import { childrenIndex, diffTrees, disturbedIds, preorder, type Tree, visibleTree } from '../core/tree.js';
 import { visibleSet } from '../core/visibility.js';
-import {
-  batchPath,
-  batchesDir,
-  deviceInfoPath,
-  groupHeaderPath,
-  markerPath,
-  snapshotPath,
-  snapshotsDir,
-  type MarkerName,
-} from '../storage/layout.js';
+import { batchesDir, batchPath, deviceInfoPath, groupHeaderPath, type MarkerName, markerPath, snapshotPath, snapshotsDir } from '../storage/layout.js';
 import { applyMerged } from './apply.js';
-import { DuplicateFileError, type BookmarksPort, type Clock, type StorageProvider } from './ports.js';
+import { type BookmarksPort, type Clock, DuplicateFileError, type StorageProvider } from './ports.js';
 
 export type PauseReason =
   | 'clock-skew'
@@ -521,9 +502,7 @@ export class GroupEngine {
     const links = (body as Partial<BridgesMarker> | null)?.links;
     if (!links || typeof links !== 'object') return {};
     const latest = this.ports.provider.serverDate() + DAY;
-    return Object.fromEntries(
-      Object.entries(links).filter(([, l]) => l && typeof l.name === 'string' && typeof l.at === 'number' && Number.isFinite(l.at) && l.at <= latest),
-    );
+    return Object.fromEntries(Object.entries(links).filter(([, l]) => l && typeof l.name === 'string' && typeof l.at === 'number' && Number.isFinite(l.at) && l.at <= latest));
   }
 
   /** Reads other devices' markers, bridge claims among them, without pulling their changes. */
@@ -536,7 +515,8 @@ export class GroupEngine {
       const bytes = await provider.get(path);
       if (!bytes) continue;
       const info = await decode<DeviceInfo>(bytes, 'device', this.crypt(path));
-      const cursor = (this.local.cursors[d] ??= { batchNo: 0, hash: '', opSeq: 0, markers: {} });
+      const cursor = this.local.cursors[d] ?? { batchNo: 0, hash: '', opSeq: 0, markers: {} };
+      this.local.cursors[d] = cursor;
       cursor.info = info;
       await this.readMarkers(d, info, cursor);
     }
@@ -686,7 +666,10 @@ export class GroupEngine {
   private async attachParts(parts: { part: string; localId: string }[]): Promise<void> {
     for (const p of parts) this.local.config.mapping[p.part] = p.localId;
     const live = await Promise.all(parts.map(async (p) => ({ groupRoot: p.part, live: await this.ports.bookmarks.getSubTree(p.localId) })));
-    const merged = visibleTree(replay(this.baseState(), this.local.ops), parts.map((p) => p.part));
+    const merged = visibleTree(
+      replay(this.baseState(), this.local.ops),
+      parts.map((p) => p.part),
+    );
     const plan = await planJoin(merged, live, this.groupId, new Map(this.local.excluded));
     this.recordDrafts(plan.drafts, true);
     this.local.mirror = [...this.local.mirror, ...plan.mirror.values()];
@@ -896,7 +879,8 @@ export class GroupEngine {
       const infoBytes = await provider.get(deviceInfoPath(groupId, d));
       if (!infoBytes) continue;
       const info = await decode<DeviceInfo>(infoBytes, 'device', this.crypt(deviceInfoPath(groupId, d)));
-      const cursor = (this.local.cursors[d] ??= { batchNo: 0, hash: '', opSeq: 0, markers: {} });
+      const cursor = this.local.cursors[d] ?? { batchNo: 0, hash: '', opSeq: 0, markers: {} };
+      this.local.cursors[d] = cursor;
       cursor.info = info;
       await this.readMarkers(d, info, cursor);
       if (this.local.forked[d] !== undefined) continue;
@@ -1049,9 +1033,16 @@ export class GroupEngine {
     if (!this.importing && newRemote.length) {
       const now = this.ports.clock.now();
       const recent = this.local.recentCreates.filter((r) => now - r.at <= this.settings.nativeSyncWindowMs);
-      const pairs = findDuplicatePairs(merged, newRemote.filter((op): op is CreateOp => op.type === 'create'), recent);
+      const pairs = findDuplicatePairs(
+        merged,
+        newRemote.filter((op): op is CreateOp => op.type === 'create'),
+        recent,
+      );
       if (pairs.length) {
-        this.repairDuplicates(merged, pairs.filter((p) => p.ownIsLater).map((p) => [p.own.node, p.remote.node] as const));
+        this.repairDuplicates(
+          merged,
+          pairs.filter((p) => p.ownIsLater).map((p) => [p.own.node, p.remote.node] as const),
+        );
         if (pairs.length >= this.settings.nativeSyncPauseCount) this.pendingNativeSyncPause = true;
         merged = this.mergedTree();
       }
@@ -1062,7 +1053,13 @@ export class GroupEngine {
       const unconfirmed = newRemote.filter((op) => !confirmed.has(opKey(op)));
       if (unconfirmed.length) {
         const drop = new Set(unconfirmed.map(opKey));
-        const without = visibleTree(replay(this.baseState(), this.local.ops.filter((op) => !drop.has(opKey(op)))), this.roots);
+        const without = visibleTree(
+          replay(
+            this.baseState(),
+            this.local.ops.filter((op) => !drop.has(opKey(op))),
+          ),
+          this.roots,
+        );
         const touched = disturbedIds(diffTrees(without, merged));
         const total = Math.max(without.nodes.size, 1);
         if (touched.size >= this.settings.guardMin && touched.size > (this.settings.guardPercent / 100) * total) {
@@ -1082,13 +1079,7 @@ export class GroupEngine {
 
     this.local.applyInProgress = true;
     await this.persist();
-    const result = await applyMerged(
-      this.ports.bookmarks,
-      Object.fromEntries(this.roots.map((r) => [r, this.localRoot(r)])),
-      this.mirror(),
-      merged,
-      new Set(this.local.excluded.map(([l]) => l)),
-    );
+    const result = await applyMerged(this.ports.bookmarks, Object.fromEntries(this.roots.map((r) => [r, this.localRoot(r)])), this.mirror(), merged, new Set(this.local.excluded.map(([l]) => l)));
     this.local.applyInProgress = false;
     this.local.mirror = [...result.mirror.nodes.values()];
     this.local.idmap = [...result.idmap];
@@ -1136,7 +1127,13 @@ export class GroupEngine {
     this.local.confirmed = [...new Set([...this.local.confirmed, ...g.keys])];
     if (choice === 'revert') {
       const keys = new Set(g.keys);
-      const then = visibleTree(replay(this.baseState(), this.local.ops.filter((op) => !keys.has(opKey(op)))), this.roots);
+      const then = visibleTree(
+        replay(
+          this.baseState(),
+          this.local.ops.filter((op) => !keys.has(opKey(op))),
+        ),
+        this.roots,
+      );
       this.recordRestore(then, new Set(g.touched));
     }
     await this.persist();
@@ -1223,7 +1220,13 @@ export class GroupEngine {
     const unconfirmed = this.local.outbox.filter((op) => !confirmed.has(opKey(op)));
     if (unconfirmed.length < this.settings.guardMin) return true;
     const drop = new Set(unconfirmed.map(opKey));
-    const without = visibleTree(replay(this.baseState(), this.local.ops.filter((op) => !drop.has(opKey(op)))), this.roots);
+    const without = visibleTree(
+      replay(
+        this.baseState(),
+        this.local.ops.filter((op) => !drop.has(opKey(op))),
+      ),
+      this.roots,
+    );
     const touched = disturbedIds(diffTrees(without, this.mergedTree()));
     const total = Math.max(without.nodes.size, 1);
     if (touched.size < this.settings.guardMin || touched.size <= (this.settings.guardPercent / 100) * total) return true;
@@ -1416,18 +1419,26 @@ export class GroupEngine {
     if (this.paused) throw new UserError(`That sync can’t be joined right now (${(this.local.status as { reason: string }).reason}). Try again in a few minutes.`);
 
     const roots = await this.liveRoots();
-    const defaults = opts.ignoreDefaults ? findDefaultBookmarks(roots.map((r) => r.live), this.local.config.browser) : [];
+    const defaults = opts.ignoreDefaults
+      ? findDefaultBookmarks(
+          roots.map((r) => r.live),
+          this.local.config.browser,
+        )
+      : [];
     const excluded = new Map([...this.local.excluded, ...(opts.excluded ?? [])]);
     const parentOf = new Map<string, string>();
-    const index = (n: LiveNode) => (n.children ?? []).forEach((c) => (parentOf.set(c.localId, n.localId), index(c)));
-    roots.forEach((r) => index(r.live));
+    const index = (n: LiveNode) => {
+      for (const c of n.children ?? []) {
+        parentOf.set(c.localId, n.localId);
+        index(c);
+      }
+    };
+    for (const r of roots) index(r.live);
     for (const l of defaults) excluded.set(l, { parent: parentOf.get(l)!, sticky: false });
 
     const merged = this.mergedTree();
     const plan =
-      opts.mode === 'merge'
-        ? await planJoin(merged, roots, this.groupId, excluded)
-        : { drafts: [], mirror: new Map<string, MirrorNode>(), idmap: new Map<string, string>(), added: 0, matched: 0 };
+      opts.mode === 'merge' ? await planJoin(merged, roots, this.groupId, excluded) : { drafts: [], mirror: new Map<string, MirrorNode>(), idmap: new Map<string, string>(), added: 0, matched: 0 };
     const removable = opts.mode === 'replace' ? roots.flatMap((r) => (r.live.children ?? []).filter((c) => !excluded.has(c.localId))) : [];
     const preview: JoinPreview = {
       added: plan.added,
@@ -1483,7 +1494,13 @@ export class GroupEngine {
     const j = this.local.join;
     if (!j || j.created) throw new UserError('Only a browser that joined this sync can undo joining it.');
     await this.recordLocalChanges();
-    const then = visibleTree(replay(this.baseState(), this.local.ops.filter((op) => op.hlc <= j.restorePoint)), this.roots);
+    const then = visibleTree(
+      replay(
+        this.baseState(),
+        this.local.ops.filter((op) => op.hlc <= j.restorePoint),
+      ),
+      this.roots,
+    );
     this.recordRestore(then, new Set(j.nodes));
     this.guardBypass = true;
     try {
@@ -1507,7 +1524,10 @@ export class GroupEngine {
           if (k.kind === 'folder') await rebuild(id, k.children ?? []);
         }
       };
-      await rebuild(folder, (r.live.children ?? []).filter((c) => !this.local.excluded.some(([l, e]) => l === c.localId && e.sticky)));
+      await rebuild(
+        folder,
+        (r.live.children ?? []).filter((c) => !this.local.excluded.some(([l, e]) => l === c.localId && e.sticky)),
+      );
     }
   }
 
@@ -1520,7 +1540,13 @@ export class GroupEngine {
   async restoreTo(t: Hlc): Promise<number> {
     if (t < this.local.baseFrontier) throw new UserError('That point is older than the history this sync keeps.');
     await this.recordLocalChanges();
-    const then = visibleTree(replay(this.baseState(), this.local.ops.filter((op) => op.hlc <= t)), this.roots);
+    const then = visibleTree(
+      replay(
+        this.baseState(),
+        this.local.ops.filter((op) => op.hlc <= t),
+      ),
+      this.roots,
+    );
     const n = this.recordRestore(then);
     await this.persist();
     this.guardBypass = true;
@@ -1533,7 +1559,13 @@ export class GroupEngine {
   }
 
   previewRestore(t: Hlc): { restored: number; removed: number; changed: number } {
-    const then = visibleTree(replay(this.baseState(), this.local.ops.filter((op) => op.hlc <= t)), this.roots);
+    const then = visibleTree(
+      replay(
+        this.baseState(),
+        this.local.ops.filter((op) => op.hlc <= t),
+      ),
+      this.roots,
+    );
     const d = diffTrees(this.mergedTree(), then);
     return { restored: d.creates.length, removed: d.deletes.length, changed: new Set([...d.moves, ...d.updates].map((n) => n.id)).size };
   }
@@ -1545,12 +1577,7 @@ export class GroupEngine {
   private recordRestore(then: Tree, only?: ReadonlySet<string>): number {
     const now = this.mergedTree();
     const base = this.baseState();
-    const drafts = planRestoreExact(
-      now,
-      then,
-      (trial) => visibleTree(replay(base, [...this.local.ops, ...this.stampDrafts(trial, true)]), this.roots),
-      only,
-    );
+    const drafts = planRestoreExact(now, then, (trial) => visibleTree(replay(base, [...this.local.ops, ...this.stampDrafts(trial, true)]), this.roots), only);
     this.recordDrafts(drafts, true);
     return drafts.length;
   }
@@ -1660,8 +1687,10 @@ export class GroupEngine {
   private async migrationStep(): Promise<string | undefined> {
     const winner = this.migrationWinner();
     if (!winner) return undefined;
-    const done = [...Object.entries(this.local.cursors).map(([d, c]) => ({ device: d, m: c.migrated })), { device: this.deviceId, m: this.local.markers.migrated?.body as MigratedMarker | undefined }]
-      .find((x) => x.m?.migrationId === winner.marker.migrationId);
+    const done = [
+      ...Object.entries(this.local.cursors).map(([d, c]) => ({ device: d, m: c.migrated })),
+      { device: this.deviceId, m: this.local.markers.migrated?.body as MigratedMarker | undefined },
+    ].find((x) => x.m?.migrationId === winner.marker.migrationId);
     if (done?.m) return this.moveToNewGroup(done.m, winner.device, winner.marker);
 
     if (!this.local.migration || this.local.migration.id !== winner.marker.migrationId) {
@@ -1797,11 +1826,7 @@ export class GroupEngine {
     const ops = drafts.map((draft) => {
       const opSeq = ++seq;
       const hlc = clock.tick();
-      return (
-        draft.type === 'delete'
-          ? { ...draft, device: self, opSeq, hlc, seen: { ...this.local.appliedSeq, [self]: opSeq - 1 } }
-          : { ...draft, device: self, opSeq, hlc }
-      ) as Op;
+      return (draft.type === 'delete' ? { ...draft, device: self, opSeq, hlc, seen: { ...this.local.appliedSeq, [self]: opSeq - 1 } } : { ...draft, device: self, opSeq, hlc }) as Op;
     });
     if (!dryRun) this.local.opSeq = seq;
     return ops;

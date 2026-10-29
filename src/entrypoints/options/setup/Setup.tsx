@@ -12,6 +12,7 @@ interface SetupProps {
 export function Setup({ onFinish }: SetupProps) {
   const [step, go] = useState<Step>({ id: 'storage' });
   const page = useRef<HTMLDivElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: focuses the first field of each new step
   useEffect(() => page.current?.querySelector<HTMLElement>('input:not([type=checkbox]):not([type=radio]), .choice')?.focus(), [step]);
   return (
     <div class="page stack lg" ref={page}>

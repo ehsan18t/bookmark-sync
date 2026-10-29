@@ -17,7 +17,13 @@ export function AddLocal({ g, onClose }: AddLocalProps) {
   return (
     <div class="stack">
       <p class="muted small">Each ticked folder is added to the sync for every browser.</p>
-      <FolderTree items={localItems(folders.value, groups.value, g.groupId).map((i) => (g.held.includes(i.id) ? { ...i, blocked: 'Synced here' } : i))} multi value={picked} onChange={setPicked} label="Folders to add" />
+      <FolderTree
+        items={localItems(folders.value, groups.value, g.groupId).map((i) => (g.held.includes(i.id) ? { ...i, blocked: 'Synced here' } : i))}
+        multi
+        value={picked}
+        onChange={setPicked}
+        label="Folders to add"
+      />
       <div class="row">
         <Action
           label="Add to the sync"

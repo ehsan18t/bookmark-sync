@@ -1,5 +1,5 @@
-import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { deflateSync } from 'node:zlib';
 
 const crcTable = Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -28,7 +28,11 @@ function icon(size) {
     const cy = Math.min(Math.max(y, r), size - r);
     return (x - cx) ** 2 + (y - cy) ** 2 <= r * r;
   };
-  const left = size * 0.3, right = size * 0.7, top = size * 0.2, bottom = size * 0.8, notch = size * 0.62;
+  const left = size * 0.3,
+    right = size * 0.7,
+    top = size * 0.2,
+    bottom = size * 0.8,
+    notch = size * 0.62;
   const inRibbon = (x, y) => {
     if (x < left || x > right || y < top || y > bottom) return false;
     const mid = (left + right) / 2;
@@ -38,7 +42,8 @@ function icon(size) {
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const i = (y * size + x) * 4;
-      const fx = x + 0.5, fy = y + 0.5;
+      const fx = x + 0.5,
+        fy = y + 0.5;
       if (!inRounded(fx, fy)) continue;
       const white = inRibbon(fx, fy);
       px[i] = white ? 255 : 47;

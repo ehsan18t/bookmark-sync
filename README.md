@@ -79,7 +79,7 @@ pnpm check
 pnpm test:e2e
 ```
 
-`pnpm check` runs the type checker and every unit, property and scenario test. The randomized tests pick new random cases on every run; when one fails, fast-check shrinks it to a minimal case first, which can take a few minutes. `pnpm test:e2e` builds a test copy of the extension and drives two headless Chromium profiles with Playwright; run `npx playwright install chromium` once before.
+`pnpm check` runs the type checker, Biome (lint, formatting and import order; `pnpm format` fixes what it can) and every unit, property and scenario test. The randomized tests pick new random cases on every run; when one fails, fast-check shrinks it to a minimal case first, which can take a few minutes. `pnpm test:e2e` builds a test copy of the extension and drives two headless Chromium profiles with Playwright; run `npx playwright install chromium` once before.
 
 ## Layout
 

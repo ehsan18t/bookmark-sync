@@ -1,4 +1,3 @@
-
 import type { SimDevice, Simulator } from './simulator.js';
 
 export interface Action {
@@ -24,15 +23,10 @@ export interface EditResult {
 }
 
 export const DEFAULT_KINDS: EditKind[] = ['addBookmark', 'addBookmark', 'addFolder', 'rename', 'setUrl', 'move', 'move', 'remove'];
-export const WITH_SEPARATORS: EditKind[] = [...['addBookmark', 'addBookmark', 'addFolder', 'rename', 'setUrl', 'move', 'move', 'remove'] as EditKind[], 'addSeparator'];
+export const WITH_SEPARATORS: EditKind[] = [...(['addBookmark', 'addBookmark', 'addFolder', 'rename', 'setUrl', 'move', 'move', 'remove'] as EditKind[]), 'addSeparator'];
 export const FOLDER_HEAVY_KINDS: EditKind[] = ['addFolder', 'addFolder', 'addBookmark', 'move', 'move', 'move', 'remove', 'rename'];
 
-export async function performEdit(
-  sim: Simulator,
-  d: SimDevice,
-  act: Action,
-  kinds: readonly EditKind[] = DEFAULT_KINDS,
-): Promise<EditResult | null> {
+export async function performEdit(sim: Simulator, d: SimDevice, act: Action, kinds: readonly EditKind[] = DEFAULT_KINDS): Promise<EditResult | null> {
   const bm = d.bookmarks;
   const nodes = bm.allNodes();
   const folders = bm.folders();

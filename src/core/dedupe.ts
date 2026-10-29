@@ -22,7 +22,7 @@ export function possibleKey(url: string): string {
   const host = u.host.toLowerCase().replace(/^www\./, '');
   const path = u.pathname.length > 1 && u.pathname.endsWith('/') ? u.pathname.slice(0, -1) : u.pathname;
   const params = [...u.searchParams].filter(([k]) => !TRACKING.some((re) => re.test(k))).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  const query = params.length ? '?' + new URLSearchParams(params).toString() : '';
+  const query = params.length ? `?${new URLSearchParams(params).toString()}` : '';
   return `${host}${path === '/' ? '' : path}${query}`;
 }
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { encode } from '../../src/core/codec.js';
 import { deviceInfoPath } from '../../src/storage/layout.js';
 import { FAKE_ROOTS } from '../sim/fakeBookmarks.js';
-import { GROUP_ID, Simulator, type SimDevice } from '../sim/simulator.js';
+import { GROUP_ID, type SimDevice, Simulator } from '../sim/simulator.js';
 
 const titles = (d: SimDevice) => [...d.engine.mirror().nodes.values()].map((n) => n.title).sort();
 
@@ -188,7 +188,6 @@ describe('local bookmark IDs changing', () => {
     expect(titles(a)).toEqual(['new0', 'new1', 'new2', 'new3', 'new4', 'new5']);
   });
 });
-
 
 describe('clock checks outside the sync cycle', () => {
   it('a restore with the clock days ahead is refused instead of stamping future times', async () => {

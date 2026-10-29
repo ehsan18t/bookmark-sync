@@ -1,5 +1,5 @@
-import { WrongPassphraseError } from '../core/crypto.js';
 import { LockedError } from '../core/codec.js';
+import { WrongPassphraseError } from '../core/crypto.js';
 import { UserError } from '../core/errors.js';
 import { PermissionMissingError } from '../engine/ports.js';
 import { GoogleAuthError } from '../storage/gdrive.js';

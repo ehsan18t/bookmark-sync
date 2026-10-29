@@ -1,4 +1,4 @@
-import { browser, type Browser } from 'wxt/browser';
+import { type Browser, browser } from 'wxt/browser';
 import type { Kind } from '../core/ops.js';
 import type { LiveNode } from '../core/reconcile.js';
 import type { BookmarksPort } from '../engine/ports.js';

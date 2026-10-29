@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WrongPassphraseError } from '../../src/core/crypto.js';
-import { SyncApp, type AppMeta, type AppStore } from '../../src/engine/app.js';
+import { type AppMeta, type AppStore, SyncApp } from '../../src/engine/app.js';
 import type { StorageProvider } from '../../src/engine/ports.js';
 import { MemoryProvider } from '../../src/storage/memory.js';
 import { ProviderAuthError } from '../../src/storage/webdav.js';
@@ -42,10 +42,12 @@ function browser(name: string, provider: MemoryProvider, fail?: { auth: boolean 
       if (!fail) return p;
       return new Proxy(p, {
         get: (t, k: keyof StorageProvider) =>
-          k === 'serverDate' ? t.serverDate : async (...args: unknown[]) => {
-            if (fail.auth) throw new ProviderAuthError('401');
-            return (t[k] as (...a: unknown[]) => unknown)(...args);
-          },
+          k === 'serverDate'
+            ? t.serverDate
+            : async (...args: unknown[]) => {
+                if (fail.auth) throw new ProviderAuthError('401');
+                return (t[k] as (...a: unknown[]) => unknown)(...args);
+              },
       }) as StorageProvider;
     },
     clock,
@@ -244,13 +246,20 @@ describe('the app layer', () => {
     await joinTo(a, inner, boxA);
     await joinTo(c, outer, boxC);
     const settle = async (n: number) => {
-      for (let i = 0; i < n; i++) for (const x of [a, b, c]) (now += 700_000), await x.app.syncAll();
+      for (let i = 0; i < n; i++)
+        for (const x of [a, b, c]) {
+          now += 700_000;
+          await x.app.syncAll();
+        }
     };
     await settle(3);
     const gamesC = (await c.bookmarks.getSubTree(boxC)).children!.find((n) => n.title === 'Games')!.localId;
     await joinTo(c, inner, gamesC, true);
     await a.bookmarks.create({ parentId: boxA, kind: 'bookmark', title: 'N', url: 'https://n.example/' });
-    for (const x of [a, c, b]) (now += 700_000), await x.app.syncAll();
+    for (const x of [a, c, b]) {
+      now += 700_000;
+      await x.app.syncAll();
+    }
     await settle(4);
     expect([await copies(a.bookmarks, boxA, 'N'), await copies(b.bookmarks, FAKE_ROOTS.other, 'N'), await copies(c.bookmarks, boxC, 'N')]).toEqual([1, 1, 1]);
 
@@ -267,7 +276,11 @@ describe('the app layer', () => {
     await b.app.syncAll();
     await c.app.joinGroup({ accountId: c.acc, groupId: g1, mode: 'merge', ignoreDefaults: false, target: { kind: 'whole' } });
     await c.app.joinGroup({ accountId: c.acc, groupId: g2, mode: 'merge', ignoreDefaults: false, takeover: true, target: { kind: 'whole' } });
-    for (let i = 0; i < 4; i++) for (const x of [c, b]) (now += 700_000), await x.app.syncAll();
+    for (let i = 0; i < 4; i++)
+      for (const x of [c, b]) {
+        now += 700_000;
+        await x.app.syncAll();
+      }
     const all2 = (await b.app.status()).find((s) => s.groupId === g2)!;
     expect(all2.status).toMatchObject({ state: 'paused', reason: 'bridge-moved' });
     expect(all2.notices).toHaveLength(1);

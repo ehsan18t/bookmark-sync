@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FAKE_ROOTS, type FakeBookmarks } from '../sim/fakeBookmarks.js';
-import { Simulator, type SimDevice } from '../sim/simulator.js';
+import { type SimDevice, Simulator } from '../sim/simulator.js';
 
 type Spec = { f: string; c: Spec[] } | { b: string; u: string };
 
@@ -25,7 +25,13 @@ const groupA: Spec[] = [
 ];
 const localB: Spec[] = [
   { b: 'News site', u: 'https://news.example/' },
-  { f: 'Work', c: [{ b: 'Doc', u: 'https://doc.example/' }, { b: 'Other', u: 'https://other.example/' }] },
+  {
+    f: 'Work',
+    c: [
+      { b: 'Doc', u: 'https://doc.example/' },
+      { b: 'Other', u: 'https://other.example/' },
+    ],
+  },
   { b: 'Music', u: 'https://music.example/' },
 ];
 
@@ -45,7 +51,15 @@ describe('joining a group', () => {
   it('ignores the browser default bookmarks, which stay local only (checklist 9)', async () => {
     const sim = new Simulator({ devices: 0, seed: 2 });
     const a = await sim.addDevice('deva', (bm) => fill(bm, FAKE_ROOTS.toolbar, groupA), { create: true });
-    const firefoxDefaults: Spec[] = [{ f: 'Mozilla Firefox', c: [{ b: 'Get Help', u: 'https://support.mozilla.org/products/firefox' }, { b: 'About Us', u: 'https://www.mozilla.org/en-US/about/' }] }];
+    const firefoxDefaults: Spec[] = [
+      {
+        f: 'Mozilla Firefox',
+        c: [
+          { b: 'Get Help', u: 'https://support.mozilla.org/products/firefox' },
+          { b: 'About Us', u: 'https://www.mozilla.org/en-US/about/' },
+        ],
+      },
+    ];
     const b = await sim.addDevice('devb', (bm) => fill(bm, FAKE_ROOTS.menu, firefoxDefaults), { join: { mode: 'merge', ignoreDefaults: true } });
     await sim.quiet();
     expect(await render(a, FAKE_ROOTS.menu)).toEqual([]);
@@ -84,11 +98,7 @@ describe('joining a group', () => {
     await b.engine.leave();
     sim.devices.splice(sim.devices.indexOf(b), 1);
     await sim.quiet();
-    expect(await render(b)).toEqual([
-      'News site|https://news.example/',
-      ['Work', ['Doc|https://doc.example/', 'Other|https://other.example/']],
-      'Music|https://music.example/',
-    ]);
+    expect(await render(b)).toEqual(['News site|https://news.example/', ['Work', ['Doc|https://doc.example/', 'Other|https://other.example/']], 'Music|https://music.example/']);
     expect(await render(a)).toEqual(['News|https://news.example/', ['Work', ['Doc|https://doc.example/']]]);
   });
 
@@ -103,11 +113,7 @@ describe('joining a group', () => {
     sim.devices.splice(sim.devices.indexOf(b), 1);
     await sim.quiet();
     expect(await render(a)).toEqual(['News|https://news.example/', ['Work', ['Doc|https://doc.example/']]]);
-    expect(await render(b)).toEqual([
-      'News site|https://news.example/',
-      ['Work', ['Doc|https://doc.example/', 'Other|https://other.example/']],
-      'Music|https://music.example/',
-    ]);
+    expect(await render(b)).toEqual(['News site|https://news.example/', ['Work', ['Doc|https://doc.example/', 'Other|https://other.example/']], 'Music|https://music.example/']);
   });
 });
 

@@ -29,10 +29,12 @@ export function ChooseStep({ account, go }: ChooseStepProps) {
   const [name, setName] = useState('');
   const box = useRef<HTMLDivElement>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refocuses when the pick changes
   useEffect(() => {
     if (found) box.current?.querySelector<HTMLElement>('input[type=text], input[type=radio]:checked, input[type=radio]:not(:disabled)')?.focus();
   }, [found, pick]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` re-runs the lookup on Try again
   useEffect(() => {
     setFound(null);
     setFailed('');
@@ -91,7 +93,9 @@ export function ChooseStep({ account, go }: ChooseStepProps) {
   else if (!open.length) {
     head = (
       <StepHead title="Start syncing">
-        {found.length ? `Every sync on ${where} already syncs in this browser, so this starts a new one.` : `Nothing is synced on ${where} yet, so this browser starts the sync. Your other browsers join it later.`}
+        {found.length
+          ? `Every sync on ${where} already syncs in this browser, so this starts a new one.`
+          : `Nothing is synced on ${where} yet, so this browser starts the sync. Your other browsers join it later.`}
       </StepHead>
     );
     body = nameField;

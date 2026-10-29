@@ -5,9 +5,8 @@ import { Banner } from '../../../../ui/components/Banner.js';
 import { Icon } from '../../../../ui/components/Icon.js';
 import { Pill } from '../../../../ui/components/Pill.js';
 import { plural, relativeTime } from '../../../../ui/lib/format.js';
-import { send } from '../../../../ui/lib/messaging.js';
 import { storageWithAccount } from '../../../../ui/lib/storageLabels.js';
-import { accounts, devices, load, now } from '../../../../ui/state/store.js';
+import { accounts, devices, now, sendAndReload } from '../../../../ui/state/store.js';
 import { FoldersPanel } from '../folders/FoldersPanel.js';
 import { EncryptionPanel } from './EncryptionPanel.js';
 import { PauseBanner } from './PauseBanner.js';
@@ -23,7 +22,10 @@ export function SyncCard({ g }: SyncCardProps) {
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<'folders' | 'encryption' | 'rename' | null>(null);
   const others = devices.value[g.groupId]?.filter((d) => !d.self && !d.left && !d.removed).map((d) => d.name);
-  const showFolders = () => (setOpen(true), setPanel('folders'));
+  const showFolders = () => {
+    setOpen(true);
+    setPanel('folders');
+  };
   return (
     <div class="card stack lg">
       <div class="row spread">
@@ -32,7 +34,7 @@ export function SyncCard({ g }: SyncCardProps) {
           <StatusPill g={g} />
           {g.encrypted && <Pill icon="lock">Encrypted</Pill>}
         </div>
-        <Action label="Sync now" icon="refresh" busy="Syncing…" run={async () => (await send({ t: 'syncGroup', groupId: g.groupId }), load())} />
+        <Action label="Sync now" icon="refresh" busy="Syncing…" run={() => sendAndReload({ t: 'syncGroup', groupId: g.groupId })} />
       </div>
       <dl class="facts">
         <dt>Syncs here</dt>
@@ -49,7 +51,11 @@ export function SyncCard({ g }: SyncCardProps) {
         )}
       </dl>
       <p class="muted small">
-        {[plural(g.bookmarks, 'bookmark', 'bookmarks'), g.lastSyncAt ? `synced ${relativeTime(g.lastSyncAt, now.value)}` : 'not synced yet', `${plural(g.pendingChanges, 'change', 'changes')} waiting to upload`].join(' · ')}
+        {[
+          plural(g.bookmarks, 'bookmark', 'bookmarks'),
+          g.lastSyncAt ? `synced ${relativeTime(g.lastSyncAt, now.value)}` : 'not synced yet',
+          `${plural(g.pendingChanges, 'change', 'changes')} waiting to upload`,
+        ].join(' · ')}
       </p>
       <PauseBanner g={g} onAddFolders={showFolders} />
       {g.notices.length > 0 && (
@@ -58,7 +64,7 @@ export function SyncCard({ g }: SyncCardProps) {
             <span key={i}>{n.text}</span>
           ))}
           <div class="row">
-            <Action label="Got it" run={async () => (await send({ t: 'dismissNotices', groupId: g.groupId }), load())} />
+            <Action label="Got it" run={() => sendAndReload({ t: 'dismissNotices', groupId: g.groupId })} />
           </div>
         </Banner>
       )}
@@ -93,21 +99,21 @@ export function SyncCard({ g }: SyncCardProps) {
                 label="Undo joining"
                 icon="history"
                 confirm="Undo joining this sync? What this browser added is removed from the sync, this browser’s bookmarks go back to how they were before joining, and syncing stops here."
-                run={async () => (await send({ t: 'undoJoin', groupId: g.groupId }), load())}
+                run={() => sendAndReload({ t: 'undoJoin', groupId: g.groupId })}
               />
             )}
             <Action
               label="Stop syncing here"
               icon="logout"
               confirm="Stop syncing in this browser? Your bookmarks stay as they are, and your other browsers keep syncing."
-              run={async () => (await send({ t: 'leave', groupId: g.groupId }), load())}
+              run={() => sendAndReload({ t: 'leave', groupId: g.groupId })}
             />
             <Action
               label="Delete this sync"
               kind="danger"
               icon="trash"
               confirm="Delete this sync for every browser? Each browser keeps its bookmarks, but nothing syncs any more, and the history is deleted from the storage."
-              run={async () => (await send({ t: 'deleteEverywhere', groupId: g.groupId }), load())}
+              run={() => sendAndReload({ t: 'deleteEverywhere', groupId: g.groupId })}
             />
           </div>
           {panel === 'folders' && <FoldersPanel g={g} />}

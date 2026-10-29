@@ -1,11 +1,11 @@
-import { createRequire } from 'node:module';
 import type { Server } from 'node:http';
+import { createRequire } from 'node:module';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { StorageProvider } from '../../src/engine/ports.js';
 import { DriveProvider } from '../../src/storage/gdrive.js';
 import { MemoryProvider } from '../../src/storage/memory.js';
+import { ProviderAuthError, parseMultistatus, WebDavProvider } from '../../src/storage/webdav.js';
 import { FakeDrive } from '../sim/fakeDrive.js';
-import { parseMultistatus, ProviderAuthError, WebDavProvider } from '../../src/storage/webdav.js';
 
 const require = createRequire(import.meta.url);
 const { v2: webdav } = require('webdav-server');
@@ -55,10 +55,7 @@ function contract(name: string, make: () => StorageProvider) {
       expect(text(await p.get('groups/g2/devices/a/device.json'))).toBe('v2');
       expect(await p.listGroups()).toContain('g2');
       expect((await p.listDevices('g2')).sort()).toEqual(['a', 'b']);
-      expect((await p.listFiles('groups/g2/devices/b/batches')).sort()).toEqual([
-        'groups/g2/devices/b/batches/000000000001.json',
-        'groups/g2/devices/b/batches/000000000002.json',
-      ]);
+      expect((await p.listFiles('groups/g2/devices/b/batches')).sort()).toEqual(['groups/g2/devices/b/batches/000000000001.json', 'groups/g2/devices/b/batches/000000000002.json']);
       await p.delete('groups/g2/devices/b/batches/000000000001.json');
       await p.delete('groups/g2/devices/b/batches/000000000009.json');
       expect(await p.listFiles('groups/g2/devices/b/batches')).toEqual(['groups/g2/devices/b/batches/000000000002.json']);
@@ -89,7 +86,17 @@ describe('google drive specifics', () => {
     const drive = new FakeDrive();
     let refreshed = 0;
     let token = 'expired';
-    const p = new DriveProvider({ token: async () => token, refresh: async () => (refreshed++, (token = 'good')) }, drive.fetch);
+    const p = new DriveProvider(
+      {
+        token: async () => token,
+        refresh: async () => {
+          refreshed++;
+          token = 'good';
+          return token;
+        },
+      },
+      drive.fetch,
+    );
     await p.overwrite('groups/g/devices/d/device.json', bytes('x'));
     await p.overwrite('groups/g/devices/d/device.json', bytes('x'));
     expect(refreshed).toBe(1);
@@ -202,7 +209,7 @@ describe('profile copies on Google Drive', () => {
         await new Promise<void>((resolve) => {
           waiting.push(resolve);
           if (waiting.length === 2) {
-            waiting.forEach((r) => r());
+            for (const r of waiting) r();
             waiting = [];
           }
           setTimeout(resolve, 500);

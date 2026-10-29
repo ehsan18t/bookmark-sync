@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatHlc } from './hlc.js';
-import { ROOT_OTHER, ROOT_TOOLBAR, EVERYTHING_ROOTS } from './ids.js';
+import { EVERYTHING_ROOTS, ROOT_OTHER, ROOT_TOOLBAR } from './ids.js';
 import type { Op } from './ops.js';
 import { emptyState, replay } from './replay.js';
 import { canonical, visibleTree } from './tree.js';
@@ -178,15 +178,7 @@ describe('conflict rules (spec rule 12, IMPLEMENTATION 4.3)', () => {
   it('replay does not depend on arrival order', () => {
     const a = new Dev('a');
     const b = new Dev('b');
-    const ops = [
-      a.folder(1, 'F'),
-      a.bookmark(2, 'x', 'F'),
-      a.folder(3, 'G', ROOT_OTHER, 'a1'),
-      b.move(4, 'x', 'G'),
-      a.del(5, 'G'),
-      b.rename(6, 'x', 'renamed'),
-      a.bookmark(7, 'y', 'F', 'a1'),
-    ];
+    const ops = [a.folder(1, 'F'), a.bookmark(2, 'x', 'F'), a.folder(3, 'G', ROOT_OTHER, 'a1'), b.move(4, 'x', 'G'), a.del(5, 'G'), b.rename(6, 'x', 'renamed'), a.bookmark(7, 'y', 'F', 'a1')];
     const expected = canonical(tree(ops));
     for (let seed = 1; seed < 30; seed++) expect(canonical(tree(shuffled(ops, seed)))).toEqual(expected);
   });

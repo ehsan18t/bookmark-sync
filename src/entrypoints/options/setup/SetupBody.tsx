@@ -1,4 +1,3 @@
-import type { Go, Step } from './steps.js';
 import { ChooseStep } from './steps/ChooseStep.js';
 import { CreateStep } from './steps/CreateStep.js';
 import { DoneStep } from './steps/DoneStep.js';
@@ -6,6 +5,7 @@ import { GoogleStep } from './steps/GoogleStep.js';
 import { JoinStep } from './steps/JoinStep.js';
 import { ServerStep } from './steps/ServerStep.js';
 import { StorageStep } from './steps/StorageStep.js';
+import type { Go, Step } from './steps.js';
 
 interface SetupBodyProps {
   step: Step;

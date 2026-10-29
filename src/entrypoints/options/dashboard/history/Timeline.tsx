@@ -16,6 +16,7 @@ interface TimelineProps {
 }
 
 export function Timeline({ g }: TimelineProps) {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetches after each sync
   const r = useLoad(() => send<TimelineEntry[]>({ t: 'timeline', groupId: g.groupId }), [g.groupId, g.lastSyncAt]);
   if (r.error) return <ErrorText>{r.error}</ErrorText>;
   if (!r.data) return <Loading>Loading history…</Loading>;
@@ -26,7 +27,12 @@ export function Timeline({ g }: TimelineProps) {
   };
   const restoreTo = async (hlc: string) => {
     const p = await send<{ restored: number; removed: number; changed: number }>({ t: 'previewRestore', groupId: g.groupId, hlc });
-    if (!window.confirm(`Go back to how bookmarks were at ${hlcTime(hlc)}?\n\n${p.restored} come back, ${p.removed} are removed, and ${p.changed} change. Every browser follows, and you can undo this from the history.`)) return;
+    if (
+      !window.confirm(
+        `Go back to how bookmarks were at ${hlcTime(hlc)}?\n\n${p.restored} come back, ${p.removed} are removed, and ${p.changed} change. Every browser follows, and you can undo this from the history.`,
+      )
+    )
+      return;
     await send({ t: 'restore', groupId: g.groupId, hlc });
     await load();
   };
