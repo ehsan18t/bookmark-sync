@@ -538,7 +538,8 @@ export class SyncApp {
   }
 
   syncGroup(groupId: string): Promise<void> {
-    const waiting = this.waitingAll ?? this.waitingGroup.get(groupId);
+    // A pass over all syncs does nothing during an import, but a sync of one group still pulls.
+    const waiting = (this.importing ? undefined : this.waitingAll) ?? this.waitingGroup.get(groupId);
     if (waiting) return waiting;
     const pass = this.run(async () => {
       this.waitingGroup.delete(groupId);
