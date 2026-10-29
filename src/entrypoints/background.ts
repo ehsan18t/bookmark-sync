@@ -63,10 +63,14 @@ export default defineBackground({
       clock: { now: () => Date.now() },
       browser: env.family,
       defaultDeviceName: `${env.name} on ${platformName()}`,
-      notify: (groupId, status) => void onStatus(groupId, status),
+      notify: (groupId, status) => logged(onStatus(groupId, status)),
       describeError: friendlyError,
     });
     const ready = app.init().then(() => ensureAlarm());
+
+    function logged(work: Promise<unknown>) {
+      work.catch((e: unknown) => console.error(e));
+    }
 
     async function ensureAlarm() {
       const minutes = app.settings().pullMinutes;
@@ -88,7 +92,7 @@ export default defineBackground({
       publishing = publishing.then(() => ((pending = false), writeSnapshot()));
       return publishing;
     };
-    void ready.then(publish);
+    logged(ready.then(publish));
     async function writeSnapshot(): Promise<Snapshot | null> {
       try {
         const groups = await app.status();
@@ -132,7 +136,7 @@ export default defineBackground({
     let timer: ReturnType<typeof setTimeout> | undefined;
     const scheduleSync = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => void ready.then(() => app.syncAll()).then(publish), 3000);
+      timer = setTimeout(() => logged(ready.then(() => app.syncAll()).then(publish)), 3000);
     };
 
     browser.bookmarks.onCreated.addListener(scheduleSync);
@@ -145,7 +149,7 @@ export default defineBackground({
     extra.onImportEnded?.addListener(() => (app.setImporting(false), void publish()));
 
     browser.alarms.onAlarm.addListener((alarm) => {
-      if (alarm.name === 'pull') void ready.then(() => app.syncAll()).then(publish);
+      if (alarm.name === 'pull') logged(ready.then(() => app.syncAll()).then(publish));
     });
 
     browser.windows.onFocusChanged.addListener(async (windowId) => {
@@ -153,14 +157,14 @@ export default defineBackground({
       const { lastFocusSync = 0 } = (await browser.storage.session.get('lastFocusSync')) as { lastFocusSync?: number };
       if (Date.now() - lastFocusSync < 10_000) return;
       await browser.storage.session.set({ lastFocusSync: Date.now() });
-      void ready.then(() => app.syncAll()).then(publish);
+      logged(ready.then(() => app.syncAll()).then(publish));
     });
 
     browser.runtime.onInstalled.addListener(({ reason }) => {
       if (reason === 'install') void browser.tabs.create({ url: browser.runtime.getURL('/options.html#setup') });
     });
 
-    browser.runtime.onStartup.addListener(() => void ready.then(() => app.syncAll()).then(publish));
+    browser.runtime.onStartup.addListener(() => logged(ready.then(() => app.syncAll()).then(publish)));
     browser.notifications.onClicked.addListener((id) => {
       if (id.startsWith('bsync:')) void browser.runtime.openOptionsPage();
     });
