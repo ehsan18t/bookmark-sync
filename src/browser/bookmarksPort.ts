@@ -65,12 +65,16 @@ export class BrowserBookmarks implements BookmarksPort {
     await browser.bookmarks.update(localId, changes);
   }
 
-  async move(localId: string, dest: { parentId: string; index?: number }): Promise<void> {
+  async move(localId: string, dest: { parentId: string; index?: number; from?: number }): Promise<void> {
     let index = dest.index;
     if (this.engine === 'chromium' && index !== undefined) {
       // Chromium counts the index before removing the node, so a forward move within one folder is off by one.
-      const [n] = await browser.bookmarks.get(localId);
-      if (n && n.parentId === dest.parentId && n.index !== undefined && n.index < index) index += 1;
+      if (dest.from !== undefined) {
+        if (dest.from < index) index += 1;
+      } else {
+        const [n] = await browser.bookmarks.get(localId);
+        if (n && n.parentId === dest.parentId && n.index !== undefined && n.index < index) index += 1;
+      }
     }
     await browser.bookmarks.move(localId, index === undefined ? { parentId: dest.parentId } : { parentId: dest.parentId, index });
   }

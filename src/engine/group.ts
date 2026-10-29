@@ -34,7 +34,7 @@ import { planRestoreExact, snapshot } from '../core/restore.js';
 import { childrenIndex, diffTrees, disturbedIds, preorder, type Tree, visibleTree } from '../core/tree.js';
 import { visibleSet } from '../core/visibility.js';
 import { batchesDir, batchPath, deviceInfoPath, groupHeaderPath, type MarkerName, markerPath, snapshotPath, snapshotsDir } from '../storage/layout.js';
-import { applyMerged } from './apply.js';
+import { applyMerged, recreate, removeAll } from './apply.js';
 import { type BookmarksPort, type Clock, DuplicateFileError, type StorageProvider } from './ports.js';
 
 export type PauseReason =
@@ -1533,7 +1533,10 @@ export class GroupEngine {
     const restorePoint = this.clock.tick();
     this.local.join = { created: !!opts.creating, restorePoint, nodes: plan.drafts.map((d) => d.node), local: roots };
     this.local.restorePoints.push({ hlc: restorePoint, label: opts.creating ? 'Before starting this sync' : 'Before joining this sync', at: this.ports.clock.now() });
-    for (const n of removable) await this.ports.bookmarks.removeTree(n.localId);
+    await removeAll(
+      this.ports.bookmarks,
+      removable.map((n) => n.localId),
+    );
     this.recordDrafts(plan.drafts, true);
     this.local.mirror = [...plan.mirror.values()];
     this.local.idmap = [...plan.idmap];
@@ -1596,21 +1599,13 @@ export class GroupEngine {
     for (const r of j.local) {
       if (!(r.groupRoot in this.local.config.mapping)) continue;
       const folder = this.localRoot(r.groupRoot);
+      const sticky = new Set(this.local.excluded.filter(([, e]) => e.sticky).map(([l]) => l));
       const live = await this.ports.bookmarks.getSubTree(folder);
-      for (const c of live.children ?? []) {
-        if (!this.local.excluded.some(([l, e]) => l === c.localId && e.sticky)) await this.ports.bookmarks.removeTree(c.localId);
-      }
-      const rebuild = async (parent: string, kids: LiveNode[]) => {
-        for (const k of kids) {
-          if (this.local.excluded.some(([l, e]) => l === k.localId && e.sticky)) continue;
-          const id = await this.ports.bookmarks.create({ parentId: parent, kind: k.kind, title: k.title, url: k.url });
-          if (k.kind === 'folder') await rebuild(id, k.children ?? []);
-        }
-      };
-      await rebuild(
-        folder,
-        (r.live.children ?? []).filter((c) => !this.local.excluded.some(([l, e]) => l === c.localId && e.sticky)),
+      await removeAll(
+        this.ports.bookmarks,
+        (live.children ?? []).map((c) => c.localId).filter((l) => !sticky.has(l)),
       );
+      await recreate(this.ports.bookmarks, folder, r.live.children ?? [], (k) => !sticky.has(k.localId));
     }
   }
 

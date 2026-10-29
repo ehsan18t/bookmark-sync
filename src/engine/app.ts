@@ -5,9 +5,9 @@ import { BridgeTakenError, UserError } from '../core/errors.js';
 import { DAY } from '../core/frontier.js';
 import { EVERYTHING_ROOTS, type PlaceHint, type RandomBytes, ROOT_GROUP, type RootType, randomId } from '../core/ids.js';
 import { sameNameKey } from '../core/names.js';
-import type { Kind } from '../core/ops.js';
 import type { Excluded, LiveNode } from '../core/reconcile.js';
 import { ProviderAuthError } from '../storage/webdav.js';
+import { recreate, removeEach } from './apply.js';
 import {
   type EnginePorts,
   type GroupConfig,
@@ -627,11 +627,17 @@ export class SyncApp {
       const synced = (id: string) => syncedIds.has(id);
       const at = await this.deps.bookmarks.positions();
       const index = (id: string) => at.get(id) ?? { parentId: '', index: -1 };
+      let refused: PromiseRejectedResult | undefined;
       if ('remove' in action) {
         entry.label = `Removed ${action.remove.length} ${action.remove.length === 1 ? 'duplicate' : 'duplicates'}`;
-        for (const id of action.remove) {
-          if (!synced(id)) entry.removed.push({ ...index(id), node: await this.deps.bookmarks.getSubTree(id) });
-          await this.deps.bookmarks.removeTree(id);
+        const unsynced = new Set(action.remove.filter((id) => !synced(id)));
+        const nodes = await Promise.all(action.remove.map((id) => (unsynced.has(id) ? this.deps.bookmarks.getSubTree(id).catch(() => null) : null)));
+        const results = await removeEach(this.deps.bookmarks, action.remove);
+        // Whatever was removed keeps its undo entry and is recorded below; the first refusal is reported after that.
+        refused = results.find((r) => r.status === 'rejected');
+        for (const [i, id] of action.remove.entries()) {
+          const node = nodes[i];
+          if (node && results[i]!.status === 'fulfilled') entry.removed.push({ ...index(id), node });
         }
       } else {
         entry.label = `Moved ${action.move.length} ${action.move.length === 1 ? 'duplicate' : 'duplicates'}`;
@@ -645,12 +651,14 @@ export class SyncApp {
         await this.saveMeta();
       }
       for (const e of this.engines.values()) await e.recordLocalChanges({ confirmed: true });
+      if (refused) throw refused.reason;
     });
-    void done.then(() =>
+    // Uploads what was recorded even when one removal was refused.
+    const upload = () =>
       this.run(async () => {
         for (const e of [...this.engines.values()]) await this.syncOne(e);
-      }),
-    );
+      });
+    void done.then(upload, upload);
     return done;
   }
 
@@ -662,14 +670,14 @@ export class SyncApp {
     return this.run(async () => {
       const entry = this.meta.localUndo.find((u) => u.id === id);
       if (!entry) return;
-      for (const m of entry.moved) if (await this.deps.bookmarks.exists(m.localId)) await this.deps.bookmarks.move(m.localId, { parentId: m.parentId, index: m.index });
-      const rebuild = async (parentId: string, n: LiveNode, index?: number) => {
-        const created = await this.deps.bookmarks.create({ parentId, index, kind: n.kind as Kind, title: n.title, url: n.url });
-        for (const c of n.children ?? []) await rebuild(created, c);
-      };
-      for (const r of entry.removed) if (await this.deps.bookmarks.exists(r.parentId)) await rebuild(r.parentId, r.node, r.index);
+      // Each item is tried once and the entry goes either way: a retry would make the restored items twice.
+      const failures: unknown[] = [];
+      const attempt = (work: Promise<void>) => work.catch((e: unknown) => void failures.push(e));
+      for (const m of entry.moved) if (await this.deps.bookmarks.exists(m.localId)) await attempt(this.deps.bookmarks.move(m.localId, { parentId: m.parentId, index: m.index }));
+      for (const r of entry.removed) if (await this.deps.bookmarks.exists(r.parentId)) await attempt(recreate(this.deps.bookmarks, r.parentId, [r.node], undefined, r.index));
       this.meta.localUndo = this.meta.localUndo.filter((u) => u.id !== id);
       await this.saveMeta();
+      if (failures.length) throw failures[0];
     });
   }
 
