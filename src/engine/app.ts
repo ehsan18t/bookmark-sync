@@ -13,6 +13,7 @@ import {
   type GroupConfig,
   GroupEngine,
   type GroupFolder,
+  type GroupLocal,
   type GroupStatus,
   type GroupStore,
   type JoinOptions,
@@ -20,10 +21,13 @@ import {
   type NewTop,
   type Notice,
   type PauseReason,
+  type PullCache,
   type RestorePoint,
   type TimelineEntry,
 } from './group.js';
 import { type BookmarksPort, type Clock, PermissionMissingError, type StorageProvider } from './ports.js';
+
+const PULL_CACHE_MS = 5 * 60_000;
 
 export type Account =
   | { id: string; type: 'webdav'; name: string; url: string; username: string; password: string }
@@ -171,6 +175,8 @@ export class SyncApp {
   private readonly emailTried = new Set<string>();
   private queue: Promise<unknown> = Promise.resolve();
   private importing = false;
+  /** What the join page read of groups not joined here, so joining fetches only what is new. */
+  private readonly pulled = new Map<string, { at: number; local: GroupLocal }>();
 
   constructor(private readonly deps: AppDeps) {}
 
@@ -291,7 +297,7 @@ export class SyncApp {
   previewJoin(input: JoinInput): Promise<JoinPreview> {
     return this.run(async () => {
       const { ports, config, opts, key } = await this.prepareJoin(input, true);
-      return GroupEngine.preview(ports, config, opts, key);
+      return GroupEngine.preview(ports, config, opts, key, this.pullCache(input.accountId, input.groupId));
     });
   }
 
@@ -299,7 +305,8 @@ export class SyncApp {
     return this.run(async () => {
       const { ports, config, opts, key, newKey } = await this.prepareJoin(input, false);
       await this.checkBridge(config.groupId, config.mapping, input.takeover);
-      const engine = await GroupEngine.join(ports, config, opts, key);
+      const engine = await GroupEngine.join(ports, config, opts, key, this.pullCache(input.accountId, input.groupId));
+      this.pulled.clear();
       if (key && newKey) await this.deps.store.setKey(config.groupId, key, input.rememberKey ?? false);
       this.engines.set(config.groupId, engine);
       this.meta.groups.push(config.groupId);
@@ -358,7 +365,7 @@ export class SyncApp {
       if (!header) throw new UserError('That sync no longer exists on this storage.');
       const key = header.encryption ? await this.keyFor(input.groupId, header.encryption, input.passphrase) : null;
       const config = this.config(input.groupId, account.id, header.name, header.mode, {}, !!header.encryption);
-      return { mode: header.mode, folders: await GroupEngine.readFolders(this.ports(account), config, key) };
+      return { mode: header.mode, folders: await GroupEngine.readFolders(this.ports(account), config, key, this.pullCache(account.id, input.groupId)) };
     });
   }
 
@@ -1014,6 +1021,17 @@ export class SyncApp {
     if (input.target.kind === 'parts' && input.target.followTops && header.mode === 'folder') config.followTops = true;
     const opts: JoinOptions = { mode: input.mode, ignoreDefaults: input.ignoreDefaults, excluded };
     return { ports: this.ports(account), config, opts, key, newKey };
+  }
+
+  private pullCache(accountId: string, groupId: string): PullCache {
+    const id = `${accountId}/${groupId}`;
+    return {
+      load: () => {
+        const p = this.pulled.get(id);
+        return p && this.deps.clock.now() - p.at < PULL_CACHE_MS ? structuredClone(p.local) : null;
+      },
+      save: (local) => this.pulled.set(id, { at: this.deps.clock.now(), local }),
+    };
   }
 
   private config(groupId: string, accountId: string, name: string, mode: 'everything' | 'folder', mapping: Record<string, string>, encrypted: boolean): GroupConfig {

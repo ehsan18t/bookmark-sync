@@ -12,6 +12,10 @@ export interface StorageProvider {
   /** Devices that have published a device.json in this group. */
   listDevices(group: string): Promise<string[]>;
   get(path: string): Promise<Uint8Array | null>;
+  /** Several files at once, in order; each entry is what `get` would return or throw. */
+  getMany?(paths: string[]): Promise<PromiseSettledResult<Uint8Array | null>[]>;
+  /** Paths in `dir` stored more than once. Only Drive allows that; other storage leaves this out. */
+  copiedPaths?(dir: string): Promise<string[]>;
   createOnce(path: string, data: Uint8Array): Promise<CreateOnceResult>;
   overwrite(path: string, data: Uint8Array): Promise<void>;
   delete(path: string): Promise<void>;

@@ -26,6 +26,7 @@ import { cryptoRandomBytes, decodeHint, EVERYTHING_ROOTS, encodeHint, isRootId, 
 import { planJoin } from '../core/join.js';
 import { findDuplicatePairs, type RecentCreate } from '../core/nativeSync.js';
 import { type CreateOp, compareOps, type Op, type OpDraft, opKey } from '../core/ops.js';
+import { settleLimited } from '../core/pool.js';
 import { keyBetween } from '../core/position.js';
 import { type Excluded, type LiveNode, type Mirror, type MirrorNode, reconcile } from '../core/reconcile.js';
 import { compact, coveredBy, deserializeState, emptyState, type GroupState, replay, type SerializedState, seedState, serializeState } from '../core/replay.js';
@@ -87,7 +88,7 @@ export const DEFAULT_SETTINGS: EngineSettings = {
   nativeSyncWindowMs: 10 * 60_000,
   nativeSyncPauseCount: 3,
   publishIntervalMs: DAY,
-  consistentReadDelayMs: 5_000,
+  consistentReadDelayMs: 2_000,
 };
 
 export interface GroupConfig {
@@ -272,6 +273,18 @@ export interface TimelineEntry {
 }
 
 const EMPTY_FRONTIER = hlcFloor(0);
+const BATCHES_PER_READ = 20;
+const PARALLEL_READS = 6;
+
+function readMany(provider: StorageProvider, paths: string[]): Promise<PromiseSettledResult<Uint8Array | null>[]> {
+  if (!paths.length) return Promise.resolve([]);
+  return provider.getMany ? provider.getMany(paths) : settleLimited(paths, PARALLEL_READS, (p) => provider.get(p));
+}
+
+function settled<T>(r: PromiseSettledResult<T>): T {
+  if (r.status === 'rejected') throw r.reason;
+  return r.value;
+}
 
 function freshLocal(config: GroupConfig): GroupLocal {
   return {
@@ -309,6 +322,12 @@ function freshLocal(config: GroupConfig): GroupLocal {
     applyInProgress: false,
     notices: [],
   };
+}
+
+/** Holds what reading a group not joined here pulled, so the next read of it fetches only what is new. */
+export interface PullCache {
+  load(): GroupLocal | null;
+  save(local: GroupLocal): void;
 }
 
 export class GroupEngine {
@@ -371,29 +390,54 @@ export class GroupEngine {
   static async readMembers(provider: StorageProvider, groupId: string, encrypted: boolean): Promise<{ deleted: boolean; browsers: string[] | null }> {
     const devices = await provider.listDevices(groupId);
     const browsers: string[] = [];
-    for (const d of devices) {
-      if (await provider.get(markerPath(groupId, d, 'group-deleted'))) return { deleted: true, browsers: null };
+    const deleted = await readMany(
+      provider,
+      devices.map((d) => markerPath(groupId, d, 'group-deleted')),
+    );
+    const infos = encrypted
+      ? []
+      : await readMany(
+          provider,
+          devices.map((d) => deviceInfoPath(groupId, d)),
+        );
+    for (const i of devices.keys()) {
+      if (settled(deleted[i]!)) return { deleted: true, browsers: null };
       if (encrypted) continue;
-      const bytes = await provider.get(deviceInfoPath(groupId, d));
+      const bytes = settled(infos[i]!);
       const info = bytes ? await decode<DeviceInfo>(bytes, 'device').catch(() => null) : null;
       if (info && !info.left) browsers.push(info.name);
     }
     return { deleted: false, browsers: encrypted ? null : browsers };
   }
 
-  static async preview(ports: EnginePorts, config: GroupConfig, opts: JoinOptions, key: CryptoKey | null): Promise<JoinPreview> {
-    const scratch: GroupStore = { load: async () => null, save: async () => {}, delete: async () => {} };
-    const engine = new GroupEngine({ ...ports, store: scratch }, freshLocal(config), key);
+  private static seeded(ports: EnginePorts, config: GroupConfig, key: CryptoKey | null, cache?: PullCache): GroupEngine {
+    const seed = cache?.load();
+    return new GroupEngine(ports, seed ? { ...seed, config } : freshLocal(config), key);
+  }
+
+  private static scratch(ports: EnginePorts, config: GroupConfig, key: CryptoKey | null, cache?: PullCache): GroupEngine {
+    const store: GroupStore = { load: async () => null, save: async () => {}, delete: async () => {} };
+    const engine = GroupEngine.seeded({ ...ports, store }, config, key, cache);
     engine.dryRun = true;
-    return engine.performJoin(opts);
+    return engine;
+  }
+
+  /** A dry run changes nothing but what it pulled, which the next read of the group continues from. */
+  private keepPulled(cache?: PullCache): void {
+    if (cache && !this.paused) cache.save(structuredClone(this.local));
+  }
+
+  static async preview(ports: EnginePorts, config: GroupConfig, opts: JoinOptions, key: CryptoKey | null, cache?: PullCache): Promise<JoinPreview> {
+    const engine = GroupEngine.scratch(ports, config, key, cache);
+    const preview = await engine.performJoin(opts);
+    engine.keepPulled(cache);
+    return preview;
   }
 
   /** The group's folders as stored, read without joining. */
-  static async readFolders(ports: EnginePorts, config: GroupConfig, key: CryptoKey | null): Promise<GroupFolder[]> {
+  static async readFolders(ports: EnginePorts, config: GroupConfig, key: CryptoKey | null, cache?: PullCache): Promise<GroupFolder[]> {
     if (config.encrypted && !key) throw new LockedError();
-    const scratch: GroupStore = { load: async () => null, save: async () => {}, delete: async () => {} };
-    const engine = new GroupEngine({ ...ports, store: scratch }, freshLocal(config), key);
-    engine.dryRun = true;
+    const engine = GroupEngine.scratch(ports, config, key, cache);
     engine.observe(hlcFloor(ports.provider.serverDate()));
     await engine.pull();
     if (await engine.loadNewestSnapshot()) await engine.pull();
@@ -401,6 +445,7 @@ export class GroupEngine {
       throw new UserError(
         (engine.local.status as { reason: string }).reason === 'group-deleted' ? 'That sync was deleted from another browser.' : 'That sync can’t be read right now. Try again in a few minutes.',
       );
+    engine.keepPulled(cache);
     return engine.folders();
   }
 
@@ -412,8 +457,8 @@ export class GroupEngine {
       .map((n) => ({ id: n.id, parent: n.parent, title: n.title, hint: n.parent === ROOT_GROUP ? decodeHint(n.url) : null }));
   }
 
-  static async join(ports: EnginePorts, config: GroupConfig, opts: JoinOptions, key: CryptoKey | null): Promise<GroupEngine> {
-    const engine = new GroupEngine(ports, freshLocal(config), key);
+  static async join(ports: EnginePorts, config: GroupConfig, opts: JoinOptions, key: CryptoKey | null, cache?: PullCache): Promise<GroupEngine> {
+    const engine = GroupEngine.seeded(ports, config, key, cache);
     await engine.performJoin(opts);
     return engine;
   }
@@ -886,8 +931,12 @@ export class GroupEngine {
     let added = 0;
     let needSnapshot = false;
 
-    for (const d of devices) {
-      const infoBytes = await provider.get(deviceInfoPath(groupId, d));
+    const infoReads = await readMany(
+      this.ports.provider,
+      devices.map((d) => deviceInfoPath(groupId, d)),
+    );
+    for (const [i, d] of devices.entries()) {
+      const infoBytes = settled(infoReads[i]!);
       if (!infoBytes) continue;
       const info = await decode<DeviceInfo>(infoBytes, 'device', this.crypt(deviceInfoPath(groupId, d)));
       const cursor = this.local.cursors[d] ?? { batchNo: 0, hash: '', opSeq: 0, markers: {} };
@@ -906,11 +955,20 @@ export class GroupEngine {
         continue;
       }
       const gone = info.left || this.removedSet().has(d);
-      for (let b = cursor.batchNo + 1; b <= info.lastBatchNo; b++) {
+      const first = cursor.batchNo + 1;
+      let reads: PromiseSettledResult<Uint8Array | null>[] = [];
+      for (let b = first; b <= info.lastBatchNo; b++) {
         const path = batchPath(groupId, d, b);
+        if ((b - first) % BATCHES_PER_READ === 0) {
+          const upTo = Math.min(info.lastBatchNo, b + BATCHES_PER_READ - 1);
+          reads = await readMany(
+            this.ports.provider,
+            Array.from({ length: upTo - b + 1 }, (_, k) => batchPath(groupId, d, b + k)),
+          );
+        }
         let bytes: Uint8Array | null;
         try {
-          bytes = await provider.get(path);
+          bytes = settled(reads[(b - first) % BATCHES_PER_READ]!);
         } catch (e) {
           if (!(e instanceof DuplicateFileError)) throw e;
           this.local.forked[d] = b;
@@ -967,10 +1025,14 @@ export class GroupEngine {
 
   private async readMarkers(d: string, info: DeviceInfo, cursor: Cursor): Promise<void> {
     const { groupId } = this.local.config;
-    for (const [name, version] of Object.entries(info.markers ?? {})) {
-      if (cursor.markers[name] === version) continue;
+    const changed = Object.entries(info.markers ?? {}).filter(([name, version]) => cursor.markers[name] !== version);
+    const reads = await readMany(
+      this.ports.provider,
+      changed.map(([name]) => markerPath(groupId, d, name as MarkerName)),
+    );
+    for (const [i, [name, version]] of changed.entries()) {
       const path = markerPath(groupId, d, name as MarkerName);
-      const bytes = await this.ports.provider.get(path);
+      const bytes = settled(reads[i]!);
       if (!bytes) continue;
       const body = await decode<unknown>(bytes, 'marker', this.crypt(path));
       if (name === 'removed') cursor.removed = (body as RemovedMarker).devices;
@@ -1005,13 +1067,14 @@ export class GroupEngine {
     const { groupId } = this.local.config;
     const infos = this.infos();
     let best: Snapshot | null = null;
-    for (const d of [...new Set([...infos.keys(), this.deviceId])]) {
-      for (const path of await this.ports.provider.listFiles(snapshotsDir(groupId, d))) {
-        const bytes = await this.ports.provider.get(path);
-        if (!bytes) continue;
-        const snap = await decode<Snapshot>(bytes, 'snapshot', this.crypt(path));
-        if (snapshotComplete(snap, infos) && (!best || snap.frontier > best.frontier)) best = snap;
-      }
+    const devices = [...new Set([...infos.keys(), this.deviceId])];
+    const paths = (await Promise.all(devices.map((d) => this.ports.provider.listFiles(snapshotsDir(groupId, d))))).flat();
+    const reads = await readMany(this.ports.provider, paths);
+    for (const [i, path] of paths.entries()) {
+      const bytes = settled(reads[i]!);
+      if (!bytes) continue;
+      const snap = await decode<Snapshot>(bytes, 'snapshot', this.crypt(path));
+      if (snapshotComplete(snap, infos) && (!best || snap.frontier > best.frontier)) best = snap;
     }
     if (!best || best.frontier <= this.local.baseFrontier) return false;
     this.observe(best.frontier);
@@ -1181,10 +1244,15 @@ export class GroupEngine {
    * the other. Both find the duplicate here and rotate, republishing from the first duplicated batch.
    */
   private async checkOwnDuplicates(): Promise<void> {
+    const { provider } = this.ports;
+    const copied = new Set((await provider.copiedPaths?.(batchesDir(this.groupId, this.deviceId))) ?? []);
+    if (!copied.size) return;
     let earliest: { batchNo: number; firstOpSeq: number } | null = null;
     for (const b of this.local.ownBatches.slice(-20).reverse()) {
       try {
-        await this.ports.provider.get(batchPath(this.groupId, this.deviceId, b.batchNo));
+        const path = batchPath(this.groupId, this.deviceId, b.batchNo);
+        // Only paths with several copies can differ; reading one compares them.
+        if (copied.has(path)) await provider.get(path);
         if (earliest) break;
       } catch (e) {
         if (!(e instanceof DuplicateFileError)) throw e;
@@ -1484,10 +1552,14 @@ export class GroupEngine {
   private async waitForConsistentView(): Promise<boolean> {
     const read = async () => {
       const out: Record<string, number> = {};
-      for (const d of await this.ports.provider.listDevices(this.groupId)) {
-        const path = deviceInfoPath(this.groupId, d);
-        const bytes = await this.ports.provider.get(path);
-        if (bytes) out[d] = (await decode<DeviceInfo>(bytes, 'device', this.crypt(path))).lastBatchNo;
+      const devices = await this.ports.provider.listDevices(this.groupId);
+      const reads = await readMany(
+        this.ports.provider,
+        devices.map((d) => deviceInfoPath(this.groupId, d)),
+      );
+      for (const [i, d] of devices.entries()) {
+        const bytes = settled(reads[i]!);
+        if (bytes) out[d] = (await decode<DeviceInfo>(bytes, 'device', this.crypt(deviceInfoPath(this.groupId, d)))).lastBatchNo;
       }
       return JSON.stringify(out);
     };

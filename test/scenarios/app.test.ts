@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { WrongPassphraseError } from '../../src/core/crypto.js';
 import { type AppMeta, type AppStore, SyncApp } from '../../src/engine/app.js';
 import type { StorageProvider } from '../../src/engine/ports.js';
@@ -98,6 +98,28 @@ describe('the app layer', () => {
     expect(await titles(b.bookmarks)).toEqual(['From Chrome', 'From Firefox']);
     const [status] = await a.app.status();
     expect(status).toMatchObject({ name: 'Main', status: { state: 'active' }, pendingChanges: 0 });
+  });
+
+  it('joins from what the folder list and preview already read, fetching only newer changes', async () => {
+    const { provider, a, b, accA, accB } = await pair();
+    const groupId = await a.app.createGroup({ accountId: accA, name: 'Main', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
+    for (const title of ['One', 'Two', 'Three']) {
+      await a.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title, url: `https://${title}.example/` });
+      await a.app.syncAll();
+    }
+    const batchReads = vi.spyOn(provider as unknown as { get(p: string): Uint8Array | null }, 'get');
+    const reads = () => batchReads.mock.calls.filter(([p]) => p.includes('/batches/')).length;
+    await b.app.groupFolders({ accountId: accB, groupId });
+    const first = reads();
+    expect(first).toBeGreaterThan(0);
+    const input = { accountId: accB, groupId, target: { kind: 'whole' as const }, mode: 'merge' as const, ignoreDefaults: true };
+    await b.app.previewJoin(input);
+    expect(reads()).toBe(first);
+    await a.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'Four', url: 'https://four.example/' });
+    await a.app.syncAll();
+    await b.app.joinGroup(input);
+    expect(reads()).toBe(first + 1);
+    expect(await titles(b.bookmarks)).toEqual(['One', 'Two', 'Three', 'Four']);
   });
 
   it('hides a group deleted from another browser and frees its name', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { clampCheckSeconds } from './checkTimes.js';
 import { HlcClock, parseHlc } from './hlc.js';
 import { ROOT_OTHER, ROOT_TOOLBAR } from './ids.js';
+import { settleLimited } from './pool.js';
 import { assignKeys } from './position.js';
 import { type LiveNode, type Mirror, reconcile } from './reconcile.js';
 
@@ -114,5 +115,22 @@ describe('check intervals', () => {
     expect(clampCheckSeconds(5)).toBe(30);
     expect(clampCheckSeconds(45)).toBe(45);
     expect(clampCheckSeconds(2 * 60 * 60)).toBe(3600);
+  });
+});
+
+describe('limited parallel work', () => {
+  it('keeps input order, runs at most the limit at once, and keeps failures per item', async () => {
+    let running = 0;
+    let most = 0;
+    const res = await settleLimited([1, 2, 3, 4, 5], 2, async (n) => {
+      running++;
+      most = Math.max(most, running);
+      await new Promise((r) => setTimeout(r, 5 - n));
+      running--;
+      if (n === 3) throw new Error('three');
+      return n * 10;
+    });
+    expect(most).toBe(2);
+    expect(res.map((r) => (r.status === 'fulfilled' ? r.value : (r.reason as Error).message))).toEqual([10, 20, 'three', 40, 50]);
   });
 });
