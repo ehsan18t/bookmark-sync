@@ -708,15 +708,22 @@ export class SyncApp {
   }
 
   /** Where a top another browser added goes here, or null when that place overlaps a folder already synced. */
-  private async placeTop(hint: PlaceHint, groupId: string): Promise<string | null> {
+  /**
+   * A new, empty folder at the hinted path, never an existing folder or a browser root: adopting one would upload
+   * its contents without anyone choosing that on this browser.
+   */
+  private async placeTop(hint: PlaceHint, title: string, groupId: string): Promise<string | null> {
+    const parent = { root: hint.root, path: hint.path.slice(0, -1) };
+    const name = hint.path.at(-1) ?? title;
     const own = this.engines.get(groupId)?.state.config.mapping ?? {};
+    const at = await this.deps.roots.resolve(parent, false);
     try {
-      await this.checkOverlap({ ...own, new: await this.deps.roots.resolve(hint, false) }, true, groupId);
+      await this.checkOverlap({ ...own, new: at.startsWith(PENDING_PREFIX) ? at : pendingAt(at, [name]) }, true, groupId);
     } catch (e) {
       if (e instanceof UserError) return null;
       throw e;
     }
-    return this.deps.roots.resolve(hint, true);
+    return this.deps.bookmarks.create({ parentId: await this.deps.roots.resolve(parent, true), kind: 'folder', title: name, url: '' });
   }
 
   private async resolveTarget(mode: 'everything' | 'folder', target: Target, create: boolean): Promise<{ mapping: Record<string, string>; excluded: [string, Excluded][] }> {
@@ -793,7 +800,7 @@ export class SyncApp {
       random: this.deps.random,
       sleep: this.deps.sleep,
       keyFor: (g) => this.deps.store.getKey(g),
-      place: (hint, groupId) => this.placeTop(hint, groupId),
+      place: (hint, title, groupId) => this.placeTop(hint, title, groupId),
       settings: { historyMs: s.historyDays * DAY, guardPercent: s.guardPercent, guardMin: s.guardMin },
     };
   }

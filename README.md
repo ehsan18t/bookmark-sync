@@ -11,7 +11,7 @@ Every milestone in the implementation plan is built: the merge engine, joins, fo
 
 What has been checked:
 
-- 121 unit, property and scenario tests, including randomized runs with up to 5 simulated browsers and browsers that hold only some folders, provider faults and clock skew, a check against a plain tree model, and scenarios for crashes, lost responses, copied profiles, departed devices and renumbered bookmarks.
+- 122 unit, property and scenario tests, including randomized runs with up to 5 simulated browsers and browsers that hold only some folders, provider faults and clock skew, a check against a plain tree model, and scenarios for crashes, lost responses, copied profiles, departed devices and renumbered bookmarks.
 - The WebDAV provider against a real WebDAV server, and the Google Drive provider against a fake of the Drive API.
 - 3 end-to-end tests that load the built extension into two real Chromium profiles syncing through a local WebDAV server. One of them clicks through the setup pages in both profiles: a wrong password, then starting a sync in one and joining it from the other.
 - The Firefox package passes `web-ext lint` with no warnings.

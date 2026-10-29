@@ -245,8 +245,8 @@ export interface EnginePorts {
   settings?: Partial<EngineSettings>;
   sleep?: (ms: number) => Promise<void>;
   keyFor?: (groupId: string) => Promise<CryptoKey | null>;
-  /** The local folder for a top another device added, created at the hinted path when missing; null where it would overlap a synced folder. */
-  place?: (hint: PlaceHint, groupId: string) => Promise<string | null>;
+  /** A new local folder for a top another device added; null where it would overlap a synced folder. */
+  place?: (hint: PlaceHint, title: string, groupId: string) => Promise<string | null>;
 }
 
 export class ForkError extends Error {}
@@ -555,10 +555,10 @@ export class GroupEngine {
         const n = state.nodes.get(id)!;
         if (n.placement?.parent !== ROOT_GROUP || held.has(id) || declined.has(id)) continue;
         const title = n.title?.value ?? '';
-        const localId = await this.ports.place(decodeHint(n.url?.value ?? '') ?? { root: 'other', path: [title] }, this.groupId);
+        const localId = await this.ports.place(decodeHint(n.url?.value ?? '') ?? { root: 'other', path: [title] }, title, this.groupId);
         if (localId) {
           parts.push({ part: id, localId });
-          this.notice(`“${title}” was added to this sync in another browser and now syncs here too.`);
+          this.notice(`“${title}” was added to this sync in another browser. It syncs here in a new folder; to use a folder you already have, move it under Folders synced here.`);
         } else {
           config.declined = [...(config.declined ?? []), id];
           this.notice(`“${title}” was added to this sync in another browser, but its place here is already synced by another folder. Add it from Folders synced here to pick a place for it.`);

@@ -115,7 +115,10 @@ export class Simulator {
       settings: { ...SIM_SETTINGS, ...this.options.settings },
       sleep: async (ms) => this.advance(ms),
       keyFor: async (g) => ks.get(g) ?? null,
-      place: (hint) => fakeRoots(bm).resolve(hint, true),
+      place: async (hint, title) => {
+        const parent = await fakeRoots(bm).resolve({ root: hint.root, path: hint.path.slice(0, -1) }, true);
+        return bm.create({ parentId: parent, kind: 'folder', title: hint.path.at(-1) ?? title, url: '' });
+      },
     };
     return Object.assign(device, { name, bookmarks: bm, store: st, keys: ks, ports, engine: undefined as unknown as GroupEngine });
   }

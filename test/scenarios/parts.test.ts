@@ -145,12 +145,21 @@ describe('folder groups with several tops', () => {
     const { sim, a, b, bmA, bmB, gameDev, gameDevB } = await twoTops(82);
     const recipes = await folderIn(bmA, FAKE_ROOTS.other, 'Recipes');
     await bookmarkIn(bmA, recipes, 'soup');
-    await a.engine.addTops([{ id: 'top3', title: 'Recipes', hint: { root: 'other', path: ['Recipes'] }, localId: recipes }]);
+    const ownRecipes = await folderIn(bmB, FAKE_ROOTS.other, 'Recipes');
+    await bookmarkIn(bmB, ownRecipes, 'secret');
+    const menuA = await folderIn(bmA, FAKE_ROOTS.other, 'Menu of A');
+    await a.engine.addTops([
+      { id: 'top3', title: 'Recipes', hint: { root: 'other', path: ['Recipes'] }, localId: recipes },
+      { id: 'top4', title: 'Menu of A', hint: { root: 'menu', path: [] }, localId: menuA },
+    ]);
     await sim.quiet();
     const recipesB = b.engine.state.config.mapping.top3!;
+    expect(recipesB).not.toBe(ownRecipes);
     expect(bmB.node(recipesB)).toMatchObject({ title: 'Recipes', parent: FAKE_ROOTS.other });
     expect(await titlesIn(bmB, recipesB)).toEqual(['soup']);
-    expect(b.engine.notices.map((n) => n.text)).toEqual([expect.stringContaining('“Recipes” was added')]);
+    expect(await titlesIn(bmA, recipes)).toEqual(['soup']);
+    expect(bmB.node(b.engine.state.config.mapping.top4!)).toMatchObject({ title: 'Menu of A', parent: FAKE_ROOTS.menu });
+    expect(b.engine.notices.map((n) => n.text)).toEqual([expect.stringContaining('“Recipes” was added'), expect.stringContaining('“Menu of A” was added')]);
 
     await b.engine.removePart('top1', true);
     await sim.quiet();

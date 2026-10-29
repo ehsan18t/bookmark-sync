@@ -127,6 +127,18 @@ function foldersPanel(g: GroupSummary, refresh: () => Promise<void>) {
       }, { kind: 'primary' }), h('button', { class: 'ghost', onclick: () => adder.replaceChildren() }, 'Cancel')),
     );
   };
+  const movePicker = (part: string, path: string) => {
+    const tree = folderTree(localItems(state.folders, state.groups, g.groupId).map((i) => (g.held.includes(i.id) ? { ...i, blocked: 'Synced here' } : i)), { multi: false, label: `New place for ${path}` });
+    adder.replaceChildren(
+      h('p', { class: 'muted small' }, `Pick the folder that should hold “${path}” from now on. What it already contains is added to the sync. The current folder stays as it is but no longer syncs.`),
+      tree.el,
+      h('div', { class: 'row' }, action('Use this folder', async () => {
+        if (!tree.value()[0]) throw new Error('Pick a folder.');
+        await send({ t: 'movePart', groupId: g.groupId, part, folderId: tree.value()[0]! });
+        await refresh();
+      }, { kind: 'primary' }), h('button', { class: 'ghost', onclick: () => adder.replaceChildren() }, 'Cancel')),
+    );
+  };
   const addFromSync = async () => {
     adder.replaceChildren(h('p', { class: 'muted' }, 'Reading the folders in this sync…'));
     try {
@@ -163,6 +175,7 @@ function foldersPanel(g: GroupSummary, refresh: () => Promise<void>) {
               h(
                 'div',
                 { class: 'row' },
+                h('button', { class: 'ghost', onclick: () => movePicker(p.part, p.path) }, 'Move it'),
                 action('Stop syncing it here', async () => (await send({ t: 'removePart', groupId: g.groupId, part: p.part, everywhere: false }), refresh()), {
                   kind: 'ghost',
                   confirm: 'Stop syncing this folder in this browser? It stays here as it is, and other browsers keep syncing it.',
