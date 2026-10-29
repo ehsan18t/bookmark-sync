@@ -87,8 +87,8 @@ pnpm test:e2e
 - `src/engine/`: the per-group sync engine (`group.ts`) and the app layer (`app.ts`) that runs every command through one queue. Both reach the browser, storage and local database only through the interfaces in `ports.ts`.
 - `src/storage/`: the WebDAV, Google Drive and in-memory providers.
 - `src/browser/`: the real bookmarks API, root folders, IndexedDB, Google sign-in.
-- `src/entrypoints/`: the background script, and the options page and popup as Preact components, with `@preact/signals` holding the options page data (`options/shared.ts`).
-- `src/ui/`: shared components (`components.tsx`), icons, styles and the `send()` helper for messages to the background script.
+- `src/entrypoints/`: the background script, and the options page and popup as Preact components, one component per file. The options page groups its components by feature: `dashboard/` (one folder per tab), `setup/` (one file per step) and `folder-picker/`.
+- `src/ui/`: what both pages share: `components/` (one file each), `hooks/`, `state/` (the `@preact/signals` store fed by the background's snapshots, and page start-up), `lib/` (the `send()` helper for messages to the background script, formatting, icons) and `styles/`. Page-specific styles sit next to their components.
 - `test/`: the simulator, property tests, scenarios, provider integration tests and end-to-end tests.
 
 ## Known limits

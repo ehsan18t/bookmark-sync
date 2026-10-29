@@ -1,0 +1,40 @@
+body.popup {
+  width: 340px;
+  background: var(--bg);
+}
+
+body.popup main {
+  padding: 14px;
+}
+
+.popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.popup-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+}
+
+.popup-card + .popup-card {
+  margin-top: 8px;
+}
+
+.popup-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.done-mark.invite {
+  width: 48px;
+  height: 48px;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
