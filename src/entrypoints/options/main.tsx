@@ -18,7 +18,10 @@ const finish = () => {
   location.hash = 'overview';
 };
 
-window.addEventListener('hashchange', () => (hash.value = location.hash.slice(1)));
+window.addEventListener('hashchange', () => {
+  hash.value = location.hash.slice(1);
+  if (isTab(hash.value) && groups.value.length) inSetup.value = false;
+});
 
 function App() {
   if (failure.value)
