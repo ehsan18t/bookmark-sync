@@ -8,4 +8,4 @@ export const snapshotsDir = (g: string, d: string) => `${deviceDir(g, d)}/snapsh
 export const snapshotPath = (g: string, d: string, id: string) => `${snapshotsDir(g, d)}/${id}.json`;
 export const markerPath = (g: string, d: string, name: MarkerName) => `${deviceDir(g, d)}/markers/${name}.json`;
 
-export type MarkerName = 'migration' | 'migrated' | 'group-deleted' | 'removed' | 'renamed';
+export type MarkerName = 'migration' | 'migrated' | 'group-deleted' | 'removed' | 'renamed' | 'bridges';

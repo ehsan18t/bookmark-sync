@@ -17,10 +17,10 @@ export type Command =
   | { t: 'removeDevice'; groupId: string; deviceId: string }
   | { t: 'rename'; groupId: string; name: string }
   | { t: 'groupFolders'; accountId: string; groupId: string; passphrase?: string }
-  | { t: 'addParts'; groupId: string; parts: PartChoice[] }
-  | { t: 'addTops'; groupId: string; folderIds: string[] }
+  | { t: 'addParts'; groupId: string; parts: PartChoice[]; takeover?: boolean }
+  | { t: 'addTops'; groupId: string; folderIds: string[]; takeover?: boolean }
   | { t: 'removePart'; groupId: string; part: string; everywhere: boolean }
-  | { t: 'movePart'; groupId: string; part: string; folderId: string }
+  | { t: 'movePart'; groupId: string; part: string; folderId: string; takeover?: boolean }
   | { t: 'dismissNotices'; groupId: string }
   | { t: 'previewRestore' | 'restore'; groupId: string; hlc: string }
   | { t: 'resolve'; groupId: string; choice: 'apply' | 'revert' | 'resume' }
@@ -36,7 +36,7 @@ export type Command =
   | { t: 'undoLocal'; id: string }
   | { t: 'diagnostics' };
 
-export type Reply<T = unknown> = { ok: true; value: T } | { ok: false; error: string };
+export type Reply<T = unknown> = { ok: true; value: T } | { ok: false; error: string; code?: string };
 
 export type PublicAccount = Pick<Account, 'id' | 'type' | 'name'> & { url?: string; username?: string; email?: string };
 export type Capabilities = { google: boolean; googleBlocked: boolean; browser: string };

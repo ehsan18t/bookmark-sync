@@ -17,17 +17,18 @@ A folder can belong to more than one sync on a browser. That browser carries cha
 2. **Every change reaches every browser through the bridge.** A change on any browser of either sync travels through that sync's storage to the bridge, which records it in the other sync. Changes cross only while the bridge runs; each sync keeps syncing among its own browsers regardless.
 3. **A second bridge is refused up front, with a takeover.** Putting a shared folder in both syncs on another browser fails with "Edge on this PC already links Bookmarks New and Bookmarks" and offers to make this browser the link instead.
 4. **The latest claim wins.** Claims are ordered by time. A takeover writes a newer claim; an old bridge that finds a newer claim from another browser releases on its next sync, before applying anything.
-5. **Release keeps the folder in the sync that held it first** and stops syncing it in the other here, with a notice. Bookmarks stay as they are. A sync that can't drop the folder (it syncs all bookmarks) pauses instead and asks.
-6. **Big changes are confirmed once.** When a sync applies changes in a shared folder, the bridge first records the other syncs' own pending changes unconfirmed, so they still face the big-change check, then records what the apply brought in as confirmed.
-7. **Sharing is chosen, never automatic.** Folders another browser adds are never placed inside another sync's folder.
-8. **Several syncs can share a folder on one bridge**, and the syncs may live on different storage or accounts: the claim is written to each sync's storage.
+5. **Release stops syncing the inner folder in its own sync** on the old bridge, with a notice, so the outer sync keeps everything; when both syncs hold the same folder, it stays in the sync that held it first. Bookmarks stay as they are. Two syncs of all bookmarks can't drop anything, so the later one pauses and asks.
+6. **A takeover claims at once.** Confirming a takeover writes this browser's claim right away, newer than the old one; a browser that finds another browser's claim without having one of its own steps back.
+7. **Big changes are confirmed once.** When a sync applies changes in a shared folder, the bridge first records the other syncs' own pending changes unconfirmed, so they still face the big-change check, then records what the apply brought in as confirmed.
+8. **Sharing is chosen, never automatic.** Folders another browser adds are never placed inside another sync's folder.
+9. **Several syncs can share a folder on one bridge**, and the syncs may live on different storage or accounts: the claim is written to each sync's storage.
 
 ## Mechanism
 
 - **Claims** are the `bridges` marker of the bridge device in each linked group: `{ links: { [otherGroupId]: { name, at } } }`. Devices read them with the other markers on every pull.
 - **Before each sync pass** of a group, the app works out which local syncs share folders with it, compares its own claims with other devices' claims for each pair, writes a claim where it bridges and has none, and releases pairs another device claimed later.
 - **Up-front check:** creating, joining, adding folders or moving a folder so that two syncs overlap reads both syncs' claims; another device's claim refuses the change unless the request is a takeover.
-- **Recording:** before a bridged sync's cycle, sharing syncs record their pending changes unconfirmed; after the cycle applies, they record again with `confirmed: true`.
+- **Recording:** before a bridged sync's cycle, sharing syncs record their pending changes unconfirmed; after the cycle applies, they record again with `confirmed: true`, and sync once more at the end of the pass so the change crosses in one pass.
 
 ## Known limits
 

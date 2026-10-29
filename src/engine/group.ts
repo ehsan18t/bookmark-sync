@@ -9,6 +9,7 @@ import {
   type Batch,
   type Crypt,
   type DeviceInfo,
+  type BridgesMarker,
   type GroupDeletedMarker,
   type GroupHeader,
   type MigratedMarker,
@@ -65,6 +66,7 @@ export type PauseReason =
   | 'root-changed'
   | 'mapped-folder-missing'
   | 'mapping-overlap'
+  | 'bridge-moved'
   | 'large-remote-change'
   | 'large-local-change'
   | 'native-sync'
@@ -154,6 +156,7 @@ interface Cursor {
   migrated?: MigratedMarker;
   removed?: string[];
   deleted?: boolean;
+  bridges?: BridgesMarker['links'];
 }
 
 interface PendingBatch {
@@ -512,6 +515,29 @@ export class GroupEngine {
   private pendingNativeSyncPause = false;
   private leaving = false;
   private nameChanged = false;
+
+  /** Bridge claims this device holds: the groups it links with this one. */
+  ownLinks(): BridgesMarker['links'] {
+    return (this.local.markers.bridges?.body as BridgesMarker | undefined)?.links ?? {};
+  }
+
+  async setLinks(links: BridgesMarker['links']): Promise<void> {
+    if (JSON.stringify(links) === JSON.stringify(this.ownLinks())) return;
+    await this.writeMarker('bridges', { links } satisfies BridgesMarker);
+    await this.persist();
+  }
+
+  /** Bridge claims other active devices of this group hold. */
+  otherLinks(): { deviceId: string; device: string; group: string; name: string; at: number }[] {
+    const removed = this.removedSet();
+    return Object.entries(this.local.cursors).flatMap(([d, c]) =>
+      c.info && !c.info.left && !removed.has(d) ? Object.entries(c.bridges ?? {}).map(([group, l]) => ({ deviceId: d, device: c.info!.name, group, name: l.name, at: l.at })) : [],
+    );
+  }
+
+  addNotice(text: string): void {
+    this.notice(text);
+  }
 
   /** The name lives in the plain header, so browsers without the key still list the sync by it. */
   async rename(name: string): Promise<void> {
@@ -930,6 +956,7 @@ export class GroupEngine {
       else if (name === 'migration') cursor.migration = body as MigrationMarker;
       else if (name === 'migrated') cursor.migrated = body as MigratedMarker;
       else if (name === 'renamed') this.nameChanged = true;
+      else if (name === 'bridges') cursor.bridges = (body as BridgesMarker).links;
       cursor.markers[name] = version;
     }
   }
@@ -998,8 +1025,7 @@ export class GroupEngine {
       const pairs = findDuplicatePairs(merged, newRemote.filter((op): op is CreateOp => op.type === 'create'), recent);
       if (pairs.length) {
         this.repairDuplicates(merged, pairs.filter((p) => p.ownIsLater).map((p) => [p.own.node, p.remote.node] as const));
-        // Two browsers bridging the same syncs each copy a bookmark across; that is not the browser's own sync.
-        if (pairs.length >= this.settings.nativeSyncPauseCount && !this.bridged) this.pendingNativeSyncPause = true;
+        if (pairs.length >= this.settings.nativeSyncPauseCount) this.pendingNativeSyncPause = true;
         merged = this.mergedTree();
       }
     }

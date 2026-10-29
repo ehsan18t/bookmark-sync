@@ -9,6 +9,7 @@ import { BrowserBookmarks, type Engine, type Node } from '../browser/bookmarksPo
 import { IdbStore } from '../browser/idbStore.js';
 import { providerFactory } from '../browser/providers.js';
 import { friendlyError } from '../browser/friendlyError.js';
+import { BridgeTakenError } from '../core/errors.js';
 import { browserRoots } from '../browser/roots.js';
 import { SNAPSHOT_KEY, type Capabilities, type Command, type PublicAccount, type Reply, type Snapshot } from '../messages.js';
 
@@ -41,6 +42,7 @@ const REASONS: Record<string, string> = {
   'mapped-folder-missing': 'The synced folder was deleted or moved.',
   'root-changed': 'The browser’s bookmark folders changed.',
   'mapping-overlap': 'Two synced folders now overlap.',
+  'bridge-moved': 'Another browser now links this sync with one that shares its folders here.',
   'group-deleted': 'This group was deleted from another browser.',
   'format-too-new': 'A newer version of the extension wrote these files. Update the extension.',
   corrupt: 'A file in the group could not be read.',
@@ -216,13 +218,13 @@ export default defineBackground({
         case 'groupFolders':
           return app.groupFolders(cmd);
         case 'addParts':
-          return app.addParts(cmd.groupId, cmd.parts);
+          return app.addParts(cmd.groupId, cmd.parts, cmd.takeover);
         case 'addTops':
-          return app.addTops(cmd.groupId, cmd.folderIds);
+          return app.addTops(cmd.groupId, cmd.folderIds, cmd.takeover);
         case 'removePart':
           return app.removePart(cmd.groupId, cmd.part, cmd.everywhere);
         case 'movePart':
-          return app.movePart(cmd.groupId, cmd.part, cmd.folderId);
+          return app.movePart(cmd.groupId, cmd.part, cmd.folderId, cmd.takeover);
         case 'dismissNotices':
           return app.dismissNotices(cmd.groupId);
         case 'timeline':
@@ -264,7 +266,7 @@ export default defineBackground({
     browser.runtime.onMessage.addListener((msg: unknown, _sender, sendResponse: (r: Reply) => void) => {
       handle(msg as Command)
         .then((value) => sendResponse({ ok: true, value }))
-        .catch((e: unknown) => sendResponse({ ok: false, error: friendlyError(e) }))
+        .catch((e: unknown) => sendResponse({ ok: false, error: friendlyError(e), ...(e instanceof BridgeTakenError ? { code: e.code } : {}) }))
         .finally(() => (msg as Command).t !== 'snapshot' && void publish());
       return true;
     });

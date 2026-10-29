@@ -1,5 +1,5 @@
 import { unlockKey } from '../core/crypto.js';
-import { UserError } from '../core/errors.js';
+import { BridgeTakenError, UserError } from '../core/errors.js';
 import { findDuplicates, type DedupeItem, type DuplicateGroup } from '../core/dedupe.js';
 import type { BrowserFamily } from '../core/defaults.js';
 import { DAY } from '../core/frontier.js';
@@ -160,6 +160,8 @@ export interface GroupSummary {
   restorePoints: RestorePoint[];
   oldestRestorable: string;
   canUndoJoin: boolean;
+  /** Syncs this one shares a folder with: linked on this browser (`via` null) or through another browser. */
+  links: { name: string; via: string | null }[];
 }
 
 export class SyncApp {
@@ -293,11 +295,13 @@ export class SyncApp {
   joinGroup(input: JoinInput): Promise<void> {
     return this.run(async () => {
       const { ports, config, opts, key, newKey } = await this.prepareJoin(input, false);
+      await this.checkBridge(config.groupId, config.mapping, input.takeover);
       const engine = await GroupEngine.join(ports, config, opts, key);
       if (key && newKey) await this.deps.store.setKey(config.groupId, key, input.rememberKey ?? false);
       this.engines.set(config.groupId, engine);
       this.meta.groups.push(config.groupId);
       await this.saveMeta();
+      if (input.takeover) await this.settleBridges(engine, true);
     });
   }
 
@@ -355,17 +359,19 @@ export class SyncApp {
     });
   }
 
-  addParts(groupId: string, parts: PartChoice[]): Promise<void> {
+  addParts(groupId: string, parts: PartChoice[], takeover?: boolean): Promise<void> {
     return this.run(async () => {
       const e = this.engine(groupId);
       const mapping = await this.resolveParts(parts, false);
       await this.checkNesting({ ...e.state.config.mapping, ...mapping });
+      await this.checkBridge(groupId, mapping, takeover);
       await e.addParts(Object.entries(await this.resolveParts(parts, true)).map(([part, localId]) => ({ part, localId })));
+      if (takeover) await this.settleBridges(e, true);
     });
   }
 
   /** Adds local folders to a folder group as new top folders, for every browser. */
-  addTops(groupId: string, folderIds: string[]): Promise<void> {
+  addTops(groupId: string, folderIds: string[], takeover?: boolean): Promise<void> {
     return this.run(async () => {
       const e = this.engine(groupId);
       const tops: (NewTop & { localId: string })[] = [];
@@ -374,7 +380,9 @@ export class SyncApp {
         tops.push({ id: randomId(this.deps.random), title, hint: hint ?? { root: 'other', path: [title] }, localId });
       }
       await this.checkNesting({ ...e.state.config.mapping, ...Object.fromEntries(tops.map((t) => [t.id, t.localId])) });
+      await this.checkBridge(groupId, Object.fromEntries(tops.map((t) => [t.id, t.localId])), takeover);
       await e.addTops(tops);
+      if (takeover) await this.settleBridges(e, true);
     });
   }
 
@@ -383,12 +391,14 @@ export class SyncApp {
   }
 
   /** Points a part at another local folder, for example after its folder was deleted. */
-  movePart(groupId: string, part: string, folderId: string): Promise<void> {
+  movePart(groupId: string, part: string, folderId: string, takeover?: boolean): Promise<void> {
     return this.run(async () => {
       const e = this.engine(groupId);
       const { [part]: _old, ...others } = e.state.config.mapping;
       await this.checkNesting({ ...others, [part]: folderId });
+      await this.checkBridge(groupId, { [part]: folderId }, takeover);
       await e.movePart(part, folderId);
+      if (takeover) await this.settleBridges(e, true);
       await this.syncOne(e);
     });
   }
@@ -476,8 +486,8 @@ export class SyncApp {
       if (this.importing) return;
       await this.fillEmails();
       await this.checkMappingOverlaps();
-      await this.markBridges();
       for (const e of [...this.engines.values()]) await this.syncOne(e);
+      await this.syncBridged();
     });
   }
 
@@ -495,9 +505,8 @@ export class SyncApp {
 
   syncGroup(groupId: string): Promise<void> {
     return this.run(async () => {
-      const e = this.engine(groupId);
-      await this.markBridges();
-      await this.syncOne(e);
+      await this.syncOne(this.engine(groupId));
+      await this.syncBridged();
     });
   }
 
@@ -536,6 +545,7 @@ export class SyncApp {
           restorePoints: e.state.restorePoints,
           oldestRestorable: e.oldestRestorable,
           canUndoJoin: !!e.state.join && !e.state.join.created,
+          links: [...Object.values(e.ownLinks()).map((l) => ({ name: l.name, via: null })), ...e.otherLinks().map((l) => ({ name: l.name, via: l.device }))],
         });
       }
       return out;
@@ -663,9 +673,11 @@ export class SyncApp {
     if ((this.backoffUntil.get(g) ?? 0) > this.deps.clock.now()) return;
     const before = JSON.stringify(e.status);
     try {
+      await this.markBridges();
+      await this.settleBridges(e);
       const bridged = await this.recordBeforeBridge(e);
       const res = await e.cycle();
-      if (res.applied) await this.recordBridged(bridged);
+      if (res.applied || res.migratedTo) await this.recordBridged(bridged);
       this.lastSyncAt.set(g, this.deps.clock.now());
       this.lastError.delete(g);
       this.rawError.delete(g);
@@ -716,7 +728,7 @@ export class SyncApp {
     return false;
   }
 
-  /** Marks syncs that share folders, so duplicates two bridges create aren't blamed on the browser's own sync. */
+  /** Marks syncs that share folders with another sync here. */
   private async markBridges(): Promise<void> {
     const all = [...this.engines.values()];
     for (const e of all) {
@@ -726,7 +738,102 @@ export class SyncApp {
     }
   }
 
-/** Syncs sharing a folder with `source`, after recording their pending changes unconfirmed so the big-change guard still sees them. */
+  /** Other devices' claims to bridge `a` and `b`, read from both groups. */
+  private claimsFor(a: GroupEngine, b: GroupEngine) {
+    return [...a.otherLinks().filter((l) => l.group === b.groupId), ...b.otherLinks().filter((l) => l.group === a.groupId)];
+  }
+
+  /** The latest claim another device holds for bridging `groupId` with `partner`; using the pair then needs a takeover. */
+  private takenBy(groupId: string, partner: GroupEngine): { device: string; at: number } | null {
+    const others = partner.otherLinks().filter((l) => l.group === groupId);
+    const mine = this.engines.get(groupId);
+    if (mine) others.push(...mine.otherLinks().filter((l) => l.group === partner.groupId));
+    return others.sort((x, y) => y.at - x.at)[0] ?? null;
+  }
+
+  /** This device claims the pairs it bridges, and releases a pair another device claimed later (docs/design/shared-folders.md, decisions 4 and 5). */
+  private async settleBridges(e: GroupEngine, takeover = false): Promise<void> {
+    const links = { ...e.ownLinks() };
+    for (const id of Object.keys(links)) {
+      const p = this.engines.get(id);
+      if (!p || !(await this.shareFolders(e, p))) delete links[id];
+    }
+    for (const p of this.engines.values()) {
+      if (p === e || !(await this.shareFolders(e, p))) continue;
+      const mine = Math.max(links[p.groupId]?.at ?? 0, p.ownLinks()[e.groupId]?.at ?? 0);
+      const newer = takeover ? undefined : this.claimsFor(e, p).filter((c) => c.at > mine).sort((x, y) => y.at - x.at)[0];
+      if (newer) {
+        await this.release(e, p, newer.device);
+        delete links[p.groupId];
+        await p.setLinks(Object.fromEntries(Object.entries(p.ownLinks()).filter(([k]) => k !== e.groupId)));
+      } else if (!links[p.groupId] || takeover) {
+        const at = Math.max(this.deps.clock.now(), ...this.claimsFor(e, p).map((c) => c.at + 1));
+        links[p.groupId] = { name: p.state.config.name, at };
+        await p.setLinks({ ...p.ownLinks(), [e.groupId]: { name: e.state.config.name, at } });
+      }
+    }
+    await e.setLinks(links);
+  }
+
+  /**
+   * Stops sharing folders between `a` and `b` here after `device` took over linking them. A folder inside the other
+   * sync's folder stops syncing in its own sync, so the outer sync keeps everything; the same folder stays in the sync
+   * that held it first. Two syncs of all bookmarks can't drop anything, so the later one pauses.
+   */
+  private async release(a: GroupEngine, b: GroupEngine, device: string): Promise<void> {
+    const order = this.meta.groups;
+    const [first, later] = order.indexOf(a.groupId) <= order.indexOf(b.groupId) ? [a, b] : [b, a];
+    const live = (e: GroupEngine) => Object.entries(e.state.config.mapping).filter(([, l]) => !l.startsWith(PENDING_PREFIX));
+    const drops: [GroupEngine, string, GroupEngine][] = [];
+    for (const [drop, keep] of [[later, first], [first, later]] as const) {
+      if (this.wholeTreeMapping(drop.state.config)) continue;
+      for (const [part, local] of live(drop)) {
+        for (const [, held] of live(keep)) {
+          const inner = await this.isInside(local, held);
+          if (inner || (local === held && drop === later)) drops.push([drop, part, keep]);
+        }
+      }
+    }
+    if (!drops.length) {
+      later.addNotice(`${device} now links “${first.state.config.name}” and “${later.state.config.name}”. Both sync all bookmarks here, so “${later.state.config.name}” is paused. Stop syncing one of them here.`);
+      await later.pause('bridge-moved', device);
+      return;
+    }
+    for (const [drop, part, keep] of drops) {
+      if (!drop.state.config.mapping[part]) continue;
+      const path = await this.deps.roots.pathOf(drop.state.config.mapping[part]!);
+      await drop.removePart(part, false);
+      drop.addNotice(`${device} now links “${keep.state.config.name}” and “${drop.state.config.name}”. “${path}” stays in “${keep.state.config.name}” here and no longer syncs in “${drop.state.config.name}”.`);
+    }
+  }
+
+  /** Syncs that received bridged changes after their own turn in this pass; one more turn uploads them now. */
+  private readonly bridgedPending = new Set<GroupEngine>();
+
+  private async syncBridged(): Promise<void> {
+    const pending = [...this.bridgedPending];
+    this.bridgedPending.clear();
+    for (const e of pending) if ([...this.engines.values()].includes(e)) await this.syncOne(e);
+    this.bridgedPending.clear();
+  }
+
+  /** Refuses folders of `groupId` that another sync here shares while another browser links the two, unless taking over. */
+  private async checkBridge(groupId: string, mapping: Record<string, string>, takeover = false): Promise<void> {
+    if (takeover) return;
+    const mine = Object.values(mapping).map((l) => pendingAnchor(l) ?? l).filter((l) => !l.startsWith(PENDING_PREFIX));
+    for (const p of this.engines.values()) {
+      if (p.groupId === groupId) continue;
+      const held = Object.values(p.state.config.mapping).filter((l) => !l.startsWith(PENDING_PREFIX));
+      let shared = false;
+      for (const m of mine) for (const h of held) if (m === h || (await this.isInside(m, h)) || (await this.isInside(h, m))) shared = true;
+      if (!shared) continue;
+      const taken = this.takenBy(groupId, p);
+      const own = Math.max(p.ownLinks()[groupId]?.at ?? 0, this.engines.get(groupId)?.ownLinks()[p.groupId]?.at ?? 0);
+      if (taken && taken.at > own) throw new BridgeTakenError(`${taken.device} already links this sync with “${p.state.config.name}” through a shared folder.`);
+    }
+  }
+
+  /** Syncs sharing a folder with `source`, after recording their pending changes unconfirmed so the big-change guard still sees them. */
   private async recordBeforeBridge(source: GroupEngine): Promise<GroupEngine[]> {
     if (!source.bridged) return [];
     const ready: GroupEngine[] = [];
@@ -749,7 +856,7 @@ export class SyncApp {
   private async recordBridged(targets: GroupEngine[]): Promise<void> {
     for (const e of targets) {
       try {
-        await e.recordLocalChanges({ confirmed: true });
+        if (await e.recordLocalChanges({ confirmed: true })) this.bridgedPending.add(e);
       } catch {
         // Recorded unconfirmed on that sync's next pass instead.
       }
@@ -944,4 +1051,6 @@ export interface JoinInput {
   ignoreDefaults: boolean;
   passphrase?: string;
   rememberKey?: boolean;
+  /** Become the browser linking this sync with another that shares a folder, in place of the one that does. */
+  takeover?: boolean;
 }

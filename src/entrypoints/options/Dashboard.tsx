@@ -7,7 +7,7 @@ import type { DuplicateGroup } from '../../core/dedupe.js';
 import type { GroupSummary, Settings } from '../../engine/app.js';
 import type { GroupFolder, TimelineEntry } from '../../engine/group.js';
 import { Action, Banner, Brand, EmptyState, ErrorText, Field, Icon, Pill } from '../../ui/components.js';
-import { errorText, hlcTime, relativeTime, send } from '../../ui/util.js';
+import { errorText, hlcTime, relativeTime, send, withTakeover } from '../../ui/util.js';
 import type { IconName } from '../../ui/icons.js';
 import { FolderTree, Placements } from './FolderPicker.js';
 import { groupItems, localItems, placementChoices } from './folders.js';
@@ -128,6 +128,12 @@ function SyncCard({ g }: { g: GroupSummary }) {
         <dd>{storageWithAccount(account)}</dd>
         <dt>Shared with</dt>
         <dd class={others?.length ? '' : 'muted'}>{!others ? 'Not known yet' : others.length ? others.join(', ') : 'No other browsers yet'}</dd>
+        {g.links.length > 0 && (
+          <>
+            <dt>Linked with</dt>
+            <dd>{g.links.map((l) => (l.via ? `“${l.name}” through ${l.via}` : `“${l.name}” here`)).join(', ')}</dd>
+          </>
+        )}
       </dl>
       <p class="muted small">
         {[plural(g.bookmarks, 'bookmark', 'bookmarks'), g.lastSyncAt ? `synced ${relativeTime(g.lastSyncAt, now.value)}` : 'not synced yet', `${plural(g.pendingChanges, 'change', 'changes')} waiting to upload`].join(' · ')}
@@ -278,7 +284,7 @@ function AddLocal({ g, onClose }: { g: GroupSummary; onClose: () => void }) {
           kind="primary"
           run={async () => {
             if (!picked.length) throw new Error('Tick at least one folder.');
-            await send({ t: 'addTops', groupId: g.groupId, folderIds: picked });
+            await withTakeover((takeover) => send({ t: 'addTops', groupId: g.groupId, folderIds: picked, takeover }));
             await load();
             onClose();
           }}
@@ -302,7 +308,7 @@ function MovePart({ g, part, path, onClose }: { g: GroupSummary; part: string; p
           kind="primary"
           run={async () => {
             if (!picked[0]) throw new Error('Pick a folder.');
-            await send({ t: 'movePart', groupId: g.groupId, part, folderId: picked[0] });
+            await withTakeover((takeover) => send({ t: 'movePart', groupId: g.groupId, part, folderId: picked[0]!, takeover }));
             await load();
             onClose();
           }}
@@ -331,7 +337,7 @@ function AddFromSync({ g, onClose }: { g: GroupSummary; onClose: () => void }) {
           kind="primary"
           run={async () => {
             if (!picked.length) throw new Error('Tick at least one folder.');
-            await send({ t: 'addParts', groupId: g.groupId, parts: placementChoices(mode, groupFolders, picked, chosen) });
+            await withTakeover((takeover) => send({ t: 'addParts', groupId: g.groupId, parts: placementChoices(mode, groupFolders, picked, chosen), takeover }));
             await load();
             onClose();
           }}
@@ -422,7 +428,7 @@ function PauseBanner({ g, onAddFolders }: { g: GroupSummary; onAddFolders: () =>
             kind="primary"
             run={async () => {
               if (!picked[0]) throw new Error('Pick a folder.');
-              await send({ t: 'movePart', groupId: g.groupId, part: detail, folderId: picked[0] });
+              await withTakeover((takeover) => send({ t: 'movePart', groupId: g.groupId, part: detail, folderId: picked[0]!, takeover }));
               await load();
             }}
           />
