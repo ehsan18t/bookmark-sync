@@ -69,7 +69,7 @@ export function FolderTree({ items, multi, value, onChange, label }: { items: Tr
                 />
                 <Icon name="folder" />
                 <span class="tree-title">{item.title}</span>
-                {item.blocked && <span class="tree-note">{item.blocked}</span>}
+                {(item.blocked ?? item.note) && <span class="tree-note">{item.blocked ?? item.note}</span>}
               </label>
             </div>
             {children && expanded && branch(item.id, depth + 1)}

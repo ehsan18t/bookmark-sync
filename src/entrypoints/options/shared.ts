@@ -72,6 +72,7 @@ export const REASON_TEXT: Record<string, string> = {
   'nothing-held': 'This browser no longer syncs any folder of this sync. Add a folder under More options, or stop syncing here.',
   'root-changed': 'The browser’s main bookmark folders changed. Stop syncing here, then set it up again.',
   'mapping-overlap': 'Two synced folders now overlap. Move one of them, then resume.',
+  'bridge-moved': 'Another browser now links this sync with one that shares its folders here. Stop syncing one of them in this browser.',
   'group-deleted': 'This sync was deleted from another browser. Stop syncing here; your bookmarks stay as they are.',
   'format-too-new': 'Another browser uses a newer version of the extension. Update the extension here.',
   corrupt: 'A file in this sync couldn’t be read. Resume to try again, or export diagnostics from Settings.',
@@ -90,6 +91,7 @@ export const SHORT_REASON: Record<string, string> = {
   'mapped-folder-missing': 'Folder missing',
   'nothing-held': 'No folders here',
   'group-deleted': 'Deleted elsewhere',
+  'bridge-moved': 'Linked elsewhere',
   'format-too-new': 'Update needed',
   migration: 'Switching encryption',
 };

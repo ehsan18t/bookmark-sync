@@ -75,6 +75,11 @@ export interface GroupDeletedMarker {
   hlc: Hlc;
 }
 
+/** The groups this device links with this one through a shared folder: the bridge claims it holds. */
+export interface BridgesMarker {
+  links: Record<string, { name: string; at: number }>;
+}
+
 export interface RemovedMarker {
   devices: string[];
 }

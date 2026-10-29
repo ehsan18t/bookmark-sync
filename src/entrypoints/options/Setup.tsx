@@ -7,7 +7,7 @@ import { sameNameKey } from '../../core/names.js';
 import type { Target } from '../../engine/app.js';
 import type { GroupFolder, JoinPreview } from '../../engine/group.js';
 import { Action, Advanced, Banner, Brand, Choice, ErrorText, Field, Icon, RadioCards } from '../../ui/components.js';
-import { errorText, send } from '../../ui/util.js';
+import { errorText, send, withTakeover } from '../../ui/util.js';
 import { FolderTree, Placements } from './FolderPicker.js';
 import { groupItems, localItems, placementChoices } from './folders.js';
 import { accounts, caps, folders, groups, load, storageLabel, storageWithAccount, type FoundSync, type PublicAccount } from './shared.js';
@@ -367,7 +367,7 @@ function CreateStep({ account, name, go }: { account: PublicAccount; name: strin
       {mode === 'folder' && (
         <div class="stack">
           <h3>Folders to sync</h3>
-          <p class="muted small">Tick as many as you like. A ticked folder syncs with everything inside it. Other browsers can put each one wherever they want.</p>
+          <p class="muted small">Tick as many as you like. A ticked folder syncs with everything inside it. Other browsers can put each one wherever they want. A folder another sync uses can be ticked too: changes in it then reach both syncs.</p>
           <FolderTree items={localItems(folders.value, groups.value)} multi value={picked} onChange={setPicked} label="Folders to sync" />
         </div>
       )}
@@ -488,7 +488,7 @@ function JoinStep({ account, sync, go }: { account: PublicAccount; sync: FoundSy
     const t = target();
     if (!t) throw new Error('Tick at least one folder to sync here.');
     if (t.kind === 'everything-into' && !t.folderId) throw new Error('Pick the folder to keep the synced bookmarks in.');
-    await send({ t: 'join', input: input(t) });
+    await withTakeover((takeover) => send({ t: 'join', input: { ...input(t), takeover } }));
     await load();
     go({ id: 'done', account, groupId: sync.groupId, joined: true });
   };
