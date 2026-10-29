@@ -11,7 +11,7 @@ import { errorText, hlcTime, relativeTime, send } from '../../ui/util.js';
 import type { IconName } from '../../ui/icons.js';
 import { FolderTree, Placements } from './FolderPicker.js';
 import { groupItems, localItems, placementChoices } from './folders.js';
-import { accounts, folders, groups, load, REASON_TEXT, storageLabel, storageWithAccount } from './shared.js';
+import { accounts, devices, folders, groups, load, now, REASON_TEXT, storageLabel, storageWithAccount } from './shared.js';
 
 export type Tab = 'overview' | 'history' | 'browsers' | 'duplicates' | 'settings';
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
@@ -105,14 +105,11 @@ function Overview() {
   );
 }
 
-type Device = { deviceId: string; name: string; browser: string; lastSeen: number; left: boolean; removed: boolean; self: boolean };
-
 function SyncCard({ g }: { g: GroupSummary }) {
   const account = accounts.value.find((a) => a.id === g.accountId);
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<'folders' | 'encryption' | 'rename' | null>(null);
-  const devices = useLoad(() => send<Device[]>({ t: 'devices', groupId: g.groupId }), [g.groupId, g.lastSyncAt]);
-  const others = devices.data?.filter((d) => !d.self && !d.left && !d.removed).map((d) => d.name);
+  const others = devices.value[g.groupId]?.filter((d) => !d.self && !d.left && !d.removed).map((d) => d.name);
   const showFolders = () => (setOpen(true), setPanel('folders'));
   return (
     <div class="card stack lg">
@@ -130,10 +127,10 @@ function SyncCard({ g }: { g: GroupSummary }) {
         <dt>Stored in</dt>
         <dd>{storageWithAccount(account)}</dd>
         <dt>Shared with</dt>
-        <dd class={others?.length ? '' : 'muted'}>{devices.error ? 'Couldn’t check' : !others ? 'Checking…' : others.length ? others.join(', ') : 'No other browsers yet'}</dd>
+        <dd class={others?.length ? '' : 'muted'}>{!others ? 'Checking…' : others.length ? others.join(', ') : 'No other browsers yet'}</dd>
       </dl>
       <p class="muted small">
-        {[plural(g.bookmarks, 'bookmark', 'bookmarks'), g.lastSyncAt ? `synced ${relativeTime(g.lastSyncAt)}` : 'not synced yet', `${plural(g.pendingChanges, 'change', 'changes')} waiting to upload`].join(' · ')}
+        {[plural(g.bookmarks, 'bookmark', 'bookmarks'), g.lastSyncAt ? `synced ${relativeTime(g.lastSyncAt, now.value)}` : 'not synced yet', `${plural(g.pendingChanges, 'change', 'changes')} waiting to upload`].join(' · ')}
       </p>
       <PauseBanner g={g} onAddFolders={showFolders} />
       {g.notices.length > 0 && (
@@ -537,7 +534,7 @@ function History() {
 }
 
 function Timeline({ g }: { g: GroupSummary }) {
-  const r = useLoad(() => Promise.all([send<TimelineEntry[]>({ t: 'timeline', groupId: g.groupId }), send<Device[]>({ t: 'devices', groupId: g.groupId })]), [g.groupId, g.lastSyncAt]);
+  const r = useLoad(() => send<TimelineEntry[]>({ t: 'timeline', groupId: g.groupId }), [g.groupId, g.lastSyncAt]);
   if (r.error) return <ErrorText>{r.error}</ErrorText>;
   if (!r.data)
     return (
@@ -546,9 +543,9 @@ function Timeline({ g }: { g: GroupSummary }) {
         Loading history…
       </div>
     );
-  const [entries, devices] = r.data;
+  const entries = r.data;
   const who = (d: string) => {
-    const x = devices.find((v) => v.deviceId === d);
+    const x = devices.value[g.groupId]?.find((v) => v.deviceId === d);
     return x ? (x.self ? 'This browser' : x.name) : 'A removed browser';
   };
   const describe = (k: Record<string, number>) =>
@@ -623,13 +620,12 @@ function Browsers() {
 }
 
 function DeviceList({ g }: { g: GroupSummary }) {
-  const r = useLoad(() => send<Device[]>({ t: 'devices', groupId: g.groupId }), [g.groupId, g.lastSyncAt]);
-  if (r.error) return <ErrorText>{r.error}</ErrorText>;
-  if (!r.data) return null;
+  const list = devices.value[g.groupId];
+  if (!list) return null;
   return (
     <div class="card flush">
       <ul class="list">
-        {r.data
+        {list
           .filter((d) => !d.left && !d.removed)
           .map((d) => (
             <li key={d.deviceId}>
@@ -639,14 +635,14 @@ function DeviceList({ g }: { g: GroupSummary }) {
                   <b>{d.name}</b>
                   {d.self && <span class="pill accent">This browser</span>}
                 </div>
-                <div class="meta">{d.self ? 'Online now' : `Last synced ${relativeTime(d.lastSeen)}`}</div>
+                <div class="meta">{d.self ? 'Online now' : `Last synced ${relativeTime(d.lastSeen, now.value)}`}</div>
               </div>
               {!d.self && (
                 <Action
                   label="Remove"
                   kind="ghost"
                   confirm={`Remove ${d.name} from this sync? Do this after uninstalling the extension there, or if you no longer use that browser.`}
-                  run={async () => (await send({ t: 'removeDevice', groupId: g.groupId, deviceId: d.deviceId }), r.reload())}
+                  run={() => send({ t: 'removeDevice', groupId: g.groupId, deviceId: d.deviceId })}
                 />
               )}
             </li>
@@ -673,7 +669,7 @@ function Duplicates() {
         <Banner key={u.id} kind="info" icon="history">
           <div class="row spread">
             <span>
-              {u.label} · {relativeTime(u.at)}
+              {u.label} · {relativeTime(u.at, now.value)}
             </span>
             <Action label="Undo" run={async () => (await send({ t: 'undoLocal', id: u.id }), undo.reload())} />
           </div>

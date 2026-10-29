@@ -8,9 +8,9 @@ export async function send<T>(cmd: Command): Promise<T> {
   return reply.value;
 }
 
-export function relativeTime(ms: number | null): string {
+export function relativeTime(ms: number | null, now = Date.now()): string {
   if (!ms) return 'never';
-  const s = Math.round((Date.now() - ms) / 1000);
+  const s = Math.round((now - ms) / 1000);
   if (s < 10) return 'just now';
   if (s < 60) return `${s} s ago`;
   if (s < 3600) return `${Math.round(s / 60)} min ago`;

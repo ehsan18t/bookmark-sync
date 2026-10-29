@@ -5,7 +5,7 @@ import { errorText } from '../../ui/util.js';
 import '../../ui/styles.css';
 import { Dashboard, isTab } from './Dashboard.js';
 import { Setup } from './Setup.js';
-import { groups, load } from './shared.js';
+import { follow, groups, load } from './shared.js';
 
 const hash = signal(location.hash.slice(1));
 const ready = signal(false);
@@ -40,11 +40,15 @@ effect(() => {
   if (ready.value && !groups.value.length) inSetup.value = true;
 });
 
-load().then(
-  () => (ready.value = true),
-  (e) => (failure.value = errorText(e)),
-);
+/** The saved snapshot draws the page at once; the fresh load only has to be waited for when nothing is saved. */
+async function start() {
+  if (await follow()) {
+    ready.value = true;
+    void load().catch(() => {});
+  } else {
+    await load();
+    ready.value = true;
+  }
+}
 
-setInterval(() => {
-  if (document.visibilityState === 'visible' && hash.value !== 'setup' && !inSetup.value) void load().catch(() => {});
-}, 5000);
+start().catch((e) => (failure.value = errorText(e)));

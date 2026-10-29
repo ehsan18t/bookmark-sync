@@ -3,21 +3,26 @@ import { render } from 'preact';
 import { browser } from 'wxt/browser';
 import { APP_NAME } from '../../config.js';
 import type { GroupSummary } from '../../engine/app.js';
-import { SHORT_REASON } from '../options/shared.js';
+import { follow, groups, now, SHORT_REASON } from '../options/shared.js';
 import { Action, Brand, ErrorText, Icon, Pill } from '../../ui/components.js';
 import { errorText, relativeTime, send } from '../../ui/util.js';
 import '../../ui/styles.css';
 
 document.title = APP_NAME;
 
-const groups = signal<GroupSummary[] | null>(null);
+const ready = signal(false);
 const failure = signal('');
 
-async function load() {
-  try {
-    groups.value = await send<GroupSummary[]>({ t: 'status' });
-  } catch (e) {
-    failure.value = errorText(e);
+async function refresh() {
+  groups.value = await send<GroupSummary[]>({ t: 'status' });
+}
+
+/** Draws the saved snapshot at once; asks the background only when nothing is saved. */
+async function start() {
+  if (await follow()) ready.value = true;
+  else {
+    await refresh();
+    ready.value = true;
   }
 }
 
@@ -62,7 +67,7 @@ function SyncCard({ g }: { g: GroupSummary }) {
         <StatusPill g={g} />
       </div>
       <div class="muted small">
-        {g.bookmarks} {g.bookmarks === 1 ? 'bookmark' : 'bookmarks'} · synced {relativeTime(g.lastSyncAt)}
+        {g.bookmarks} {g.bookmarks === 1 ? 'bookmark' : 'bookmarks'} · synced {relativeTime(g.lastSyncAt, now.value)}
         {g.pendingChanges ? ` · ${g.pendingChanges} waiting` : ''}
       </div>
       {paused && (
@@ -76,8 +81,8 @@ function SyncCard({ g }: { g: GroupSummary }) {
 
 function Popup() {
   if (failure.value) return <ErrorText>{failure.value}</ErrorText>;
+  if (!ready.value) return null;
   const list = groups.value;
-  if (!list) return null;
   if (!list.length)
     return (
       <>
@@ -100,7 +105,7 @@ function Popup() {
     <>
       <div class="popup-head">
         <Brand />
-        <Action label="Sync now" kind="ghost" icon="refresh" busy="Syncing…" run={async () => (await send({ t: 'syncNow' }), load())} />
+        <Action label="Sync now" kind="ghost" icon="refresh" busy="Syncing…" run={async () => (await send({ t: 'syncNow' }), refresh())} />
       </div>
       {list.map((g) => (
         <SyncCard key={g.groupId} g={g} />
@@ -120,4 +125,4 @@ function Popup() {
 }
 
 render(<Popup />, document.getElementById('app')!);
-void load();
+start().catch((e) => (failure.value = errorText(e)));
