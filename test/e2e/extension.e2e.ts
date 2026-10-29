@@ -154,7 +154,7 @@ describe('the extension in two Chromium profiles', () => {
       await expect.poll(() => a.page.locator('.error').innerText(), { timeout: 15_000 }).toMatch(/didn’t accept the sign-in/);
       await a.page.getByLabel('Password', { exact: true }).fill('pw');
       await a.page.getByRole('button', { name: 'Connect' }).click();
-      await a.page.getByText('Name this sync').waitFor();
+      await a.page.getByLabel('Name the new sync').waitFor();
       await a.page.getByRole('button', { name: 'Continue' }).click();
       await a.page.getByRole('button', { name: 'Start syncing' }).click();
       await a.page.getByText('Your bookmarks are syncing').waitFor();
@@ -165,8 +165,9 @@ describe('the extension in two Chromium profiles', () => {
       await b.page.goto(`chrome-extension://${b.id}/options.html#setup`);
       await b.page.getByText('Your own server').click();
       await connect(b, 'pw');
-      await b.page.getByText('Join your synced bookmarks').waitFor();
+      await b.page.getByText('Join or start a sync').waitFor();
       await b.page.locator('.choice').first().click();
+      await b.page.getByRole('button', { name: 'Continue' }).click();
       await expect.poll(() => b.page.locator('.banner.info').innerText(), { timeout: 15_000 }).toMatch(/gets 1 item/);
       await b.page.getByRole('button', { name: 'Join and sync' }).click();
       await b.page.getByText('Your bookmarks are syncing').waitFor();
@@ -203,8 +204,9 @@ describe('the extension in two Chromium profiles', () => {
 
       await b.page.goto(`chrome-extension://${b.id}/options.html#setup`);
       await b.page.locator('.choice').first().click();
-      await b.page.getByText('Join your synced bookmarks').waitFor();
+      await b.page.getByText('Join or start a sync').waitFor();
       await b.page.locator('.choice').first().click();
+      await b.page.getByRole('button', { name: 'Continue' }).click();
       await b.page.getByRole('checkbox', { name: 'Game Dev' }).uncheck();
       await expect.poll(() => b.page.locator('.placement').count()).toBe(1);
       await expect.poll(() => b.page.locator('.placement').innerText()).toMatch(/A new folder is made at Other (bookmarks|favorites) \/ Java/);
