@@ -33,7 +33,11 @@ summary:focus-visible,
 }
 
 button:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button.busy {
   cursor: progress;
 }
 
@@ -111,15 +115,35 @@ input[type='text'],
 input[type='url'],
 input[type='password'],
 input[type='number'],
-select {
+select,
+.unit-field {
   width: 100%;
-  min-height: 40px;
+  min-height: 36px;
   padding: 0 12px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--field-border);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--field-bg);
   color: var(--text);
   font: inherit;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+input:hover,
+select:hover,
+.unit-field:hover {
+  border-color: var(--field-border-hover);
+}
+
+input:focus-visible,
+select:focus-visible,
+.unit-field:focus-within {
+  border-color: var(--accent);
+}
+
+input:disabled,
+select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 input::placeholder {
@@ -128,6 +152,58 @@ input::placeholder {
 
 input[type='number'] {
   width: 96px;
+  appearance: textfield;
+}
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+/* Chevron drawn with gradients: a data-URI SVG can't read the theme's colour tokens. */
+select {
+  appearance: none;
+  padding-right: 34px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-3) 50%), linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
+  background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.unit-field {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+  overflow: hidden;
+  cursor: text;
+}
+
+.unit-field:focus-within {
+  box-shadow: var(--focus);
+}
+
+.unit-field input[type='number'] {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.unit-field .unit {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-left: 1px solid var(--field-border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 input[type='checkbox'],
