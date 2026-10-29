@@ -13,7 +13,7 @@ export function Setting({ title, hint, children }: SettingProps) {
         <b>{title}</b>
         <span class="hint">{hint}</span>
       </div>
-      {children}
+      <div class="control">{children}</div>
     </div>
   );
 }

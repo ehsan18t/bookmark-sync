@@ -95,10 +95,10 @@
 }
 
 .setting {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 20px;
+  gap: 10px 32px;
   padding: 16px 20px;
   border-bottom: 1px solid var(--border);
 }
@@ -118,18 +118,38 @@
   font-weight: 500;
 }
 
-.setting input[type='text'] {
-  width: 240px;
-}
-
-.inline-num {
-  display: inline-flex;
-  align-items: center;
+.setting .control {
+  display: grid;
   gap: 8px;
-  color: var(--text-2);
-  white-space: nowrap;
+  justify-items: end;
+  width: 200px;
 }
 
-.inline-num input[type='number'] {
-  width: 80px;
+.settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  padding: 12px 20px;
+  background: var(--surface-2);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.settings-footer .status {
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.settings-footer .status.saved {
+  color: var(--ok);
+}
+
+@media (max-width: 560px) {
+  .setting {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .setting .control {
+    width: 100%;
+  }
 }

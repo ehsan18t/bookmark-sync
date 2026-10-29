@@ -7,6 +7,9 @@
   --text-3: #868d9a;
   --border: #e2e5ea;
   --border-strong: #cdd2da;
+  --field-bg: #ffffff;
+  --field-border: #d3d8e0;
+  --field-border-hover: #aeb6c2;
   --accent: #2563eb;
   --accent-hover: #1d4fd8;
   --accent-bg: #e9f0fe;
@@ -36,6 +39,9 @@
     --text-3: #757c89;
     --border: #2b3039;
     --border-strong: #3c424e;
+    --field-bg: #13161b;
+    --field-border: #343a45;
+    --field-border-hover: #4b5361;
     --accent: #3b7bf0;
     --accent-hover: #5a90f5;
     --accent-bg: #1a2945;
