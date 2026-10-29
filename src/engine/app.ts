@@ -670,10 +670,14 @@ export class SyncApp {
     return this.run(async () => {
       const entry = this.meta.localUndo.find((u) => u.id === id);
       if (!entry) return;
-      for (const m of entry.moved) if (await this.deps.bookmarks.exists(m.localId)) await this.deps.bookmarks.move(m.localId, { parentId: m.parentId, index: m.index });
-      for (const r of entry.removed) if (await this.deps.bookmarks.exists(r.parentId)) await recreate(this.deps.bookmarks, r.parentId, [r.node], undefined, r.index);
+      // Each item is tried once and the entry goes either way: a retry would make the restored items twice.
+      const failures: unknown[] = [];
+      const attempt = (work: Promise<void>) => work.catch((e: unknown) => void failures.push(e));
+      for (const m of entry.moved) if (await this.deps.bookmarks.exists(m.localId)) await attempt(this.deps.bookmarks.move(m.localId, { parentId: m.parentId, index: m.index }));
+      for (const r of entry.removed) if (await this.deps.bookmarks.exists(r.parentId)) await attempt(recreate(this.deps.bookmarks, r.parentId, [r.node], undefined, r.index));
       this.meta.localUndo = this.meta.localUndo.filter((u) => u.id !== id);
       await this.saveMeta();
+      if (failures.length) throw failures[0];
     });
   }
 
