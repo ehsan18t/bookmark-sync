@@ -36,12 +36,16 @@ export class BrowserBookmarks implements BookmarksPort {
     }
   }
 
-  async parentOf(localId: string): Promise<string | null> {
-    try {
-      return (await browser.bookmarks.get(localId))[0]?.parentId ?? null;
-    } catch {
-      return null;
-    }
+  async positions(): Promise<Map<string, { parentId: string; index: number }>> {
+    const out = new Map<string, { parentId: string; index: number }>();
+    const walk = (n: Node) => {
+      for (const [i, c] of ((n.children ?? []) as Node[]).entries()) {
+        out.set(c.id, { parentId: n.id, index: c.index ?? i });
+        walk(c);
+      }
+    };
+    for (const r of (await browser.bookmarks.getTree()) as Node[]) walk(r);
+    return out;
   }
 
   async create(args: { parentId: string; index?: number; kind: Kind; title: string; url: string }): Promise<string> {

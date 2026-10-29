@@ -535,4 +535,15 @@ describe('the app layer', () => {
     await a.app.syncAll();
     expect((await a.app.status())[0]!.status).toMatchObject({ state: 'paused', reason: 'auth' });
   });
+
+  it('answers status and history reads while a sync is still running', async () => {
+    const { a, accA } = await pair();
+    const groupId = await a.app.createGroup({ accountId: accA, name: 'Main', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
+    let release!: () => void;
+    const blocked = a.app.run(() => new Promise<void>((r) => (release = r)));
+    const reads = await Promise.race([Promise.all([a.app.status(), a.app.devices(groupId), a.app.timeline(groupId), a.app.folders()]), new Promise((r) => setTimeout(() => r('waited'), 50))]);
+    release();
+    await blocked;
+    expect(reads).not.toBe('waited');
+  });
 });
