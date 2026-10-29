@@ -33,7 +33,7 @@ import x from '@tabler/icons/outline/x.svg?raw';
 import world from '@tabler/icons/outline/world.svg?raw';
 import pencil from '@tabler/icons/outline/pencil.svg?raw';
 
-const icons = { 'brand-google-drive': brandGoogleDrive, server, bookmarks, 'chevron-right': chevronRight, 'chevron-down': chevronDown, check, 'cloud-upload': cloudUpload, refresh, 'alert-triangle': alertTriangle, lock, history, devices, copy, settings, 'layout-dashboard': layoutDashboard, folder, folders, 'arrow-left': arrowLeft, plus, 'circle-check': circleCheck, 'player-pause': playerPause, cloud, 'shield-lock': shieldLock, 'external-link': externalLink, trash, logout, 'loader-2': loader2, 'info-circle': infoCircle, 'git-merge': gitMerge, replace, clock, x, world, pencil };
+export const icons = { 'brand-google-drive': brandGoogleDrive, server, bookmarks, 'chevron-right': chevronRight, 'chevron-down': chevronDown, check, 'cloud-upload': cloudUpload, refresh, 'alert-triangle': alertTriangle, lock, history, devices, copy, settings, 'layout-dashboard': layoutDashboard, folder, folders, 'arrow-left': arrowLeft, plus, 'circle-check': circleCheck, 'player-pause': playerPause, cloud, 'shield-lock': shieldLock, 'external-link': externalLink, trash, logout, 'loader-2': loader2, 'info-circle': infoCircle, 'git-merge': gitMerge, replace, clock, x, world, pencil };
 
 export type IconName = keyof typeof icons;
 

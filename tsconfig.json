@@ -2,7 +2,9 @@
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
     "types": ["node"],
-    "isolatedModules": true
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
   },
   "include": ["src", "test", ".wxt/wxt.d.ts", "*.ts"]
 }
