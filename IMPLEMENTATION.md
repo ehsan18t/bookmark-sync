@@ -12,7 +12,7 @@ Every milestone below is implemented. Where the code ended up differing from thi
 - **Restore** checks every plan by simulation and patches it until the result is exact (`planRestoreExact`), because re-placing a folder can expose descendants an older delete hid only through it.
 - **The large change guard** counts only existing items that would be removed, moved or edited; additions never trigger it.
 - **Device files:** `device.json` also carries the device's base frontier, its first retained batch, versions of its markers (so readers fetch a marker only when it changes) and `forkOf` notices for device ID rotations.
-- **Profile copies:** besides `createOnce` reporting a different existing batch, every cycle checks the device's newest batches for duplicates, which is how simultaneous uploads by two copies show up on Google Drive. Both copies then rotate with `dropOld`, and readers drop the old ID's ops from the reported point.
+- **Profile copies:** besides `createOnce` reporting a different existing batch, every cycle lists the device's batch folder once (`copiedPaths`) and reads only paths stored more than once among its newest 20 batches, which is how simultaneous uploads by two copies show up on Google Drive. Storage that cannot hold two files at one path leaves `copiedPaths` out and skips the check. Both copies then rotate with `dropOld`, and readers drop the old ID's ops from the reported point.
 - **WebDAV** uploads to a `.tmp-*` file in the same folder and moves it into place; listings skip those names. Leftover temporary files are not swept yet.
 - **Google Drive** stores each file's path, folder, group and kind as the appProperties `p`, `dir`, `g` and `k`. The cheap `changes.list` idle check is not implemented; each cycle lists devices and reads their `device.json`.
 - **The UI** talks to the background with `runtime.sendMessage` only; there is no long-lived port.
@@ -387,6 +387,7 @@ interface StorageProvider {
 - **Scope:** `https://www.googleapis.com/auth/drive.appdata`. All files are flat in `appDataFolder`.
 - **Locations:** stored as short `appProperties` (Drive limits each key plus value to 124 bytes): `g` (group ID), `d` (device ID), `k` (`group`, `device`, `batch`, `snap`, `marker`, plus `tmp`) and `n` (batch number, snapshot ID or marker name). The file name is a readable short name only.
 - **Lookups:** queries such as `appProperties has { key='g' and value='<g>' } and appProperties has { key='d' and value='<d>' } and appProperties has { key='n' and value='42' }`.
+- **Reading several files:** `getMany` lists each folder once by `dir` and downloads the files by ID, 6 at a time, instead of one lookup per file. Pulls read up to 20 batches of a device this way; device files, markers and snapshots are read the same way. Other storage reads 6 files at a time with `get`.
 - **`createOnce`:**
   - The file ID is reserved once with `files.generateIds` (`space=appDataFolder`) and stored in `pendingBatch`. The file is then created with that ID, so a retry gets a 409.
   - Before creating, a lookup by `(g, d, k, n)` returns any existing files. Drive cannot prevent two different IDs with the same properties, which is how profile copies show up (9.8).
@@ -545,9 +546,10 @@ cycle(group):
   3. Publish `device.json`.
   4. Record the mapped folder's current contents as creates with random IDs, in one `confirmed` batch.
 - **Discover:** list `groups/` (WebDAV) or query `k=group` (Drive), and read each `group.json` for its name and mode.
+- **Reading before joining:** the folder list and the join preview pull into a throwaway engine and keep what they pulled for 5 minutes, per account and group. The next folder list, preview or the join itself starts from that copy and pulls only newer batches; joining clears it.
 - **Join:**
   1. Read the group header and unlock it if encrypted.
-  2. Wait for a consistent view: two reads in a row of every `device.json` agree on `lastBatchNo`. If they don't, wait 5 seconds and retry, for up to 1 minute.
+  2. Wait for a consistent view: two reads in a row of every `device.json` agree on `lastBatchNo`. The reads are 2 seconds apart; if they don't agree, retry for up to 12 rounds.
   3. Publish this device's `device.json` before its first batch. `bound` must come from an HLC that has already observed the server time and every op read.
   4. Load the newest complete snapshot (9.7) and every batch after it, then replay.
   5. Build the local tree `L` of the mapped folder.

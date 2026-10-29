@@ -114,6 +114,32 @@ describe('google drive specifics', () => {
   });
 });
 
+describe('google drive batched reads', () => {
+  it('reads several files with one listing per folder and reports copies that differ', async () => {
+    const { DuplicateFileError } = await import('../../src/engine/ports.js');
+    const drive = new FakeDrive();
+    const auth = { token: async () => 'good', refresh: async () => 'good' };
+    const one = new DriveProvider(auth, drive.fetch);
+    const two = new DriveProvider(auth, drive.fetch);
+    const dir = 'groups/g/devices/d/batches';
+    await one.createOnce(`${dir}/1.json`, bytes('a'));
+    await Promise.all([one.createOnce(`${dir}/2.json`, bytes('b')), two.createOnce(`${dir}/2.json`, bytes('c'))]);
+    await one.createOnce('groups/g/devices/d/device.json', bytes('info'));
+    let listings = 0;
+    const counted = new DriveProvider(auth, async (input, init) => {
+      if (String(input).includes('/drive/v3/files?')) listings++;
+      return drive.fetch(input, init);
+    });
+    const res = await counted.getMany([`${dir}/1.json`, `${dir}/2.json`, `${dir}/3.json`, 'groups/g/devices/d/device.json']);
+    expect(listings).toBe(2);
+    expect(res[0]).toEqual({ status: 'fulfilled', value: bytes('a') });
+    expect(res[1]!.status === 'rejected' && res[1]!.reason).toBeInstanceOf(DuplicateFileError);
+    expect(res[2]).toEqual({ status: 'fulfilled', value: null });
+    expect(text((res[3] as PromiseFulfilledResult<Uint8Array>).value)).toBe('info');
+    expect(await counted.copiedPaths(dir)).toEqual([`${dir}/2.json`]);
+  });
+});
+
 describe('google drive retries', () => {
   it('treats byte-identical copies of a file as one file and removes the extras', async () => {
     const drive = new FakeDrive();
