@@ -5,9 +5,9 @@ import { BridgeTakenError, UserError } from '../core/errors.js';
 import { DAY } from '../core/frontier.js';
 import { EVERYTHING_ROOTS, type PlaceHint, type RandomBytes, ROOT_GROUP, type RootType, randomId } from '../core/ids.js';
 import { sameNameKey } from '../core/names.js';
-import type { Kind } from '../core/ops.js';
 import type { Excluded, LiveNode } from '../core/reconcile.js';
 import { ProviderAuthError } from '../storage/webdav.js';
+import { recreate, removeAll } from './apply.js';
 import {
   type EnginePorts,
   type GroupConfig,
@@ -629,10 +629,10 @@ export class SyncApp {
       const index = (id: string) => at.get(id) ?? { parentId: '', index: -1 };
       if ('remove' in action) {
         entry.label = `Removed ${action.remove.length} ${action.remove.length === 1 ? 'duplicate' : 'duplicates'}`;
-        for (const id of action.remove) {
-          if (!synced(id)) entry.removed.push({ ...index(id), node: await this.deps.bookmarks.getSubTree(id) });
-          await this.deps.bookmarks.removeTree(id);
-        }
+        const unsynced = action.remove.filter((id) => !synced(id));
+        const nodes = await Promise.all(unsynced.map((id) => this.deps.bookmarks.getSubTree(id)));
+        entry.removed.push(...unsynced.map((id, i) => ({ ...index(id), node: nodes[i]! })));
+        await removeAll(this.deps.bookmarks, action.remove);
       } else {
         entry.label = `Moved ${action.move.length} ${action.move.length === 1 ? 'duplicate' : 'duplicates'}`;
         for (const id of action.move) {
@@ -663,11 +663,7 @@ export class SyncApp {
       const entry = this.meta.localUndo.find((u) => u.id === id);
       if (!entry) return;
       for (const m of entry.moved) if (await this.deps.bookmarks.exists(m.localId)) await this.deps.bookmarks.move(m.localId, { parentId: m.parentId, index: m.index });
-      const rebuild = async (parentId: string, n: LiveNode, index?: number) => {
-        const created = await this.deps.bookmarks.create({ parentId, index, kind: n.kind as Kind, title: n.title, url: n.url });
-        for (const c of n.children ?? []) await rebuild(created, c);
-      };
-      for (const r of entry.removed) if (await this.deps.bookmarks.exists(r.parentId)) await rebuild(r.parentId, r.node, r.index);
+      for (const r of entry.removed) if (await this.deps.bookmarks.exists(r.parentId)) await recreate(this.deps.bookmarks, r.parentId, [r.node], undefined, r.index);
       this.meta.localUndo = this.meta.localUndo.filter((u) => u.id !== id);
       await this.saveMeta();
     });
