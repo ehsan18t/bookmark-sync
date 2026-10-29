@@ -112,9 +112,10 @@ export interface RootsPort {
   /** The browser's top-level folders, for scanning every bookmark. */
   topLevel(): Promise<string[]>;
   folders(): Promise<LocalFolder[]>;
-  pathOf(localId: string): Promise<string>;
-  /** Where a local folder sits, as a hint other browsers can follow. Null outside the synced root folders. */
-  describe(localId: string): Promise<{ title: string; hint: PlaceHint | null }>;
+  /** Each folder's path, or null for one that no longer exists. */
+  pathsOf(localIds: string[]): Promise<(string | null)[]>;
+  /** Where each local folder sits, as a hint other browsers can follow. Null outside the synced root folders. */
+  describe(localIds: string[]): Promise<{ title: string; hint: PlaceHint | null }[]>;
   /** The folder at `hint`. Missing folders are created with `create`, or read as a pending ID without it. */
   resolve(hint: PlaceHint, create: boolean): Promise<string>;
 }
@@ -164,6 +165,8 @@ export interface GroupSummary {
   /** Syncs this one shares a folder with: linked on this browser (`via` null) or through another browser. */
   links: { name: string; via: string | null }[];
 }
+
+type Inside = (inner: string, outer: string) => boolean;
 
 export class SyncApp {
   private meta!: AppMeta;
@@ -264,11 +267,11 @@ export class SyncApp {
       let resolved: { mapping: Record<string, string>; excluded: [string, Excluded][]; tops?: NewTop[] };
       if (input.mode === 'folder') {
         if (input.target.kind !== 'folders' || !input.target.folderIds.length) throw new UserError('Pick at least one folder to sync.');
-        const tops: NewTop[] = [];
-        for (const folderId of input.target.folderIds) {
-          const { title, hint } = await this.deps.roots.describe(folderId);
-          tops.push({ id: randomId(this.deps.random), title, hint: hint ?? { root: 'other', path: [title] } });
-        }
+        const tops: NewTop[] = (await this.deps.roots.describe(input.target.folderIds)).map(({ title, hint }) => ({
+          id: randomId(this.deps.random),
+          title,
+          hint: hint ?? { root: 'other', path: [title] },
+        }));
         resolved = { mapping: Object.fromEntries(tops.map((t, i) => [t.id, input.target.kind === 'folders' ? input.target.folderIds[i]! : ''])), excluded: [], tops };
       } else {
         resolved = await this.resolveTarget(input.mode, input.target, true);
@@ -349,8 +352,8 @@ export class SyncApp {
     });
   }
 
-  devices(groupId: string) {
-    return this.run(async () => this.engine(groupId).devices());
+  async devices(groupId: string) {
+    return this.engine(groupId).devices();
   }
 
   // Parts this browser holds
@@ -384,11 +387,12 @@ export class SyncApp {
   addTops(groupId: string, folderIds: string[], takeover?: boolean): Promise<void> {
     return this.run(async () => {
       const e = this.engine(groupId);
-      const tops: (NewTop & { localId: string })[] = [];
-      for (const localId of folderIds) {
-        const { title, hint } = await this.deps.roots.describe(localId);
-        tops.push({ id: randomId(this.deps.random), title, hint: hint ?? { root: 'other', path: [title] }, localId });
-      }
+      const tops: (NewTop & { localId: string })[] = (await this.deps.roots.describe(folderIds)).map(({ title, hint }, i) => ({
+        id: randomId(this.deps.random),
+        title,
+        hint: hint ?? { root: 'other', path: [title] },
+        localId: folderIds[i]!,
+      }));
       await this.checkNesting({ ...e.state.config.mapping, ...Object.fromEntries(tops.map((t) => [t.id, t.localId])) });
       await this.checkBridge(groupId, Object.fromEntries(tops.map((t) => [t.id, t.localId])), takeover);
       await e.addTops(tops);
@@ -423,12 +427,12 @@ export class SyncApp {
 
   // History
 
-  timeline(groupId: string): Promise<TimelineEntry[]> {
-    return this.run(async () => this.engine(groupId).timeline());
+  async timeline(groupId: string): Promise<TimelineEntry[]> {
+    return this.engine(groupId).timeline();
   }
 
-  previewRestore(groupId: string, hlc: string) {
-    return this.run(async () => this.engine(groupId).previewRestore(hlc));
+  async previewRestore(groupId: string, hlc: string) {
+    return this.engine(groupId).previewRestore(hlc);
   }
 
   restore(groupId: string, hlc: string): Promise<number> {
@@ -525,52 +529,52 @@ export class SyncApp {
     });
   }
 
-  status(): Promise<GroupSummary[]> {
-    return this.run(async () => {
-      const out: GroupSummary[] = [];
-      for (const e of this.engines.values()) {
-        const c = e.state.config;
-        const g = e.state.guard;
-        const m = e.migrationProgress();
-        const tops = new Set(
-          c.mode === 'folder'
-            ? e
-                .folders()
-                .filter((f) => f.parent === ROOT_GROUP)
-                .map((f) => f.id)
-            : [],
-        );
-        const parts: GroupPart[] = [];
-        for (const [part, local] of Object.entries(c.mapping)) {
-          const path = (await this.deps.bookmarks.exists(local)) ? await this.deps.roots.pathOf(local) : 'A deleted folder';
-          parts.push({ part, path, top: tops.has(part) });
-        }
-        const whole = c.mode === 'everything' && EVERYTHING_ROOTS.every((r) => c.mapping[r] !== undefined);
-        const paths = parts.map((p) => p.path);
-        out.push({
-          groupId: c.groupId,
-          name: c.name,
-          accountId: c.accountId,
-          mode: c.mode,
-          location: whole ? 'All bookmarks' : paths.length > 2 ? `${paths.slice(0, 2).join(', ')} and ${paths.length - 2} more` : paths.join(', ') || 'No folders',
-          parts: whole ? [] : parts,
-          held: Object.values(c.mapping),
-          notices: [...e.notices],
-          encrypted: c.encrypted,
-          bookmarks: [...e.mirror().nodes.values()].filter((n) => n.kind === 'bookmark').length,
-          status: e.status,
-          lastSyncAt: this.lastSyncAt.get(c.groupId) ?? null,
-          lastError: this.lastError.get(c.groupId) ?? null,
-          pendingChanges: e.state.outbox.length + (e.state.pendingBatch?.ops.length ?? 0),
-          guard: g ? { kind: g.kind, count: g.count, total: g.total } : null,
-          migration: m ? { waitingFor: m.waitingFor, initiator: m.initiator } : null,
-          restorePoints: e.state.restorePoints,
-          oldestRestorable: e.oldestRestorable,
-          canUndoJoin: !!e.state.join && !e.state.join.created,
-          links: [...Object.values(e.ownLinks()).map((l) => ({ name: l.name, via: null })), ...e.otherLinks().map((l) => ({ name: l.name, via: l.device }))],
-        });
-      }
-      return out;
+  /**
+   * Reads what the engines hold without waiting for a running sync; the snapshot after it shows its result.
+   * Keyed by `engines`, not the engine's own ID, which a migration changes before the app moves it.
+   */
+  async status(): Promise<GroupSummary[]> {
+    const engines = [...this.engines].map(([groupId, e]) => ({ groupId, e, mapping: { ...e.state.config.mapping } }));
+    const locals = engines.flatMap((x) => Object.values(x.mapping));
+    const found = await this.deps.roots.pathsOf(locals);
+    const pathOf = new Map(locals.map((l, i) => [l, found[i] ?? 'A deleted folder']));
+    return engines.map(({ groupId, e, mapping }) => {
+      const c = e.state.config;
+      const g = e.state.guard;
+      const m = e.migrationProgress();
+      const tops = new Set(
+        c.mode === 'folder'
+          ? e
+              .folders()
+              .filter((f) => f.parent === ROOT_GROUP)
+              .map((f) => f.id)
+          : [],
+      );
+      const parts: GroupPart[] = Object.entries(mapping).map(([part, local]) => ({ part, path: pathOf.get(local)!, top: tops.has(part) }));
+      const whole = c.mode === 'everything' && EVERYTHING_ROOTS.every((r) => mapping[r] !== undefined);
+      const paths = parts.map((p) => p.path);
+      return {
+        groupId,
+        name: c.name,
+        accountId: c.accountId,
+        mode: c.mode,
+        location: whole ? 'All bookmarks' : paths.length > 2 ? `${paths.slice(0, 2).join(', ')} and ${paths.length - 2} more` : paths.join(', ') || 'No folders',
+        parts: whole ? [] : parts,
+        held: Object.values(mapping),
+        notices: [...e.notices],
+        encrypted: c.encrypted,
+        bookmarks: [...e.mirror().nodes.values()].filter((n) => n.kind === 'bookmark').length,
+        status: e.status,
+        lastSyncAt: this.lastSyncAt.get(groupId) ?? null,
+        lastError: this.lastError.get(groupId) ?? null,
+        pendingChanges: e.state.outbox.length + (e.state.pendingBatch?.ops.length ?? 0),
+        guard: g ? { kind: g.kind, count: g.count, total: g.total } : null,
+        migration: m ? { waitingFor: m.waitingFor, initiator: m.initiator } : null,
+        restorePoints: e.state.restorePoints,
+        oldestRestorable: e.oldestRestorable,
+        canUndoJoin: !!e.state.join && !e.state.join.created,
+        links: [...Object.values(e.ownLinks()).map((l) => ({ name: l.name, via: null })), ...e.otherLinks().map((l) => ({ name: l.name, via: l.device }))],
+      };
     });
   }
 
@@ -619,22 +623,20 @@ export class SyncApp {
     const done = this.run(async () => {
       for (const e of this.engines.values()) await e.recordLocalChanges();
       const entry: UndoEntry = { id: randomId(this.deps.random, 8), at: this.deps.clock.now(), label: '', removed: [], moved: [] };
-      const synced = (id: string) => [...this.engines.values()].some((e) => e.state.idmap.some(([l]) => l === id));
-      const index = async (id: string) => {
-        const parent = await this.deps.bookmarks.parentOf(id);
-        const kids = parent ? ((await this.deps.bookmarks.getSubTree(parent)).children ?? []) : [];
-        return { parentId: parent ?? '', index: kids.findIndex((k) => k.localId === id) };
-      };
+      const syncedIds = new Set([...this.engines.values()].flatMap((e) => e.state.idmap.map(([l]) => l)));
+      const synced = (id: string) => syncedIds.has(id);
+      const at = await this.deps.bookmarks.positions();
+      const index = (id: string) => at.get(id) ?? { parentId: '', index: -1 };
       if ('remove' in action) {
         entry.label = `Removed ${action.remove.length} ${action.remove.length === 1 ? 'duplicate' : 'duplicates'}`;
         for (const id of action.remove) {
-          if (!synced(id)) entry.removed.push({ ...(await index(id)), node: await this.deps.bookmarks.getSubTree(id) });
+          if (!synced(id)) entry.removed.push({ ...index(id), node: await this.deps.bookmarks.getSubTree(id) });
           await this.deps.bookmarks.removeTree(id);
         }
       } else {
         entry.label = `Moved ${action.move.length} ${action.move.length === 1 ? 'duplicate' : 'duplicates'}`;
         for (const id of action.move) {
-          if (!synced(id)) entry.moved.push({ localId: id, ...(await index(id)) });
+          if (!synced(id)) entry.moved.push({ localId: id, ...index(id) });
           await this.deps.bookmarks.move(id, { parentId: action.folderId });
         }
       }
@@ -672,11 +674,11 @@ export class SyncApp {
   }
 
   folders() {
-    return this.run(() => this.deps.roots.folders());
+    return this.deps.roots.folders();
   }
 
-  diagnostics(): Promise<unknown> {
-    return this.run(async () => ({
+  async diagnostics(): Promise<unknown> {
+    return {
       at: new Date(this.deps.clock.now()).toISOString(),
       browser: this.deps.browser,
       settings: this.meta.settings,
@@ -691,7 +693,7 @@ export class SyncApp {
         devices: Object.keys(e.state.cursors).length,
         lastError: this.rawError.get(e.groupId) ?? null,
       })),
-    }));
+    };
   }
 
   // Internals
@@ -710,9 +712,12 @@ export class SyncApp {
       this.lastError.delete(g);
       this.rawError.delete(g);
       this.backoffUntil.delete(g);
+      this.failures.delete(g);
       if (res.migratedTo) {
         this.engines.delete(g);
         this.engines.set(res.migratedTo, e);
+        this.lastSyncAt.set(res.migratedTo, this.lastSyncAt.get(g)!);
+        this.lastSyncAt.delete(g);
         this.meta.groups = [...this.meta.groups.filter((x) => x !== g), res.migratedTo];
         await this.deps.store.deleteKey(g);
         await this.saveMeta();
@@ -736,22 +741,23 @@ export class SyncApp {
 
   /** Folders of one sync nested inside each other pause it; folders shared with other syncs are allowed. */
   private async checkMappingOverlaps(): Promise<void> {
+    const inside = await this.insideCheck();
     for (const e of this.engines.values()) {
       if (this.wholeTreeMapping(e.state.config)) continue;
       const folders = Object.values(e.state.config.mapping).filter((local) => !local.startsWith(PENDING_PREFIX));
       for (const a of folders) {
         for (const b of folders) {
-          if (a !== b && (await this.isInside(a, b))) await e.pause('mapping-overlap' as PauseReason, e.state.config.name);
+          if (a !== b && inside(a, b)) await e.pause('mapping-overlap' as PauseReason, e.state.config.name);
         }
       }
     }
   }
 
   /** Whether two syncs hold a folder in common, the same one or one inside the other. */
-  private async shareFolders(a: GroupEngine, b: GroupEngine): Promise<boolean> {
+  private shareFolders(a: GroupEngine, b: GroupEngine, inside: Inside): boolean {
     const live = (e: GroupEngine) => Object.values(e.state.config.mapping).filter((l) => !l.startsWith(PENDING_PREFIX));
     for (const x of live(a)) {
-      for (const y of live(b)) if (x === y || (await this.isInside(x, y)) || (await this.isInside(y, x))) return true;
+      for (const y of live(b)) if (x === y || inside(x, y) || inside(y, x)) return true;
     }
     return false;
   }
@@ -759,11 +765,8 @@ export class SyncApp {
   /** Marks syncs that share folders with another sync here. */
   private async markBridges(): Promise<void> {
     const all = [...this.engines.values()];
-    for (const e of all) {
-      let bridged = false;
-      for (const o of all) if (o !== e && (await this.shareFolders(e, o))) bridged = true;
-      e.bridged = bridged;
-    }
+    const inside = all.length > 1 ? await this.insideCheck() : () => false;
+    for (const e of all) e.bridged = all.some((o) => o !== e && this.shareFolders(e, o, inside));
   }
 
   /**
@@ -791,14 +794,14 @@ export class SyncApp {
 
   /** This device claims the pairs it bridges, and releases a pair another device claimed later (docs/design/shared-folders.md, decisions 4 and 5). */
   private async settleBridges(e: GroupEngine, takeover = false): Promise<void> {
-    const partners: GroupEngine[] = [];
-    for (const p of this.engines.values()) if (p !== e && (await this.shareFolders(e, p))) partners.push(p);
+    const inside = await this.insideCheck();
+    const partners = [...this.engines.values()].filter((p) => p !== e && this.shareFolders(e, p, inside));
     // Decide on fresh claims, so a release happens before this pass carries anything across.
     for (const x of [e, ...partners]) await x.refreshMarkers().catch(() => {});
     const links = { ...e.ownLinks() };
     for (const id of Object.keys(links)) {
       const p = this.engines.get(id);
-      if (!p || !(await this.shareFolders(e, p))) delete links[id];
+      if (!p || !this.shareFolders(e, p, inside)) delete links[id];
     }
     for (const p of partners) {
       const mine = Math.max(links[p.groupId]?.at ?? 0, p.ownLinks()[e.groupId]?.at ?? 0);
@@ -810,7 +813,7 @@ export class SyncApp {
             .filter((c) => c.at > mine || (c.at === mine && c.device > self))
             .sort((x, y) => y.at - x.at)[0];
       if (newer) {
-        await this.release(e, p, newer.device);
+        await this.release(e, p, newer.device, inside);
         delete links[p.groupId];
         await p.setLinks(Object.fromEntries(Object.entries(p.ownLinks()).filter(([k]) => k !== e.groupId))).catch(() => {});
       } else if (!links[p.groupId] || takeover) {
@@ -829,7 +832,7 @@ export class SyncApp {
    * sync's folder stops syncing in its own sync, so the outer sync keeps everything; the same folder stays in the sync
    * that held it first. Two syncs of all bookmarks can't drop anything, so the later one pauses.
    */
-  private async release(a: GroupEngine, b: GroupEngine, device: string): Promise<void> {
+  private async release(a: GroupEngine, b: GroupEngine, device: string, inside: Inside): Promise<void> {
     const order = this.meta.groups;
     const [first, later] = order.indexOf(a.groupId) <= order.indexOf(b.groupId) ? [a, b] : [b, a];
     const live = (e: GroupEngine) => Object.entries(e.state.config.mapping).filter(([, l]) => !l.startsWith(PENDING_PREFIX));
@@ -841,7 +844,7 @@ export class SyncApp {
       if (this.wholeTreeMapping(drop.state.config)) continue;
       for (const [part, local] of live(drop)) {
         for (const [, held] of live(keep)) {
-          const inner = await this.isInside(local, held);
+          const inner = inside(local, held);
           if (inner || (local === held && drop === later)) drops.push([drop, part, keep]);
         }
       }
@@ -856,7 +859,7 @@ export class SyncApp {
     }
     for (const [drop, part, keep] of drops) {
       if (!drop.state.config.mapping[part]) continue;
-      const path = await this.deps.roots.pathOf(drop.state.config.mapping[part]!);
+      const path = (await this.deps.roots.pathsOf([drop.state.config.mapping[part]!]))[0] ?? '';
       await drop.removePart(part, false);
       drop.addNotice(
         `${device} now links “${keep.state.config.name}” and “${drop.state.config.name}”. “${path}” stays in “${keep.state.config.name}” here and no longer syncs in “${drop.state.config.name}”.`,
@@ -878,15 +881,14 @@ export class SyncApp {
   private async checkBridge(groupId: string, mapping: Record<string, string>, takeover = false): Promise<void> {
     if (takeover) return;
     for (const e of this.engines.values()) await e.refreshMarkers().catch(() => {});
+    const inside = await this.insideCheck();
     const mine = Object.values(mapping)
       .map((l) => pendingAnchor(l) ?? l)
       .filter((l) => !l.startsWith(PENDING_PREFIX));
     for (const p of this.engines.values()) {
       if (p.groupId === groupId) continue;
       const held = Object.values(p.state.config.mapping).filter((l) => !l.startsWith(PENDING_PREFIX));
-      let shared = false;
-      for (const m of mine) for (const h of held) if (m === h || (await this.isInside(m, h)) || (await this.isInside(h, m))) shared = true;
-      if (!shared) continue;
+      if (!mine.some((m) => held.some((h) => m === h || inside(m, h) || inside(h, m)))) continue;
       const taken = this.takenBy(groupId, p);
       const own = Math.max(p.ownLinks()[groupId]?.at ?? 0, this.engines.get(groupId)?.ownLinks()[p.groupId]?.at ?? 0);
       if (taken && taken.at > own) throw new BridgeTakenError(`${taken.device} already links this sync with “${p.state.config.name}” through a shared folder.`);
@@ -896,9 +898,10 @@ export class SyncApp {
   /** Syncs sharing a folder with `source`, after recording their pending changes unconfirmed so the big-change guard still sees them. */
   private async recordBeforeBridge(source: GroupEngine): Promise<GroupEngine[]> {
     if (!source.bridged) return [];
+    const inside = await this.insideCheck();
     const ready: GroupEngine[] = [];
     for (const e of this.engines.values()) {
-      if (e === source || !(await this.shareFolders(source, e))) continue;
+      if (e === source || !this.shareFolders(source, e, inside)) continue;
       try {
         await e.recordLocalChanges();
         ready.push(e);
@@ -928,28 +931,32 @@ export class SyncApp {
     return c.mode === 'everything' && EVERYTHING_ROOTS.every((r) => c.mapping[r] !== undefined);
   }
 
-  private async isInside(inner: string, outer: string): Promise<boolean> {
-    for (let cur: string | null = await this.deps.bookmarks.parentOf(inner); cur; cur = await this.deps.bookmarks.parentOf(cur)) {
-      if (cur === outer) return true;
-    }
-    return false;
+  /** Reads the bookmark tree once and answers from it whether `inner` sits below `outer`. */
+  private async insideCheck(): Promise<Inside> {
+    const at = await this.deps.bookmarks.positions();
+    return (inner, outer) => {
+      for (let cur = at.get(inner)?.parentId; cur; cur = at.get(cur)?.parentId) if (cur === outer) return true;
+      return false;
+    };
   }
 
   /** Rejects folders of one sync that sit inside each other. Other syncs may share them. */
-  private async checkNesting(mapping: Record<string, string>): Promise<void> {
+  private async checkNesting(mapping: Record<string, string>, inside?: Inside): Promise<void> {
     const mine = Object.values(mapping).filter((l) => !l.startsWith(PENDING_PREFIX) || pendingAnchor(l));
+    if (mine.length < 2) return;
+    const within = inside ?? (await this.insideCheck());
     // A folder still to be made is empty and sits below its anchor, so only the anchor being inside the other folder counts.
-    const nested = async (a: string, b: string): Promise<boolean> => {
+    const nested = (a: string, b: string): boolean => {
       if (a === b) return true;
       const anchorA = pendingAnchor(a);
       const anchorB = pendingAnchor(b);
       if (anchorA && anchorB) return false;
-      if (anchorA) return anchorA === b || (await this.isInside(anchorA, b));
-      if (anchorB) return anchorB === a || (await this.isInside(anchorB, a));
-      return (await this.isInside(a, b)) || (await this.isInside(b, a));
+      if (anchorA) return anchorA === b || within(anchorA, b);
+      if (anchorB) return anchorB === a || within(anchorB, a);
+      return within(a, b) || within(b, a);
     };
     for (const [i, a] of mine.entries()) {
-      for (const b of mine.slice(i + 1)) if (await nested(a, b)) throw new UserError('Two of the folders are inside each other. Pick only the outer one.');
+      for (const b of mine.slice(i + 1)) if (nested(a, b)) throw new UserError('Two of the folders are inside each other. Pick only the outer one.');
     }
   }
 
@@ -962,8 +969,9 @@ export class SyncApp {
     const name = hint.path.at(-1) ?? title;
     const own = this.engines.get(groupId)?.state.config.mapping ?? {};
     const at = await this.deps.roots.resolve(parent, false);
+    const inside = await this.insideCheck();
     try {
-      await this.checkNesting({ ...own, new: at.startsWith(PENDING_PREFIX) ? at : pendingAt(at, [name]) });
+      await this.checkNesting({ ...own, new: at.startsWith(PENDING_PREFIX) ? at : pendingAt(at, [name]) }, inside);
     } catch (e) {
       if (e instanceof UserError) return null;
       throw e;
@@ -973,7 +981,7 @@ export class SyncApp {
     for (const e of this.engines.values()) {
       if (e.groupId === groupId) continue;
       for (const held of Object.values(e.state.config.mapping)) {
-        if (!held.startsWith(PENDING_PREFIX) && (anchor === held || (await this.isInside(anchor, held)))) return null;
+        if (!held.startsWith(PENDING_PREFIX) && (anchor === held || inside(anchor, held))) return null;
       }
     }
     return this.deps.bookmarks.create({ parentId: await this.deps.roots.resolve(parent, true), kind: 'folder', title: name, url: '' });

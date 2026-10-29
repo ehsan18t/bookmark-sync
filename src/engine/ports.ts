@@ -29,7 +29,8 @@ export interface BookmarksPort {
   readonly supportsSeparators: boolean;
   getSubTree(localId: string): Promise<LiveNode>;
   exists(localId: string): Promise<boolean>;
-  parentOf(localId: string): Promise<string | null>;
+  /** Where every bookmark sits, from one read of the whole tree. */
+  positions(): Promise<Map<string, { parentId: string; index: number }>>;
   create(args: { parentId: string; index?: number; kind: Kind; title: string; url: string }): Promise<string>;
   update(localId: string, changes: { title?: string; url?: string }): Promise<void>;
   move(localId: string, dest: { parentId: string; index?: number }): Promise<void>;

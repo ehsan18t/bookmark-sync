@@ -27,6 +27,23 @@ async function chromiumRoots(): Promise<{ bar: Node; other: Node; all: Node[] }>
   return { bar: pick('bookmarks-bar', 0), other: pick('other', 1), all: kids };
 }
 
+async function nodesById(): Promise<Map<string, Node>> {
+  const out = new Map<string, Node>();
+  const walk = (n: Node) => {
+    out.set(n.id, n);
+    for (const c of (n.children ?? []) as Node[]) walk(c);
+  };
+  for (const r of (await browser.bookmarks.getTree()) as Node[]) walk(r);
+  return out;
+}
+
+/** From the browser's top-level folder down to `localId`; the invisible tree root is left out. */
+function chainOf(byId: ReadonlyMap<string, Node>, localId: string): Node[] {
+  const chain: Node[] = [];
+  for (let n = byId.get(localId); n?.parentId; n = byId.get(n.parentId)) chain.unshift(n);
+  return chain;
+}
+
 const CHROMIUM_TYPES: Record<string, RootType> = { 'bookmarks-bar': 'toolbar', other: 'other', mobile: 'mobile' };
 
 function rootType(engine: Engine, top: Node): RootType | undefined {
@@ -93,22 +110,20 @@ export function browserRoots(engine: Engine): RootsPort {
       return out;
     },
 
-    async describe(localId) {
-      const chain: Node[] = [];
-      for (let id: string | undefined = localId; id; ) {
-        const found: Node[] = await browser.bookmarks.get(id).catch(() => []);
-        const n = found[0];
-        if (!n?.parentId) break;
-        chain.unshift(n);
-        id = n.parentId;
-      }
-      const title = chain.at(-1)?.title ?? '';
-      const top = chain[0];
-      const type = top && rootType(engine, top);
-      if (!type) return { title, hint: null };
-      const path = chain.slice(1).map((n) => n.title);
-      if (engine === 'chromium' && type === 'other' && path.length && chain[1]!.id === (await existingHelper(top.id))) return { title, hint: { root: 'menu', path: path.slice(1) } };
-      return { title, hint: { root: type, path } };
+    async describe(localIds) {
+      const byId = await nodesById();
+      return Promise.all(
+        localIds.map(async (localId) => {
+          const chain = chainOf(byId, localId);
+          const title = chain.at(-1)?.title ?? '';
+          const top = chain[0];
+          const type = top && rootType(engine, top);
+          if (!type) return { title, hint: null };
+          const path = chain.slice(1).map((n) => n.title);
+          if (engine === 'chromium' && type === 'other' && path.length && chain[1]!.id === (await existingHelper(top.id))) return { title, hint: { root: 'menu' as const, path: path.slice(1) } };
+          return { title, hint: { root: type, path } };
+        }),
+      );
     },
 
     async resolve(hint, create) {
@@ -139,16 +154,15 @@ export function browserRoots(engine: Engine): RootsPort {
       return parent;
     },
 
-    async pathOf(localId) {
-      const parts: string[] = [];
-      for (let id: string | undefined = localId; id; ) {
-        const found: Node[] = await browser.bookmarks.get(id).catch(() => []);
-        const n = found[0];
-        if (!n?.parentId) break;
-        parts.unshift(n.title || '(untitled)');
-        id = n.parentId;
-      }
-      return parts.join(' / ');
+    async pathsOf(localIds) {
+      const byId = await nodesById();
+      return localIds.map((id) =>
+        byId.has(id)
+          ? chainOf(byId, id)
+              .map((n) => n.title || '(untitled)')
+              .join(' / ')
+          : null,
+      );
     },
   };
 }

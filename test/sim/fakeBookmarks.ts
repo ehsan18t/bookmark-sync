@@ -38,12 +38,13 @@ export function fakeRoots(bm: FakeBookmarks): RootsPort {
         const parent = bm.node(id).parent;
         return { id, parentId: parent === FAKE_TOP ? null : parent, title: bm.node(id).title, path: path(id), ...(ROOT_TYPE[id] ? { root: ROOT_TYPE[id] } : {}) };
       }),
-    pathOf: async (id) => path(id),
-    describe: async (id) => {
-      const [top, ...rest] = chain(id);
-      const root = top ? ROOT_TYPE[top] : undefined;
-      return { title: bm.node(id).title, hint: root ? { root, path: rest.map((x) => bm.node(x).title) } : null };
-    },
+    pathsOf: async (ids) => ids.map((id) => (bm.has(id) ? path(id) : null)),
+    describe: async (ids) =>
+      ids.map((id) => {
+        const [top, ...rest] = chain(id);
+        const root = top ? ROOT_TYPE[top] : undefined;
+        return { title: bm.node(id).title, hint: root ? { root, path: rest.map((x) => bm.node(x).title) } : null };
+      }),
     resolve: async (hint, create) => {
       let cur: string = { toolbar: FAKE_ROOTS.toolbar, other: FAKE_ROOTS.other, menu: FAKE_ROOTS.menu, mobile: FAKE_ROOTS.other }[hint.root];
       for (const [i, title] of hint.path.entries()) {
@@ -81,8 +82,10 @@ export class FakeBookmarks implements BookmarksPort {
     return this.nodes.has(localId);
   }
 
-  async parentOf(localId: string): Promise<string | null> {
-    return this.nodes.get(localId)?.parent ?? null;
+  async positions(): Promise<Map<string, { parentId: string; index: number }>> {
+    const out = new Map<string, { parentId: string; index: number }>();
+    for (const n of this.nodes.values()) for (const [index, c] of n.children.entries()) out.set(c, { parentId: n.id, index });
+    return out;
   }
 
   /** URLs this browser refuses, like Firefox with javascript: bookmarks created by extensions. */
