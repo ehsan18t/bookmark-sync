@@ -3,7 +3,7 @@ import { errorText, h, send } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import '../../ui/styles.css';
 import { isTab, renderDashboard } from './dashboard.js';
-import { renderSetup } from './setup.js';
+import { renderSetup } from './Setup.js';
 import { load, state } from './shared.js';
 
 const app = document.getElementById('app')!;
