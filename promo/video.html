@@ -18,8 +18,6 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 #stage { position: absolute; inset: 0; overflow: hidden; }
 .layer { position: absolute; inset: 0; }
 .grid { position: absolute; inset: -128px; background-image: linear-gradient(rgba(148,163,184,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.055) 1px, transparent 1px); background-size: 64px 64px; mask-image: radial-gradient(ellipse at 50% 48%, #000 15%, transparent 68%); }
-.blob { position: absolute; left: 0; top: 0; border-radius: 50%; filter: blur(140px); }
-.vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,.55)); pointer-events: none; }
 
 .head { position: absolute; left: 0; right: 0; top: 74px; text-align: center; font-size: 66px; font-weight: 650; letter-spacing: -0.028em; line-height: 1.1; }
 .head .w { display: inline-block; white-space: pre; }
@@ -76,7 +74,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 .page img { width: 1180px; display: block; }
 .cursor { position: absolute; left: 0; top: 0; margin: -3px 0 0 -5px; filter: drop-shadow(0 4px 6px rgba(0,0,0,.35)); transform-origin: 5px 3px; }
 .ripple { position: absolute; left: 0; top: 0; width: 70px; height: 70px; margin: -35px 0 0 -35px; border-radius: 50%; background: rgba(37,99,235,.28); border: 2px solid rgba(37,99,235,.8); }
-.flash { position: absolute; inset: 0; background: radial-gradient(circle at 50% 46%, rgba(140,180,255,.55), rgba(90,110,255,.12) 40%, transparent 70%); pointer-events: none; }
+.flash { position: absolute; inset: 0; background: #6f9bff; pointer-events: none; }
+.burst { position: absolute; left: 0; top: 0; width: 300px; height: 300px; margin: -150px 0 0 -150px; border-radius: 50%; border: 3px solid rgba(160,190,255,.9); }
 .spark { position: absolute; left: 0; top: 0; border-radius: 50%; background: #b8ccff; }
 .shine { background: linear-gradient(100deg, #e8ecf3 0%, #e8ecf3 42%, #ffffff 50%, #a9c4ff 54%, #e8ecf3 62%, #e8ecf3 100%); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; }
 .steps { position: absolute; left: 120px; top: 330px; display: flex; gap: 10px; }
@@ -93,7 +92,6 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
   <div class="layer" id="world"><svg class="layer" id="lines" width="1920" height="1080"></svg></div>
   <div class="layer" id="product"></div>
   <div class="layer" id="outro"></div>
-  <div class="vignette"></div>
   <div class="flash" id="flash" style="opacity:0"></div>
   <div class="layer" id="fade" style="background:#000;opacity:0"></div>
 </div>
@@ -127,15 +125,36 @@ const px = ([x, y]) => `${x}px ${y}px`;
 
 const bg = $('#bg'), world = $('#world'), lines = $('#lines'), product = $('#product'), outro = $('#outro');
 
-const blobs = [
-  { c: '#1d4ed8', s: 760, from: [-200, -260], to: [160, -120], o: .45 },
-  { c: '#7c3aed', s: 680, from: [1400, 600], to: [1080, 420], o: .32 },
-  { c: '#0ea5e9', s: 520, from: [1500, -200], to: [1300, -40], o: .2 },
+// Flat colour and crisp lines only: large soft gradients band once the video is compressed.
+const SVGNS = 'http://www.w3.org/2000/svg';
+const orbits = document.createElementNS(SVGNS, 'svg');
+Object.entries({ width: 1920, height: 1080, class: 'layer' }).forEach(([k, v]) => orbits.setAttribute(k, v));
+bg.append(orbits);
+const ORBITS = [
+  { r: 230, o: .16, dash: '', speed: 0, sats: [] },
+  { r: 370, o: .13, dash: '3 12', speed: 50, sats: [['#7aa7ff', 20], ['#f5b800', 200]] },
+  { r: 530, o: .1, dash: '', speed: -32, sats: [['#b49cff', 110], ['#2aa8f2', 290]] },
+  { r: 710, o: .09, dash: '1 16', speed: 22, sats: [['#ff8a3d', 60]] },
+  { r: 910, o: .07, dash: '', speed: -14, sats: [['#34d399', 160], ['#ef4b5f', 330]] },
 ];
-for (const b of blobs) {
-  const el = set(mk('div', 'blob', null, bg), { width: b.s + 'px', height: b.s + 'px', background: b.c, opacity: b.o, translate: px(b.from) });
-  A(el, [{ translate: px(b.from) }, { translate: px(b.to) }], 0, DURATION, 'linear');
-}
+ORBITS.forEach(({ r, o, dash, speed, sats }, i) => {
+  const g = document.createElementNS(SVGNS, 'g');
+  g.style.transformOrigin = '960px 560px';
+  const c = document.createElementNS(SVGNS, 'circle');
+  Object.entries({ cx: 960, cy: 560, r, fill: 'none', stroke: `rgba(122,167,255,${o})`, 'stroke-width': 1.5, 'stroke-dasharray': dash }).forEach(([k, v]) => c.setAttribute(k, v));
+  g.append(c);
+  for (const [color, deg] of sats) {
+    const s = document.createElementNS(SVGNS, 'circle');
+    const a = (deg * Math.PI) / 180;
+    Object.entries({ cx: 960 + Math.cos(a) * r, cy: 560 + Math.sin(a) * r, r: 4, fill: color, opacity: .75 }).forEach(([k, v]) => s.setAttribute(k, v));
+    g.append(s);
+  }
+  orbits.append(g);
+  set(g, { opacity: 0 });
+  A(g, [{ opacity: 0, transform: 'scale(.82)' }, { opacity: 1, transform: 'scale(1)' }], 200 + i * 160, 1400);
+  A(c, [{ strokeDashoffset: 0 }, { strokeDashoffset: speed * 8 }], 0, DURATION, 'linear');
+  if (speed) A(g, [{ rotate: '0deg' }, { rotate: `${speed}deg` }], 0, DURATION, 'linear');
+});
 A($('#grid'), [{ translate: '0px 0px' }, { translate: '64px 64px' }], 0, DURATION, 'linear');
 set(bg, { opacity: 0 });
 A(bg, [{ opacity: 0 }, { opacity: 1 }], 0, 900, 'linear');
@@ -160,8 +179,12 @@ function drawLogo(el, start) {
   });
   A(el, [{ filter: 'drop-shadow(0 0 0px rgba(59,123,240,0))', rotate: '-8deg' }, { filter: 'drop-shadow(0 0 30px rgba(59,123,240,.6))', rotate: '0deg' }], start, 1100);
 }
-function impact(layer, start) {
-  A($('#flash'), [{ opacity: 0 }, { opacity: .8, offset: .1 }, { opacity: 0 }], start, 1200, 'ease-out');
+function impact(layer, start, at) {
+  A($('#flash'), [{ opacity: 0 }, { opacity: .12, offset: .1 }, { opacity: 0 }], start, 900, 'ease-out');
+  [0, 140, 280].forEach((lag, i) => {
+    const b = set(mk('div', 'burst', null, layer), { translate: px(at), opacity: 0 });
+    A(b, [{ opacity: .9 - i * .2, scale: .15 }, { opacity: 0, scale: 2.6 + i * .8 }], start + lag, 1300, 'cubic-bezier(.15,.7,.3,1)');
+  });
   const k = [];
   for (let i = 0; i <= 10; i++) { const a = 9 * (1 - i / 10) ** 2; k.push({ translate: `${i % 2 ? a : -a}px ${i % 3 ? -a / 2 : a / 2}px` }); }
   A(layer, k, start, 450, 'linear');
@@ -284,7 +307,7 @@ wins.forEach((w, i) => A(w.el, [{}, { translate: px(w.pos), rotate: '0deg', opac
 
 const logo = set(mk('div', 'logo', LOGO, world), { translate: '960px 455px', opacity: 0 });
 drawLogo(logo, 5300);
-impact(world, 5300);
+impact(world, 5300, [960, 455]);
 const title = set(mk('div', 'title shine', 'Bookmark sync', world), { top: '575px', fontSize: '104px', opacity: 0 });
 A(title, [{ opacity: 0, translate: '0 30px', letterSpacing: '0.02em', filter: 'blur(10px)' }, { opacity: 1, translate: '0 0', letterSpacing: '-0.035em', filter: 'blur(0px)' }], 5600, 1100);
 const tag = set(mk('div', 'tag', 'One set of bookmarks. <span class="grad">Every browser.</span>', world), { top: '715px', fontSize: '36px', opacity: 0 });
@@ -483,7 +506,7 @@ A(product, [{ opacity: 1, scale: 1, filter: 'blur(0px)' }, { opacity: 0, scale: 
 const oLogo = set(mk('div', 'logo', LOGO, outro), { translate: '960px 330px', opacity: 0 });
 set(oLogo, { scale: .82 });
 drawLogo(oLogo, 37000);
-impact(outro, 37000);
+impact(outro, 37000, [960, 330]);
 const oTitle = set(mk('div', 'title shine', 'Bookmark sync', outro), { top: '430px', fontSize: '120px', opacity: 0 });
 A(oTitle, [{ opacity: 0, translate: '0 30px', letterSpacing: '0.04em', filter: 'blur(12px)' }, { opacity: 1, translate: '0 0', letterSpacing: '-0.035em', filter: 'blur(0px)' }], 37100, 1100);
 const oTag = set(mk('div', 'tag', 'One set of bookmarks. <span class="grad">Every browser.</span>', outro), { top: '600px', fontSize: '40px', opacity: 0 });
@@ -493,7 +516,7 @@ const oBrowsers = set(mk('div', 'browsers', BROWSERS.map((b) => `<span><i style=
 const oStore = set(mk('div', 'tag', 'Syncs through WebDAV or Google Drive', outro), { top: '815px', fontSize: '24px', opacity: 0 });
 A(oStore, [{ opacity: 0 }, { opacity: .85 }], 38500, 800);
 
-A($('#flash'), [{ opacity: 0 }, { opacity: .4, offset: .12 }, { opacity: 0 }], 28000, 1100, 'ease-out');
+A($('#flash'), [{ opacity: 0 }, { opacity: .08, offset: .12 }, { opacity: 0 }], 28000, 900, 'ease-out');
 A($('#fade'), [{ opacity: 0 }, { opacity: 1 }], 39200, 800, 'ease-in');
 A($('.title.shine'), [{ backgroundPosition: '100% 0' }, { backgroundPosition: '0% 0' }], 6200, 1600, INOUT);
 A(oTitle, [{ backgroundPosition: '100% 0' }, { backgroundPosition: '0% 0' }], 37900, 1700, INOUT);
