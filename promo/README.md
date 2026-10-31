@@ -9,7 +9,7 @@ The 40-second demo video is built from code, so it can be changed and rendered a
 | `render.mjs` | Renders `video.html` frame by frame and encodes it with the soundtrack into `bookmark-sync-promo.mp4`. |
 | `capture.mjs` | Takes the real extension screenshots in `shots/`, and the click positions in `shots/boxes.json`. |
 
-The rendered video and `music.wav` are not committed; render them yourself.
+The rendered video and `music.wav` are not committed. Render them yourself.
 
 ## Render
 
@@ -17,20 +17,20 @@ The rendered video and `music.wav` are not committed; render them yourself.
 pnpm promo
 ```
 
-This writes `promo/bookmark-sync-promo.mp4`: 3840×2160, 60 fps, 10-bit HEVC. If Playwright's browsers live outside the default folder, set `PLAYWRIGHT_BROWSERS_PATH` first.
+This writes `promo/bookmark-sync-promo.mp4`: 2560×1440, 60 fps, 10-bit HEVC. If Playwright's browsers live outside the default folder, set `PLAYWRIGHT_BROWSERS_PATH` first.
 
-Options go after `--`, for example `pnpm promo -- --height 1440 --start 12 --end 20`:
+Options go after `--`, for example `pnpm promo -- --height 2160 --start 12 --end 20`:
 
 | Option | Default | What it does |
 |---|---|---|
-| `--height` | `2160` | Output height: `2160` is 4K, `1440` is 1440p, `1080` is 1080p. |
+| `--height` | `1440` | Output height: `1440` is 1440p, `2160` is 4K, `1080` is 1080p. |
 | `--fps` | `60` | Frame rate. |
 | `--codec` | `hevc` | `hevc` (10-bit) or `h264` (8-bit, plays everywhere). |
 | `--quality` | `16` | Lower is better and larger. 16 to 20 is a good range. |
 | `--start`, `--end` | whole video | Render only part, in seconds. |
 | `--encoder` | `auto` | `gpu` or `cpu`. `auto` uses the NVIDIA GPU when ffmpeg supports it. |
 | `--workers` | `4` | Browser processes capturing frames in parallel. More is faster and uses more CPU and memory. |
-| `--priority` | `low` | `low` keeps the computer responsive while rendering; `normal` renders a little faster. |
+| `--priority` | `low` | `low` keeps the computer responsive while rendering. `normal` renders a little faster. |
 | `--out` | `promo/bookmark-sync-promo.mp4` | Output file. |
 | `--stills` | | Instead of a video, save single frames, for example `--stills 5000,13800`, into `promo/stills/`. |
 

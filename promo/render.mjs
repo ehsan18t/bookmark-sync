@@ -9,7 +9,7 @@ import { chromium } from 'playwright';
 
 const { values: opt } = parseArgs({
   options: {
-    height: { type: 'string', default: '2160' },
+    height: { type: 'string', default: '1440' },
     fps: { type: 'string', default: '60' },
     workers: { type: 'string', default: String(Math.min(4, Math.max(1, availableParallelism() >> 2))) },
     encoder: { type: 'string', default: 'auto' },
