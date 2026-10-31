@@ -1,5 +1,6 @@
 import alertTriangle from '@tabler/icons/outline/alert-triangle.svg?raw';
 import arrowLeft from '@tabler/icons/outline/arrow-left.svg?raw';
+import arrowsMove from '@tabler/icons/outline/arrows-move.svg?raw';
 import bookmarks from '@tabler/icons/outline/bookmarks.svg?raw';
 import brandGoogleDrive from '@tabler/icons/outline/brand-google-drive.svg?raw';
 import check from '@tabler/icons/outline/check.svg?raw';
@@ -26,6 +27,7 @@ import playerPause from '@tabler/icons/outline/player-pause.svg?raw';
 import plus from '@tabler/icons/outline/plus.svg?raw';
 import refresh from '@tabler/icons/outline/refresh.svg?raw';
 import replace from '@tabler/icons/outline/replace.svg?raw';
+import restore from '@tabler/icons/outline/restore.svg?raw';
 import server from '@tabler/icons/outline/server.svg?raw';
 import settings from '@tabler/icons/outline/settings.svg?raw';
 import shieldLock from '@tabler/icons/outline/shield-lock.svg?raw';
@@ -68,6 +70,8 @@ export const icons = {
   x,
   world,
   pencil,
+  'arrows-move': arrowsMove,
+  restore,
 };
 
 export type IconName = keyof typeof icons;

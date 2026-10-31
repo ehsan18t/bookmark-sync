@@ -1,3 +1,4 @@
+import { type ChangeDetail, describeOps } from '../core/changes.js';
 import {
   type Batch,
   type BridgesMarker,
@@ -271,7 +272,11 @@ export interface TimelineEntry {
   to: Hlc;
   count: number;
   kinds: Record<string, number>;
+  /** Oldest first, at most `TIMELINE_DETAILS`; `count` is the full number. */
+  changes: ChangeDetail[];
 }
+
+const TIMELINE_DETAILS = 200;
 
 const EMPTY_FRONTIER = hlcFloor(0);
 const BATCHES_PER_READ = 20;
@@ -1715,18 +1720,22 @@ export class GroupEngine {
 
   timeline(limit = 200): TimelineEntry[] {
     const sorted = [...this.local.ops].sort(compareOps).reverse();
+    const details = describeOps(this.baseState(), this.local.ops);
     const out: TimelineEntry[] = [];
     for (const op of sorted) {
       const last = out.at(-1);
+      const detail = details.get(opKey(op));
       if (last && last.device === op.device && hlcWall(last.from) - hlcWall(op.hlc) < 60_000) {
         last.from = op.hlc;
         last.count++;
         last.kinds[op.type] = (last.kinds[op.type] ?? 0) + 1;
+        if (detail) last.changes.push(detail);
       } else {
         if (out.length >= limit) break;
-        out.push({ device: op.device, from: op.hlc, to: op.hlc, count: 1, kinds: { [op.type]: 1 } });
+        out.push({ device: op.device, from: op.hlc, to: op.hlc, count: 1, kinds: { [op.type]: 1 }, changes: detail ? [detail] : [] });
       }
     }
+    for (const e of out) e.changes = e.changes.reverse().slice(0, TIMELINE_DETAILS);
     return out;
   }
 
