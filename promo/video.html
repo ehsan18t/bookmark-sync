@@ -442,13 +442,13 @@ const K = 1180 / 1000;
 const at = (key, scroll = 0) => { const b = BOXES[key]; return [(b.x + b.width / 2) * K, (b.y + b.height / 2) * K - scroll]; };
 const JOIN_SCROLL = 700;
 const SLIDES = [
-  { img: 'shots/setup-1-storage.png', k: 'SET UP', h: 'Ready in a minute', s: 'Pick Google Drive or any WebDAV server. The page checks the connection for you.', origin: '50% 20%',
+  { img: 'shots/setup-1-storage.png', k: 'SET UP', h: 'Ready in a minute', s: 'Pick Google Drive or any WebDAV server. The page checks the connection for you.',
     cursor: [[700, [780, 720]], [1500, at('server'), true]] },
-  { img: 'shots/setup-4-what.png', k: 'CHOOSE', h: 'Sync it all, or just some folders', s: 'Every bookmark, or only the folders you tick.', origin: '30% 30%',
+  { img: 'shots/setup-4-what.png', k: 'CHOOSE', h: 'Sync it all, or just some folders', s: 'Every bookmark, or only the folders you tick.',
     cursor: [[600, [380, 720]], [1500, at('start'), true]] },
-  { img: 'shots/join-2-preview.png', k: 'JOIN', h: 'Add your other browsers', s: 'Join the sync, pick where each folder goes, and preview what changes.', origin: '40% 10%', scroll: JOIN_SCROLL,
+  { img: 'shots/join-2-preview.png', k: 'JOIN', h: 'Add your other browsers', s: 'Join the sync, pick where each folder goes, and preview what changes.', scroll: JOIN_SCROLL,
     cursor: [[900, [760, 560]], [1500, at('combine', JOIN_SCROLL), true], [2100, at('join', JOIN_SCROLL), true]] },
-  { img: 'shots/dash-history.png', k: 'HISTORY', h: 'See exactly what changed', s: 'Each edit shows its old and new values, and what made it.', origin: '50% 45%',
+  { img: 'shots/dash-history.png', k: 'HISTORY', h: 'See exactly what changed', s: 'Each edit shows its old and new values, and what made it.',
     then: ['shots/dash-history-changes.png', 1450],
     cursor: [[600, [560, 760]], [1300, at('view'), true]] },
 ];
@@ -458,14 +458,14 @@ const fw = mk('div', 'frame-wrap', null, product);
 const frame = set(mk('div', 'frame', null, fw), { opacity: 0 });
 mk('div', 'fbar', `<span class="d" style="background:#ff5f57"></span><span class="d" style="background:#febc2e"></span><span class="d" style="background:#28c840"></span><div class="addr">${LOGO}Bookmark sync</div>`, frame);
 const view = mk('div', 'view', null, frame);
-A(frame, [{ opacity: 0, transform: 'translateX(260px) rotateY(-28deg) scale(.9)' }, { opacity: 1, transform: 'translateX(0) rotateY(-7deg) scale(.95)' }], 27000, 1200);
-A(frame, [{ transform: 'translateX(0) rotateY(-7deg) scale(.95)' }, { transform: 'translateX(0) rotateY(-2deg) scale(.95)' }], 28200, 8000, 'ease-in-out');
+// Screenshots stay untransformed once shown: a tilt, scale or zoom resamples the drawn layer and blurs their small text.
+A(frame, [{ opacity: 0, transform: 'translateX(260px) rotateY(-28deg) scale(.9)' }, { opacity: 1, transform: 'none' }], 27000, 1200);
 const steps = mk('div', 'steps', null, product);
 const stepDots = SLIDES.map(() => set(mk('i', null, null, steps), { opacity: 0 }));
 const SLOT = 2350, S5 = 27200;
 SLIDES.forEach((sl, i) => {
   const t0 = S5 + i * SLOT, t1 = t0 + SLOT + (i === SLIDES.length - 1 ? 2200 : 0);
-  const slide = set(mk('div', 'slide', null, view), { opacity: 0, transformOrigin: sl.origin });
+  const slide = set(mk('div', 'slide', null, view), { opacity: 0 });
   const pageEl = mk('div', 'page', `<img src="${sl.img}">`, slide);
   if (sl.then) {
     const [img, at] = sl.then;
@@ -476,7 +476,6 @@ SLIDES.forEach((sl, i) => {
   if (sl.scroll) A(pageEl, [{ translate: '0 0' }, { translate: `0 ${-sl.scroll}px` }], t0 + 450, 900, INOUT);
   if (i === 0) slide.style.opacity = 1;
   else A(slide, [{ opacity: 0, translate: '90px 0', filter: 'blur(8px)' }, { opacity: 1, translate: '0 0', filter: 'blur(0px)' }], t0, 650);
-  A(slide, [{ scale: 1 }, { scale: 1.07 }], t0, t1 - t0 + 600, 'linear');
   if (i < SLIDES.length - 1) A(slide, [{ opacity: 1, translate: '0 0' }, { opacity: 0, translate: '-90px 0' }], t1, 650, INOUT);
   if (sl.hl) {
     const [x, y, w, h] = sl.hl;
@@ -508,7 +507,7 @@ SLIDES.forEach((sl, i) => {
   if (i < SLIDES.length - 1) A(stepDots[i], [{}, { background: 'rgba(122,167,255,.45)', width: '34px' }], t1, 400);
 });
 const popup = set(mk('div', 'popup', '<img src="shots/popup.png">', product), { translate: '120px 1200px', opacity: 0 });
-A(popup, [{ translate: '120px 1200px', opacity: 0, rotate: '6deg' }, { translate: '120px 745px', opacity: 1, rotate: '-2deg' }], 35100, 900);
+A(popup, [{ translate: '120px 1200px', opacity: 0, rotate: '6deg' }, { translate: '120px 745px', opacity: 1, rotate: '0deg' }], 35100, 900);
 A(product, [{ opacity: 1, scale: 1, filter: 'blur(0px)' }, { opacity: 0, scale: .94, filter: 'blur(14px)' }], 36600, 600, 'cubic-bezier(.5,0,.75,0)');
 
 const oLogo = set(mk('div', 'logo', LOGO, outro), { translate: '960px 330px', opacity: 0 });
