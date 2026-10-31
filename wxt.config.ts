@@ -30,6 +30,8 @@ export default defineConfig({
   srcDir: 'src',
   vite: () => ({ plugins: [preact()] }),
   outDir: process.env.BSYNC_E2E ? '.output-e2e' : '.output',
+  // Promo media is large, local and not part of the extension's build.
+  zip: { excludeSources: ['promo/**'] },
   manifestVersion: 3,
   manifest: ({ browser }) => {
     checkEnv(browser);
@@ -45,7 +47,8 @@ export default defineConfig({
       ...(browser === 'firefox'
         ? {
             browser_specific_settings: {
-              gecko: { id: env('WXT_GECKO_ID'), strict_min_version: '140.0', data_collection_permissions: { required: ['none'] } },
+              // Mozilla counts bookmarks sent to the user's own Drive or server as transmitted data.
+              gecko: { id: env('WXT_GECKO_ID'), strict_min_version: '140.0', data_collection_permissions: { required: ['bookmarksInfo'] } },
               gecko_android: { strict_min_version: '142.0' },
             },
           }

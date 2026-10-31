@@ -1,6 +1,6 @@
 {
   "name": "bookmark-sync",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Cross-browser bookmark sync over storage you choose",
   "type": "module",
