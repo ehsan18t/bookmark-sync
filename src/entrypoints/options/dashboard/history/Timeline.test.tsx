@@ -61,6 +61,7 @@ describe('history', () => {
     await waitFor(() => screen.getByText('Changes from Brave on Windows'));
     expect(screen.getByText('Made in Brave on Windows by you, or by another extension installed there.')).toBeTruthy();
     expect(screen.getByText('in Bookmarks bar / Dev')).toBeTruthy();
+    expect(document.querySelector('.changes-head .meta')?.textContent).toMatch(/^[^,]+, [^,]+ · 2 changes$/);
     expect(screen.getByText('Other bookmarks / Old → Bookmarks bar')).toBeTruthy();
   });
 });

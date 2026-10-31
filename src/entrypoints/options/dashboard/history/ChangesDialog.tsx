@@ -2,10 +2,10 @@ import { useEffect, useRef } from 'preact/hooks';
 import type { ChangeDetail } from '../../../../core/changes.js';
 import type { TimelineEntry } from '../../../../engine/group.js';
 import { Icon } from '../../../../ui/components/Icon.js';
-import { hlcTime, plural } from '../../../../ui/lib/format.js';
+import { plural } from '../../../../ui/lib/format.js';
 import type { IconName } from '../../../../ui/lib/icons.js';
 import type { SourceText } from './changeSources.js';
-import { actionText, folderText, itemName, timeOf } from './timelineText.js';
+import { actionText, folderText, itemName, spanText, timeOf } from './timelineText.js';
 
 const ICON: Record<ChangeDetail['type'], IconName> = { create: 'plus', update: 'pencil', move: 'arrows-move', delete: 'trash', undelete: 'restore' };
 const FIELD_TEXT = { title: 'Name', url: 'Address' };
@@ -27,7 +27,7 @@ export function ChangesDialog({ entry, who, source, onClose }: ChangesDialogProp
         <div>
           <h3>Changes from {who}</h3>
           <div class="meta">
-            {entry.from === entry.to ? hlcTime(entry.to) : `${hlcTime(entry.from)} to ${hlcTime(entry.to)}`} · {plural(entry.count, 'change', 'changes')}
+            {spanText(entry.from, entry.to)} · {plural(entry.count, 'change', 'changes')}
           </div>
           {source && (
             <div class="changes-source">

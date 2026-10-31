@@ -6,6 +6,15 @@ export const justBefore = (hlc: string) => `${String(Number(hlc.slice(0, 15)) - 
 
 export const timeOf = (hlc: string) => new Date(Number(hlc.slice(0, 15))).toLocaleTimeString();
 
+/** One date, then one time or a range of times; a span across midnight names both dates. */
+export function spanText(from: string, to: string): string {
+  const [a, b] = [from, to].map((h) => new Date(Number(h.slice(0, 15))));
+  const day = a!.toLocaleDateString();
+  if (day !== b!.toLocaleDateString()) return `${a!.toLocaleString()} to ${b!.toLocaleString()}`;
+  const [ta, tb] = [timeOf(from), timeOf(to)];
+  return ta === tb ? `${day}, ${ta}` : `${day}, ${ta} to ${tb}`;
+}
+
 const KIND_TEXT: Record<string, string> = { create: 'added', update: 'edited', move: 'moved', delete: 'removed', undelete: 'restored' };
 
 export const describeKinds = (kinds: Record<string, number>) =>
