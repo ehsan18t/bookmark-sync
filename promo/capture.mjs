@@ -129,7 +129,11 @@ try {
   for (const tab of ['overview', 'history', 'browsers', 'duplicates']) {
     await a.page.goto(`chrome-extension://${a.id}/options.html#${tab}`);
     await a.page.getByRole('tab', { name: 'Overview' }).waitFor();
-    await shot(a, `dash-${tab}`, tab === 'history' ? { targets: { undo: a.page.getByRole('button', { name: 'Undo from here' }) } } : {});
+    await shot(a, `dash-${tab}`, tab === 'history' ? { targets: { undo: a.page.getByRole('button', { name: 'Undo from here' }), view: a.page.getByRole('button', { name: 'View changes' }) } } : {});
+    if (tab !== 'history') continue;
+    await a.page.getByRole('button', { name: 'View changes' }).first().click();
+    await a.page.locator('.changes-dialog').waitFor();
+    await shot(a, 'dash-history-changes', { targets: { dialog: a.page.locator('.changes-dialog') } });
   }
 
   await a.page.setViewportSize({ width: 380, height: 520 });

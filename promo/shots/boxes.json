@@ -34,5 +34,17 @@
     "y": 388.78125,
     "width": 131.234375,
     "height": 36
+  },
+  "dash-history/view": {
+    "x": 659.125,
+    "y": 388.78125,
+    "width": 116.640625,
+    "height": 36
+  },
+  "dash-history-changes/dialog": {
+    "x": 180,
+    "y": 208.953125,
+    "width": 640,
+    "height": 302.09375
   }
 }
