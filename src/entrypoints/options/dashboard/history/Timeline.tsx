@@ -92,7 +92,9 @@ export function Timeline({ g }: TimelineProps) {
           <EmptyState icon="history" title="No changes yet" text="Changes from every browser show up here, so you can go back to an earlier point." />
         )}
       </div>
-      {open.value && <ChangesDialog entry={open.value} who={byId.get(open.value.device)?.self ? 'this browser' : who(open.value.device)} source={source(open.value)} onClose={() => (open.value = null)} />}
+      {open.value && (
+        <ChangesDialog entry={open.value} who={byId.get(open.value.device)?.self ? 'this browser' : who(open.value.device)} source={source(open.value)} onClose={() => (open.value = null)} />
+      )}
     </div>
   );
 }
