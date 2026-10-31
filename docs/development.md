@@ -92,7 +92,6 @@ pnpm test:e2e
 
 - Firefox, Edge, Brave and Vivaldi have only been built and linted, not run. Vivaldi's Trash is recognized by its title, which is a guess.
 - Google sign-in has not been tried against a real Google account. Whether Google accepts Firefox's loopback redirect without a port is unconfirmed. If it does not, Firefox needs a small redirect page on a domain you control.
-- The Firefox add-on ID is still the `bookmark-sync@example.com` placeholder. Set `WXT_GECKO_ID` in `.env` before publishing.
 - If a Chromium browser renumbers all its bookmarks, the IDs of mapped folders change too, and the group pauses because its folder is missing. Leave the group and join it again in merge mode.
 - Deleted items are never dropped from snapshots, costing about 200 bytes each.
 - Restores cannot reach back past an encryption switch.
