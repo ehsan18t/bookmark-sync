@@ -44,10 +44,10 @@ Bookmark sync isn't in the browser stores yet. Until it is, install it from a re
 
 The setup page opens when you install the extension. It goes one step at a time:
 
-1. **Choose storage.** Google Drive, or your own server. For Nextcloud and ownCloud, the address is shown in Files, under Settings at the bottom left, and looks like `https://cloud.example.com/remote.php/dav/files/USERNAME/`; use an app password. For rclone, run `rclone serve webdav REMOTE: --addr 127.0.0.1:8080 --user me --pass secret` and use `http://127.0.0.1:8080/`.
+1. **Choose storage.** Google Drive, or your own server. For Nextcloud and ownCloud, the address is shown in Files, under Settings at the bottom left, and looks like `https://cloud.example.com/remote.php/dav/files/USERNAME/`. Use an app password. For rclone, run `rclone serve webdav REMOTE: --addr 127.0.0.1:8080 --user me --pass secret` and use `http://127.0.0.1:8080/`.
 2. **Connect.** The extension checks the sign-in before going on.
 3. **Start or join.** The first browser starts a sync. In each other browser, choose the same storage, and the setup page offers to join the sync it finds there.
-4. **Choose what to sync.** All bookmarks, or the folders you tick. When joining, choose **Combine** (keep this browser's bookmarks and add the synced ones) or **Replace** (take the synced ones; this can be undone).
+4. **Choose what to sync.** All bookmarks, or the folders you tick. When joining, choose **Combine** (keep this browser's bookmarks and add the synced ones) or **Replace** (take the synced ones, which can be undone).
 
 After setup, the toolbar button shows the state of each sync, and the dashboard has Overview, History, Browsers, Duplicates and Settings tabs.
 

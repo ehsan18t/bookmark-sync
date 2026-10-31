@@ -1,6 +1,6 @@
 # Development
 
-How to build, test and publish the extension, and how the source is laid out. The design and its decisions are in [SPEC.md](../SPEC.md); how it is built, module by module, is in [IMPLEMENTATION.md](../IMPLEMENTATION.md).
+How to build, test and publish the extension, and how the source is laid out. The design and its decisions are in [SPEC.md](../SPEC.md). How it is built, module by module, is in [IMPLEMENTATION.md](../IMPLEMENTATION.md).
 
 ## Status
 
@@ -37,13 +37,13 @@ The Chromium package lands in `.output/chrome-mv3` and the Firefox package in `.
 
 **Chrome, Edge, Brave, Vivaldi:** open the extensions page (`chrome://extensions`), turn on Developer mode, choose "Load unpacked" and pick `.output/chrome-mv3`.
 
-**Firefox (140 or later):** open `about:debugging`, choose "This Firefox", then "Load Temporary Add-on", and pick `.output/firefox-mv3/manifest.json`. Temporary add-ons are removed when Firefox closes; for a permanent install the package has to be signed through addons.mozilla.org.
+**Firefox (140 or later):** open `about:debugging`, choose "This Firefox", then "Load Temporary Add-on", and pick `.output/firefox-mv3/manifest.json`. Temporary add-ons are removed when Firefox closes. For a permanent install the package has to be signed through addons.mozilla.org.
 
 ## Using it
 
 Installing the extension opens its setup page. It goes one step at a time:
 
-1. **Choose storage.** Google Drive (when the build includes the Google clients, see below), or your own server. For Nextcloud the server address looks like `https://cloud.example.com/remote.php/dav/files/USERNAME/`; use an app password. For any rclone remote, run `rclone serve webdav REMOTE: --addr 127.0.0.1:8080 --user me --pass secret` and use `http://127.0.0.1:8080/`. The bookmarks go in a folder on the server (`WXT_SERVER_FOLDER` in `.env`), which users can change under Advanced.
+1. **Choose storage.** Google Drive (when the build includes the Google clients, see below), or your own server. For Nextcloud the server address looks like `https://cloud.example.com/remote.php/dav/files/USERNAME/`. Use an app password. For any rclone remote, run `rclone serve webdav REMOTE: --addr 127.0.0.1:8080 --user me --pass secret` and use `http://127.0.0.1:8080/`. The bookmarks go in a folder on the server (`WXT_SERVER_FOLDER` in `.env`), which users can change under Advanced.
 2. **Connect.** The extension checks the sign-in before going on.
 3. **Start or join.** If the storage already holds a sync from another browser, the page suggests joining it. Otherwise this browser starts one.
 4. **Choose what to sync.** All bookmarks, or any folders ticked in a folder tree, when starting. When joining, tick which folders of the sync this browser holds and where each one goes, then pick Combine (keeps this browser's bookmarks and adds the synced ones) or Replace (takes the synced ones, and can be undone), with a live preview of what changes. Encryption is under Advanced.
@@ -76,7 +76,7 @@ pnpm check
 pnpm test:e2e
 ```
 
-`pnpm check` runs the type checker, Biome (lint, formatting and import order; `pnpm format` fixes what it can) and every unit, property and scenario test. The randomized tests pick new random cases on every run; when one fails, fast-check shrinks it to a minimal case first, which can take a few minutes. `pnpm test:e2e` builds a test copy of the extension and drives two headless Chromium profiles with Playwright; run `npx playwright install chromium` once before.
+`pnpm check` runs the type checker, Biome (lint, formatting and import order, where `pnpm format` fixes what it can) and every unit, property and scenario test. The randomized tests pick new random cases on every run. When one fails, fast-check shrinks it to a minimal case first, which can take a few minutes. `pnpm test:e2e` builds a test copy of the extension and drives two headless Chromium profiles with Playwright. Run `npx playwright install chromium` once before.
 
 ## Layout
 
@@ -91,8 +91,8 @@ pnpm test:e2e
 ## Known limits
 
 - Firefox, Edge, Brave and Vivaldi have only been built and linted, not run. Vivaldi's Trash is recognized by its title, which is a guess.
-- Google sign-in has not been tried against a real Google account. Whether Google accepts Firefox's loopback redirect without a port is unconfirmed; if it does not, Firefox needs a small redirect page on a domain you control.
-- The Firefox add-on ID is still the `bookmark-sync@example.com` placeholder; set `WXT_GECKO_ID` in `.env` before publishing.
-- If a Chromium browser renumbers all its bookmarks, the IDs of mapped folders change too, and the group pauses because its folder is missing; leave the group and join it again in merge mode.
+- Google sign-in has not been tried against a real Google account. Whether Google accepts Firefox's loopback redirect without a port is unconfirmed. If it does not, Firefox needs a small redirect page on a domain you control.
+- The Firefox add-on ID is still the `bookmark-sync@example.com` placeholder. Set `WXT_GECKO_ID` in `.env` before publishing.
+- If a Chromium browser renumbers all its bookmarks, the IDs of mapped folders change too, and the group pauses because its folder is missing. Leave the group and join it again in merge mode.
 - Deleted items are never dropped from snapshots, costing about 200 bytes each.
 - Restores cannot reach back past an encryption switch.
