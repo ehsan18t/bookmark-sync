@@ -15,7 +15,7 @@ export function Popup() {
   if (!ready.value) return null;
   if (about.value) return <PopupAbout onBack={() => (about.value = false)} />;
   const aboutButton = (
-    <button type="button" class="ghost" aria-label="About" title="About" onClick={() => (about.value = true)}>
+    <button type="button" class="ghost icon-only" aria-label="About" title="About" onClick={() => (about.value = true)}>
       <Icon name="info-circle" />
     </button>
   );
@@ -46,8 +46,8 @@ export function Popup() {
       <div class="popup-head">
         <Brand />
         <div class="popup-head-actions">
-          <Action label="Sync now" kind="ghost" icon="refresh" busy="Syncing…" run={() => sendAndReload({ t: 'syncNow' })} />
-          <button type="button" class="ghost" aria-label="Settings" title="Settings" onClick={openPage('settings')}>
+          <Action label="Sync now" kind="ghost" icon="refresh" busy="Syncing…" iconOnly run={() => sendAndReload({ t: 'syncNow' })} />
+          <button type="button" class="ghost icon-only" aria-label="Settings" title="Settings" onClick={openPage('settings')}>
             <Icon name="settings" />
           </button>
           {aboutButton}
