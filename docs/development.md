@@ -31,7 +31,7 @@ pnpm build
 pnpm build:firefox
 ```
 
-The Chromium package lands in `.output/chrome-mv3` and the Firefox package in `.output/firefox-mv3`. `pnpm zip` makes zip files of both.
+The Chromium package lands in `.output/chrome-mv3` and the Firefox package in `.output/firefox-mv3`. `pnpm zip` makes zip files of both. [firefox-publishing.md](firefox-publishing.md) covers getting the Firefox package signed by Mozilla and listed on addons.mozilla.org.
 
 ## Loading the extension
 

@@ -10,6 +10,8 @@
     "build": "wxt build",
     "build:firefox": "wxt build -b firefox",
     "zip": "cross-env BSYNC_RELEASE=1 wxt zip && cross-env BSYNC_RELEASE=1 wxt zip -b firefox",
+    "firefox:unlisted": "node scripts/firefox.mjs unlisted",
+    "firefox:listed": "node scripts/firefox.mjs listed",
     "postinstall": "wxt prepare",
     "extension-id": "node scripts/extension-id.mjs",
     "make-key": "node scripts/make-key.mjs",
@@ -38,6 +40,7 @@
     "playwright": "^1.64.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3",
+    "web-ext": "10.8.0",
     "webdav-server": "^2.6.3",
     "wxt": "^0.21.5"
   },
