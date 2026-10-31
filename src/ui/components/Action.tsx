@@ -14,6 +14,8 @@ interface ActionProps {
   size?: 'lg';
   block?: boolean;
   disabled?: boolean;
+  /** Shows only the icon, with the label as its name and tooltip. */
+  iconOnly?: boolean;
 }
 
 /** A button that shows a spinner while `run` works and the error, if any, right under it. */
@@ -34,9 +36,16 @@ export function Action(props: ActionProps) {
   };
   return (
     <div class={`action${props.block ? ' block' : ''}`}>
-      <button type="button" class={[props.kind, props.size, props.block && 'block', running.value && 'busy'].filter(Boolean).join(' ')} disabled={running.value || props.disabled} onClick={click}>
+      <button
+        type="button"
+        class={[props.kind, props.size, props.block && 'block', props.iconOnly && 'icon-only', running.value && 'busy'].filter(Boolean).join(' ')}
+        disabled={running.value || props.disabled}
+        aria-label={props.iconOnly ? (running.value ? (props.busy ?? props.label) : props.label) : undefined}
+        title={props.iconOnly ? props.label : undefined}
+        onClick={click}
+      >
         {running.value ? <Icon name="loader-2" class="spin" /> : props.icon && <Icon name={props.icon} />}
-        {running.value ? (props.busy ?? props.label) : props.label}
+        {!props.iconOnly && (running.value ? (props.busy ?? props.label) : props.label)}
       </button>
       {error.value && <ErrorText>{error.value}</ErrorText>}
     </div>

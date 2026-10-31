@@ -72,6 +72,12 @@ button.ghost:hover {
   color: var(--text);
 }
 
+button.icon-only {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+
 button.lg {
   min-height: 44px;
   padding: 0 20px;
