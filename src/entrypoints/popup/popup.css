@@ -44,3 +44,26 @@ body.popup main {
   background: var(--accent-bg);
   color: var(--accent-text);
 }
+
+.popup-links {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 14px;
+}
+
+.popup-links a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 0;
+  text-decoration: none;
+}
+
+.popup-links a + a {
+  border-top: 1px solid var(--border);
+}
+
+.popup-links .icon {
+  width: 15px;
+  height: 15px;
+}

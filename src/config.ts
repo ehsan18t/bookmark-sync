@@ -7,3 +7,4 @@ export const SERVER_FOLDER = value('WXT_SERVER_FOLDER');
 export const HOMEPAGE_URL = value('WXT_HOMEPAGE_URL');
 export const PRIVACY_URL = value('WXT_PRIVACY_URL');
 export const SUPPORT_EMAIL = value('WXT_SUPPORT_EMAIL');
+export const SOURCE_URL = value('WXT_SOURCE_URL');

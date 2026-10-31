@@ -2,6 +2,7 @@ import { Action } from '../../../ui/components/Action.js';
 import { Brand } from '../../../ui/components/Brand.js';
 import { Icon } from '../../../ui/components/Icon.js';
 import { sendAndReload } from '../../../ui/state/store.js';
+import { AboutTab } from './about/AboutTab.js';
 import { Browsers } from './browsers/Browsers.js';
 import { Duplicates } from './duplicates/Duplicates.js';
 import { History } from './history/History.js';
@@ -9,7 +10,7 @@ import { Overview } from './overview/Overview.js';
 import { SettingsTab } from './settings/SettingsTab.js';
 import { TABS, type Tab } from './tabs.js';
 
-const PANELS = { overview: Overview, history: History, browsers: Browsers, duplicates: Duplicates, settings: SettingsTab };
+const PANELS = { overview: Overview, history: History, browsers: Browsers, duplicates: Duplicates, settings: SettingsTab, about: AboutTab };
 
 interface DashboardProps {
   tab: Tab;

@@ -13,7 +13,7 @@ This writes the finished pages to `.output/site`. Open `.output/site/index.html`
 | Value | Used for |
 |---|---|
 | `WXT_SUPPORT_EMAIL` | Contact links on both pages. Set this or `WXT_SOURCE_URL`, so the privacy policy has a contact. |
-| `WXT_SOURCE_URL` | Source code links, for example `https://github.com/you/bookmark-sync` |
+| `WXT_SOURCE_URL` | Source code links, for example `https://github.com/you/bookmark-sync`. The extension's About page also shows it, and adds "Report a problem" for a GitHub URL. |
 | `WXT_CHROME_STORE_URL`, `WXT_EDGE_STORE_URL`, `WXT_FIREFOX_STORE_URL` | Install buttons. Until one is set, the homepage says the extension is coming to the stores. |
 | `WXT_PRIVACY_UPDATED` | The date at the top of the privacy policy. Change it whenever the policy changes. |
 | `WXT_HOMEPAGE_URL`, `WXT_PRIVACY_URL` | Not used by the pages, but set them to the published addresses once the site is live. The extension and the release check use them. |

@@ -251,3 +251,45 @@
   justify-content: space-between;
   gap: 12px;
 }
+
+.about-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.about-hero h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
+}
+
+.about-hero p {
+  margin: 0;
+}
+
+.about-logo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-lg);
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+
+.about-logo .icon {
+  width: 30px;
+  height: 30px;
+}
+
+.card.prose p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.card.prose p + p {
+  margin-top: 10px;
+}
