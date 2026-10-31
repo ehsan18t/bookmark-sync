@@ -20,7 +20,9 @@
     "lint": "biome check",
     "format": "biome check --write",
     "check": "tsc --noEmit && biome check && vitest run",
-    "test:e2e": "cross-env BSYNC_E2E=1 wxt build && vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "cross-env BSYNC_E2E=1 wxt build && vitest run --config vitest.e2e.config.ts",
+    "promo": "node promo/music.mjs && node promo/render.mjs",
+    "promo:capture": "cross-env BSYNC_E2E=1 wxt build && node promo/capture.mjs"
   },
   "license": "UNLICENSED",
   "packageManager": "pnpm@10.33.3",
