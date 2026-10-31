@@ -168,7 +168,8 @@ Bookmarks a device brings into a group at join time get IDs derived from their g
 
 ### History and restore
 
-- A timeline view lists changes grouped by batch, with the device and time.
+- A timeline view lists changes grouped by device and source, with the time. A row with one change names the item. Each row opens a dialog listing every change with its item, folder, time, and the old and new values of edits and moves, as they were when the change was made.
+- Each change records its source: made in the browser by the user, brought by the browser's own sync or an import (Chromium reports these as imports), found on a later check (no bookmark event reported it, so it was made while the extension was not running), or one of the extension's actions (undo or restore, joining, duplicate cleanup, duplicate repair, synced folder changes, another sync sharing a folder). The dialog explains the source in one sentence.
 - Restoring to a time T compares the merged state now with the merged state at T, and records the changes that turn one into the other, ordered so that folders are placed before their contents.
 - Reverting a set of items (used by the large change guard) does the same for only those items.
 - The restore screen shows how many items will change before applying, and the restore can be undone.

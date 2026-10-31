@@ -12,6 +12,7 @@ import { hlcTime } from '../../../../ui/lib/format.js';
 import { send } from '../../../../ui/lib/messaging.js';
 import { devices, load } from '../../../../ui/state/store.js';
 import { ChangesDialog } from './ChangesDialog.js';
+import { sourceText } from './changeSources.js';
 import { describeEntry, justBefore } from './timelineText.js';
 
 interface TimelineProps {
@@ -30,6 +31,10 @@ export function Timeline({ g }: TimelineProps) {
   const who = (d: string) => {
     const x = byId.get(d);
     return x ? (x.self ? 'This browser' : x.name) : 'A removed browser';
+  };
+  const source = (e: TimelineEntry) => {
+    const x = byId.get(e.device);
+    return sourceText(e.via, x?.browser, x ? (x.self ? 'this browser' : x.name) : 'a removed browser');
   };
   const restoreTo = async (hlc: string) => {
     const p = await send<{ restored: number; removed: number; changed: number }>({ t: 'previewRestore', groupId: g.groupId, hlc });
@@ -72,7 +77,8 @@ export function Timeline({ g }: TimelineProps) {
                 <li key={e.from}>
                   <div class="grow">
                     <div>
-                      {who(e.device)} · {describeEntry(e)}
+                      {who(e.device)} · {source(e) && `${source(e)!.label} · `}
+                      {describeEntry(e)}
                     </div>
                     <div class="meta">{hlcTime(e.to)}</div>
                   </div>
@@ -86,7 +92,7 @@ export function Timeline({ g }: TimelineProps) {
           <EmptyState icon="history" title="No changes yet" text="Changes from every browser show up here, so you can go back to an earlier point." />
         )}
       </div>
-      {open.value && <ChangesDialog entry={open.value} who={who(open.value.device)} onClose={() => (open.value = null)} />}
+      {open.value && <ChangesDialog entry={open.value} who={who(open.value.device)} source={source(open.value)} onClose={() => (open.value = null)} />}
     </div>
   );
 }

@@ -4,7 +4,8 @@ import type { TimelineEntry } from '../../../../engine/group.js';
 import { Icon } from '../../../../ui/components/Icon.js';
 import { hlcTime, plural } from '../../../../ui/lib/format.js';
 import type { IconName } from '../../../../ui/lib/icons.js';
-import { actionText, folderText, itemName } from './timelineText.js';
+import type { SourceText } from './changeSources.js';
+import { actionText, folderText, itemName, timeOf } from './timelineText.js';
 
 const ICON: Record<ChangeDetail['type'], IconName> = { create: 'plus', update: 'pencil', move: 'arrows-move', delete: 'trash', undelete: 'restore' };
 const FIELD_TEXT = { title: 'Name', url: 'Address' };
@@ -12,10 +13,11 @@ const FIELD_TEXT = { title: 'Name', url: 'Address' };
 interface ChangesDialogProps {
   entry: TimelineEntry;
   who: string;
+  source: SourceText | null;
   onClose: () => void;
 }
 
-export function ChangesDialog({ entry, who, onClose }: ChangesDialogProps) {
+export function ChangesDialog({ entry, who, source, onClose }: ChangesDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => ref.current?.showModal(), []);
   const more = entry.count - entry.changes.length;
@@ -27,6 +29,12 @@ export function ChangesDialog({ entry, who, onClose }: ChangesDialogProps) {
           <div class="meta">
             {entry.from === entry.to ? hlcTime(entry.to) : `${hlcTime(entry.from)} to ${hlcTime(entry.to)}`} · {plural(entry.count, 'change', 'changes')}
           </div>
+          {source && (
+            <div class="changes-source">
+              <strong>{source.label.charAt(0).toUpperCase() + source.label.slice(1)}</strong>
+              <p class="muted">{source.explain}</p>
+            </div>
+          )}
         </div>
         <button type="button" class="ghost" aria-label="Close" onClick={() => ref.current?.close()}>
           <Icon name="x" />
@@ -37,9 +45,12 @@ export function ChangesDialog({ entry, who, onClose }: ChangesDialogProps) {
           <li key={i}>
             <Icon name={ICON[c.type]} />
             <div class="grow">
-              <div>
-                <span class="change-action">{actionText(c)}</span> {itemName(c)}
-                {c.kind === 'folder' && <span class="meta"> (folder{c.items !== undefined && `, ${plural(c.items, 'item', 'items')}`})</span>}
+              <div class="change-line">
+                <span>
+                  <span class="change-action">{actionText(c)}</span> {itemName(c)}
+                  {c.kind === 'folder' && <span class="meta"> (folder{c.items !== undefined && `, ${plural(c.items, 'item', 'items')}`})</span>}
+                </span>
+                <span class="meta">{timeOf(c.at)}</span>
               </div>
               {c.kind === 'bookmark' && c.type !== 'update' && c.url && <div class="url">{c.url}</div>}
               {place(c) && <div class="meta">{place(c)}</div>}

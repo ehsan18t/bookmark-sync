@@ -26,7 +26,7 @@ import { formatHlc, HLC_ZERO_STATE, type Hlc, HlcClock, type HlcState, hlcFloor,
 import { cryptoRandomBytes, decodeHint, EVERYTHING_ROOTS, encodeHint, isRootId, type PlaceHint, type RandomBytes, ROOT_GROUP, randomId } from '../core/ids.js';
 import { planJoin } from '../core/join.js';
 import { findDuplicatePairs, type RecentCreate } from '../core/nativeSync.js';
-import { type CreateOp, compareOps, type Op, type OpDraft, opKey } from '../core/ops.js';
+import { type CreateOp, compareOps, type Op, type OpDraft, type OpVia, opKey } from '../core/ops.js';
 import { settleLimited } from '../core/pool.js';
 import { keyBetween } from '../core/position.js';
 import { type Excluded, type LiveNode, type Mirror, type MirrorNode, reconcile } from '../core/reconcile.js';
@@ -234,6 +234,8 @@ export interface EnginePorts {
   keyFor?: (groupId: string) => Promise<CryptoKey | null>;
   /** A new local folder for a top another device added; null where it would overlap a synced folder. */
   place?: (hint: PlaceHint, title: string, groupId: string) => Promise<string | null>;
+  /** What last changed a local item, from bookmark events; without it every local change counts as the user's. */
+  changeSource?: (localId: string) => OpVia;
 }
 
 export class ForkError extends Error {}
@@ -272,6 +274,7 @@ export interface TimelineEntry {
   to: Hlc;
   count: number;
   kinds: Record<string, number>;
+  via?: OpVia;
   /** Oldest first, at most `TIMELINE_DETAILS`; `count` is the full number. */
   changes: ChangeDetail[];
 }
@@ -395,7 +398,7 @@ export class GroupEngine {
     const res = await ports.provider.createOnce(groupHeaderPath(config.groupId), await encode('group', header));
     if (res.status !== 'created') throw new Error('a group with this ID already exists');
     const engine = new GroupEngine(ports, freshLocal({ ...config, encrypted: !!encryption }), key);
-    if (opts.tops?.length) engine.recordDrafts(engine.topDrafts(opts.tops), true);
+    if (opts.tops?.length) engine.recordDrafts(engine.topDrafts(opts.tops), true, 'folders');
     await engine.performJoin({ mode: 'merge', ignoreDefaults: opts.ignoreDefaults ?? false, excluded: opts.excluded ?? [], creating: true });
     return { engine, key };
   }
@@ -759,7 +762,7 @@ export class GroupEngine {
       parts.map((p) => p.part),
     );
     const plan = await planJoin(merged, live, this.groupId, new Map(this.local.excluded));
-    this.recordDrafts(plan.drafts, true);
+    this.recordDrafts(plan.drafts, true, 'folders');
     this.local.mirror = [...this.local.mirror, ...plan.mirror.values()];
     this.local.idmap = [...this.local.idmap, ...plan.idmap];
   }
@@ -792,7 +795,7 @@ export class GroupEngine {
     if (this.local.config.mode !== 'folder') throw new Error('only folder groups have tops');
     await this.recordLocalChanges();
     await this.pull();
-    this.recordDrafts(this.topDrafts(tops), true);
+    this.recordDrafts(this.topDrafts(tops), true, 'folders');
     await this.attachParts(tops.map((t) => ({ part: t.id, localId: t.localId })));
     this.clearNothingHeld();
     await this.applyAndPush();
@@ -808,7 +811,7 @@ export class GroupEngine {
     if (everywhere) {
       if (!isTop) throw new UserError('Only a top folder of this sync can be removed for every browser.');
       const t = visibleTree(this.replayed(), [ROOT_GROUP]);
-      this.recordDrafts([{ type: 'delete', node: part, before: snapshot(t.nodes.get(part)!, childrenIndex(t)) }], true);
+      this.recordDrafts([{ type: 'delete', node: part, before: snapshot(t.nodes.get(part)!, childrenIndex(t)) }], true, 'folders');
     } else if (isTop && config.followTops) {
       config.declined = [...new Set([...(config.declined ?? []), part])];
     }
@@ -862,7 +865,7 @@ export class GroupEngine {
     );
   }
 
-  async recordLocalChanges(opts: { confirmed?: boolean; clockChecked?: boolean } = {}): Promise<number> {
+  async recordLocalChanges(opts: { confirmed?: boolean; clockChecked?: boolean; via?: OpVia } = {}): Promise<number> {
     if (this.importing) return 0;
     if (!opts.clockChecked) {
       await this.ports.provider.listDevices(this.groupId);
@@ -878,7 +881,16 @@ export class GroupEngine {
       excluded: new Map(this.local.excluded),
       newId: () => randomId(this.random),
     });
-    const ops = this.recordDrafts(result.drafts, opts.confirmed ?? false);
+    const localOf = new Map([...this.local.idmap, ...result.idmap].map(([l, s]) => [s, l]));
+    const source = this.ports.changeSource;
+    const sourceOf = (sid: string): OpVia => {
+      if (!source) return 'user';
+      const l = localOf.get(sid);
+      return l ? source(l) : 'later';
+    };
+    // A reorder reports only the folder, so a move inside it falls back to the folder's source.
+    const via = opts.via ?? ((d: OpDraft) => (d.type === 'move' && sourceOf(d.node) === 'later' ? sourceOf(d.parent) : sourceOf(d.node)));
+    const ops = this.recordDrafts(result.drafts, opts.confirmed ?? false, via);
     const now = this.ports.clock.now();
     for (const op of ops) if (op.type === 'create') this.local.recentCreates.push({ node: op.node, hlc: op.hlc, device: op.device, at: now });
     this.local.recentCreates = this.local.recentCreates.filter((r) => now - r.at <= this.settings.nativeSyncWindowMs);
@@ -1239,7 +1251,7 @@ export class GroupEngine {
         for (const x of mirror.values()) if (x.parent === own) mirror.set(x.id, { ...x, parent: remote });
       }
     }
-    this.recordDrafts(drafts, true);
+    this.recordDrafts(drafts, true, 'repair');
     this.local.mirror = [...mirror.values()];
     this.local.idmap = [...mirror.values()].filter((m) => m.localId).map((m) => [m.localId, m.id]);
     const repaired = new Set(pairs.map(([own]) => own));
@@ -1595,7 +1607,7 @@ export class GroupEngine {
       this.ports.bookmarks,
       removable.map((n) => n.localId),
     );
-    this.recordDrafts(plan.drafts, true);
+    this.recordDrafts(plan.drafts, true, 'join');
     this.local.mirror = [...plan.mirror.values()];
     this.local.idmap = [...plan.idmap];
     this.guardBypass = true;
@@ -1714,7 +1726,7 @@ export class GroupEngine {
     const now = this.mergedTree();
     const base = this.baseState();
     const drafts = planRestoreExact(now, then, (trial) => visibleTree(replay(base, [...this.local.ops, ...this.stampDrafts(trial, true)]), this.roots), only);
-    this.recordDrafts(drafts, true);
+    this.recordDrafts(drafts, true, 'undo');
     return drafts.length;
   }
 
@@ -1725,14 +1737,14 @@ export class GroupEngine {
     for (const op of sorted) {
       const last = out.at(-1);
       const detail = details.get(opKey(op));
-      if (last && last.device === op.device && hlcWall(last.from) - hlcWall(op.hlc) < 60_000) {
+      if (last && last.device === op.device && last.via === op.via && hlcWall(last.from) - hlcWall(op.hlc) < 60_000) {
         last.from = op.hlc;
         last.count++;
         last.kinds[op.type] = (last.kinds[op.type] ?? 0) + 1;
         if (detail) last.changes.push(detail);
       } else {
         if (out.length >= limit) break;
-        out.push({ device: op.device, from: op.hlc, to: op.hlc, count: 1, kinds: { [op.type]: 1 }, changes: detail ? [detail] : [] });
+        out.push({ device: op.device, from: op.hlc, to: op.hlc, count: 1, kinds: { [op.type]: 1 }, ...(op.via ? { via: op.via } : {}), changes: detail ? [detail] : [] });
       }
     }
     for (const e of out) e.changes = e.changes.reverse().slice(0, TIMELINE_DETAILS);
@@ -1966,8 +1978,8 @@ export class GroupEngine {
     return l;
   }
 
-  private recordDrafts(drafts: OpDraft[], confirmed: boolean): Op[] {
-    const ops = this.stampDrafts(drafts, false);
+  private recordDrafts(drafts: OpDraft[], confirmed: boolean, via: OpVia | ((d: OpDraft) => OpVia)): Op[] {
+    const ops = this.stampDrafts(drafts, false).map((op, i) => ({ ...op, via: typeof via === 'function' ? via(drafts[i]!) : via }));
     for (const op of ops) {
       this.local.ops.push(op);
       this.local.outbox.push(op);

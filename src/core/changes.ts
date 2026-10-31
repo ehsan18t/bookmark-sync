@@ -1,9 +1,11 @@
+import type { Hlc } from './hlc.js';
 import { isRootId, ROOT_GROUP } from './ids.js';
 import { compareOps, type Kind, type Op, opKey, type SubtreeSnapshot } from './ops.js';
 import type { GroupState } from './replay.js';
 
 export interface ChangeDetail {
   type: Op['type'];
+  at: Hlc;
   kind: Kind;
   title: string;
   url: string;
@@ -49,12 +51,13 @@ export function describeOps(base: GroupState, ops: readonly Op[]): Map<string, C
   const out = new Map<string, ChangeDetail>();
   for (const op of [...ops].sort(compareOps)) {
     const was = known.get(op.node);
+    const put = (d: Omit<ChangeDetail, 'at'>) => out.set(opKey(op), { ...d, at: op.hlc });
     switch (op.type) {
       case 'create':
       case 'undelete': {
         const k: Known = { kind: op.kind, title: op.fields.title ?? '', url: op.fields.url ?? '', parent: op.parent };
         known.set(op.node, k);
-        out.set(opKey(op), { type: op.type, kind: k.kind, title: k.title, url: k.url, folder: folderOf(k.parent) });
+        put({ type: op.type, kind: k.kind, title: k.title, url: k.url, folder: folderOf(k.parent) });
         break;
       }
       case 'update': {
@@ -65,19 +68,19 @@ export function describeOps(base: GroupState, ops: readonly Op[]): Map<string, C
         });
         const k: Known = { kind: was?.kind ?? 'bookmark', parent: was?.parent ?? '', title: op.fields.title ?? was?.title ?? '', url: op.fields.url ?? was?.url ?? '' };
         if (was) known.set(op.node, k);
-        out.set(opKey(op), { type: 'update', kind: k.kind, title: k.title, url: k.url, folder: folderOf(k.parent), edits });
+        put({ type: 'update', kind: k.kind, title: k.title, url: k.url, folder: folderOf(k.parent), edits });
         break;
       }
       case 'move': {
         const k: Known = { kind: was?.kind ?? 'bookmark', title: was?.title ?? '', url: was?.url ?? '', parent: op.parent };
         if (was) known.set(op.node, k);
         const from = op.before.parent === op.parent ? undefined : folderOf(op.before.parent);
-        out.set(opKey(op), { type: 'move', kind: k.kind, title: k.title, url: k.url, folder: folderOf(op.parent), ...(from ? { from } : {}) });
+        put({ type: 'move', kind: k.kind, title: k.title, url: k.url, folder: folderOf(op.parent), ...(from ? { from } : {}) });
         break;
       }
       case 'delete': {
         const s = op.before;
-        out.set(opKey(op), { type: 'delete', kind: s.kind, title: s.title, url: s.url, folder: was ? folderOf(was.parent) : [], ...(s.kind === 'folder' ? { items: countItems(s) } : {}) });
+        put({ type: 'delete', kind: s.kind, title: s.title, url: s.url, folder: was ? folderOf(was.parent) : [], ...(s.kind === 'folder' ? { items: countItems(s) } : {}) });
         break;
       }
     }

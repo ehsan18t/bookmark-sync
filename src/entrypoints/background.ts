@@ -174,12 +174,16 @@ export default defineBackground({
       timer = setTimeout(() => logged(sync()), 3000);
     };
 
-    browser.bookmarks.onCreated.addListener(scheduleSync);
-    browser.bookmarks.onRemoved.addListener(scheduleSync);
-    browser.bookmarks.onChanged.addListener(scheduleSync);
-    browser.bookmarks.onMoved.addListener(scheduleSync);
-    const extra = browser.bookmarks as unknown as Record<string, { addListener(f: () => void): void } | undefined>;
-    extra.onChildrenReordered?.addListener(scheduleSync);
+    const changed = (id: string) => {
+      app.noteChange(id);
+      scheduleSync();
+    };
+    browser.bookmarks.onCreated.addListener(changed);
+    browser.bookmarks.onRemoved.addListener(changed);
+    browser.bookmarks.onChanged.addListener(changed);
+    browser.bookmarks.onMoved.addListener(changed);
+    const extra = browser.bookmarks as unknown as Record<string, { addListener(f: (id: string) => void): void } | undefined>;
+    extra.onChildrenReordered?.addListener(changed);
     extra.onImportBegan?.addListener(() => app.setImporting(true));
     extra.onImportEnded?.addListener(() => {
       app.setImporting(false);

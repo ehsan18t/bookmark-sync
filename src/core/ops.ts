@@ -20,11 +20,18 @@ export interface SubtreeSnapshot {
   children: SubtreeSnapshot[];
 }
 
+/**
+ * What made a change: `user` and `browser-sync` come from bookmark events, `later` is a change no event reported
+ * (made while the extension was not running), the rest are the extension's own actions. Absent on older ops.
+ */
+export type OpVia = 'user' | 'browser-sync' | 'later' | 'undo' | 'join' | 'dedupe' | 'repair' | 'folders' | 'bridge';
+
 interface OpBase {
   device: string;
   opSeq: number;
   hlc: Hlc;
   node: string;
+  via?: OpVia;
 }
 
 export interface CreateOp extends OpBase {
