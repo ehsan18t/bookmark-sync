@@ -14,7 +14,7 @@ const { values: opt } = parseArgs({
     workers: { type: 'string', default: String(Math.min(4, Math.max(1, availableParallelism() >> 2))) },
     encoder: { type: 'string', default: 'auto' },
     priority: { type: 'string', default: 'low' },
-    codec: { type: 'string', default: 'hevc' },
+    codec: { type: 'string', default: 'h264' },
     start: { type: 'string', default: '0' },
     end: { type: 'string' },
     quality: { type: 'string', default: '16' },
