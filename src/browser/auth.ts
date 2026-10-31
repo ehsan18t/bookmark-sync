@@ -12,7 +12,7 @@ const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 
 interface ClientConfig {
   clientId: string;
-  /** Google requires it for web and desktop clients; it ships in the package and is not secret. */
+  /** Google requires it for web clients, so it ships in the package. The registered redirect is what limits sign-in. */
   clientSecret: string;
 }
 
@@ -34,7 +34,7 @@ export function googleAvailable(engine: Engine): boolean {
   return builtInClient(engine) !== null;
 }
 
-/** Chromium uses https://<id>.chromiumapp.org/; Firefox uses its loopback form, which Google accepts for desktop clients. */
+/** Firefox's own redirect host is on a domain Google won't accept, so it uses its loopback form, registered on a web client. */
 function redirectUri(engine: Engine): string {
   const url = new URL(browser.identity.getRedirectURL());
   if (engine === 'firefox') return `http://127.0.0.1/mozoauth2/${url.hostname.split('.')[0]}`;

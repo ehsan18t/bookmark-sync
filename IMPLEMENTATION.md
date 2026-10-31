@@ -403,11 +403,10 @@ interface StorageProvider {
 - **Chromium:**
   - Redirect: `https://<extension-id>.chromiumapp.org/`.
   - Client: one Google "Web application" client listing the redirect for every published extension ID (Chrome Web Store, Edge Add-ons, and the dev build pinned with `key`).
-  - Secret: the token endpoint needs `client_secret` for web clients. It ships in the package and is treated as public.
+  - Secret: the token endpoint needs `client_secret` for web clients. It ships in the package, so the registered redirect, not the secret, is what limits who receives a code.
 - **Firefox:**
-  - Redirect: `http://127.0.0.1/mozoauth2/<subdomain>` (Firefox 86+).
-  - Client: a "Desktop app" client, with `browser_specific_settings.gecko.id` pinned.
-  - Unverified: Google documents loopback redirects with an explicit port. Whether it accepts this port-less form is a spike in milestone M2. If it doesn't, the fallback is a small redirect page on a domain the project controls.
+  - Redirect: `http://127.0.0.1/mozoauth2/<subdomain>` (Firefox 86+), where the subdomain is the SHA-1 hex of the add-on ID. Google refuses the default `*.extensions.allizom.org` host because its domain can't be verified.
+  - Client: a second "Web application" client with this exact address under Authorized redirect URIs, and `browser_specific_settings.gecko.id` pinned so the address never changes. `pnpm extension-id` prints it. Google accepts the port-less form when it is registered like this. A "Desktop app" client was not tried with it.
 - **Brave:** if `identity` is unavailable or `launchWebAuthFlow` fails with the Brave error, the options page explains how to turn on "Allow Google login for extensions" in `brave://settings/extensions`.
 - **Host permissions:** the googleapis origins are in `host_permissions`. Firefox lets users revoke them, so `permissions.contains` is checked before each sync, and onboarding requests them if missing.
 
