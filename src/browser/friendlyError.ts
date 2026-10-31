@@ -27,7 +27,8 @@ export function friendlyError(e: unknown): string {
 }
 
 function googleAuthMessage(code: string | undefined): string {
-  if (code === 'invalid_client' || code === 'unauthorized_client') return 'Google didn’t accept this version of the extension. Its Google client ID or secret is wrong; see docs/google-setup.md.';
+  if (code === 'invalid_client' || code === 'unauthorized_client')
+    return 'Google didn’t accept this version of the extension. Its Google client ID or secret is wrong. See docs/google-setup.md to fix it.';
   if (code === 'invalid_grant') return 'Google’s sign-in expired or was removed. Sign in with Google again.';
   if (code) return 'Google sign-in didn’t finish. Try signing in with Google again.';
   return 'Google Drive didn’t accept the sign-in. Sign in with Google again.';

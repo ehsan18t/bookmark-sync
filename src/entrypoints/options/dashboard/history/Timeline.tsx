@@ -1,3 +1,4 @@
+import { useSignal } from '@preact/signals';
 import { useMemo } from 'preact/hooks';
 import type { GroupSummary } from '../../../../engine/app.js';
 import type { TimelineEntry } from '../../../../engine/group.js';
@@ -10,7 +11,9 @@ import { useLoad } from '../../../../ui/hooks/useLoad.js';
 import { hlcTime } from '../../../../ui/lib/format.js';
 import { send } from '../../../../ui/lib/messaging.js';
 import { devices, load } from '../../../../ui/state/store.js';
-import { describeKinds, justBefore } from './timelineText.js';
+import { ChangesDialog } from './ChangesDialog.js';
+import { sourceText } from './changeSources.js';
+import { describeEntry, justBefore } from './timelineText.js';
 
 interface TimelineProps {
   g: GroupSummary;
@@ -20,6 +23,7 @@ export function Timeline({ g }: TimelineProps) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: refetches after each sync
   const r = useLoad(() => send<TimelineEntry[]>({ t: 'timeline', groupId: g.groupId }), [g.groupId, g.lastSyncAt]);
   const list = devices.value[g.groupId];
+  const open = useSignal<TimelineEntry | null>(null);
   const byId = useMemo(() => new Map((list ?? []).map((v) => [v.deviceId, v])), [list]);
   if (r.error) return <ErrorText>{r.error}</ErrorText>;
   if (!r.data) return <Loading>Loading history…</Loading>;
@@ -27,6 +31,10 @@ export function Timeline({ g }: TimelineProps) {
   const who = (d: string) => {
     const x = byId.get(d);
     return x ? (x.self ? 'This browser' : x.name) : 'A removed browser';
+  };
+  const source = (e: TimelineEntry) => {
+    const x = byId.get(e.device);
+    return sourceText(e.via, x?.browser, x ? (x.self ? 'this browser' : x.name) : 'a removed browser');
   };
   const restoreTo = async (hlc: string) => {
     const p = await send<{ restored: number; removed: number; changed: number }>({ t: 'previewRestore', groupId: g.groupId, hlc });
@@ -69,10 +77,12 @@ export function Timeline({ g }: TimelineProps) {
                 <li key={e.from}>
                   <div class="grow">
                     <div>
-                      {who(e.device)} · {describeKinds(e.kinds)}
+                      {who(e.device)} · {source(e) && `${source(e)!.label} · `}
+                      {describeEntry(e)}
                     </div>
                     <div class="meta">{hlcTime(e.to)}</div>
                   </div>
+                  {e.changes.length > 0 && <Action label="View changes" kind="ghost" run={() => (open.value = e)} />}
                   {e.from > g.oldestRestorable && <Action label="Undo from here" kind="ghost" run={() => restoreTo(justBefore(e.from))} />}
                 </li>
               ))}
@@ -82,6 +92,7 @@ export function Timeline({ g }: TimelineProps) {
           <EmptyState icon="history" title="No changes yet" text="Changes from every browser show up here, so you can go back to an earlier point." />
         )}
       </div>
+      {open.value && <ChangesDialog entry={open.value} who={who(open.value.device)} source={source(open.value)} onClose={() => (open.value = null)} />}
     </div>
   );
 }

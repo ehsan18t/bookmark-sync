@@ -5,6 +5,7 @@ import { BridgeTakenError, UserError } from '../core/errors.js';
 import { DAY } from '../core/frontier.js';
 import { EVERYTHING_ROOTS, type PlaceHint, type RandomBytes, ROOT_GROUP, type RootType, randomId } from '../core/ids.js';
 import { sameNameKey } from '../core/names.js';
+import type { OpVia } from '../core/ops.js';
 import { settleLimited } from '../core/pool.js';
 import type { Excluded, LiveNode } from '../core/reconcile.js';
 import { ProviderAuthError } from '../storage/webdav.js';
@@ -495,6 +496,14 @@ export class SyncApp {
 
   // Sync
 
+  /** Last source of each local item a bookmark event reported, for labelling what reconcile then finds. */
+  private readonly touched = new Map<string, OpVia>();
+
+  /** Chromium wraps its own sync's writes, and imports, in import events. */
+  noteChange(localId: string): void {
+    this.touched.set(localId, this.importing ? 'browser-sync' : 'user');
+  }
+
   setImporting(on: boolean): void {
     this.importing = on;
     for (const e of this.engines.values()) e.importing = on;
@@ -671,7 +680,7 @@ export class SyncApp {
         this.meta.localUndo = [entry, ...this.meta.localUndo].slice(0, 20);
         await this.saveMeta();
       }
-      for (const e of this.engines.values()) await e.recordLocalChanges({ confirmed: true });
+      for (const e of this.engines.values()) await e.recordLocalChanges({ confirmed: true, via: 'dedupe' });
       if (refused) throw refused.reason;
     });
     // Uploads what was recorded even when one removal was refused.
@@ -948,7 +957,7 @@ export class SyncApp {
   private async recordBridged(targets: GroupEngine[]): Promise<void> {
     for (const e of targets) {
       try {
-        if (await e.recordLocalChanges({ confirmed: true })) this.bridgedPending.add(e);
+        if (await e.recordLocalChanges({ confirmed: true, via: 'bridge' })) this.bridgedPending.add(e);
       } catch {
         // Recorded unconfirmed on that sync's next pass instead.
       }
@@ -1102,6 +1111,7 @@ export class SyncApp {
       sleep: this.deps.sleep,
       keyFor: (g) => this.deps.store.getKey(g),
       place: (hint, title, groupId) => this.placeTop(hint, title, groupId),
+      changeSource: (localId) => this.touched.get(localId) ?? 'later',
       settings: { historyMs: s.historyDays * DAY, guardPercent: s.guardPercent, guardMin: s.guardMin },
     };
   }

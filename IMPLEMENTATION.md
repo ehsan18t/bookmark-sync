@@ -116,7 +116,8 @@ type Kind = 'bookmark' | 'folder' | 'separator';
 type Fields = { title?: string; url?: string };
 type OpRef = { device: string; opSeq: number };
 
-type OpBase = { device: string; opSeq: number; hlc: string; node: string };
+type OpVia = 'user' | 'browser-sync' | 'later' | 'undo' | 'join' | 'dedupe' | 'repair' | 'folders' | 'bridge';
+type OpBase = { device: string; opSeq: number; hlc: string; node: string; via?: OpVia };
 
 type CreateOp   = OpBase & { type: 'create';   kind: Kind; parent: string; pos: string; fields: Fields };
 type UpdateOp   = OpBase & { type: 'update';   fields: Fields; before: Fields };
@@ -129,6 +130,7 @@ type Op = CreateOp | UpdateOp | MoveOp | DeleteOp | UndeleteOp;
 
 - `seen[d]` is the highest `opSeq` from device `d` that the deleting device had applied when it recorded the delete, including its own (`seen[self] = opSeq - 1`). Ops read but not yet applied (during a guard pause) do not count.
 - `before` fields are for history display only. Merging and restoring never use them.
+- `via` is for history display only. Ops from versions without it have none. Local changes get `user` or `browser-sync` from the last bookmark event on the item (an event inside `onImportBegan`/`onImportEnded` is `browser-sync`), and `later` when no event reported it. The extension's own actions set theirs directly.
 - A folder delete is one `DeleteOp` on the folder. Descendants are hidden by the visibility rule in 4.3.
 
 ### 3.2 Replay state (per node)

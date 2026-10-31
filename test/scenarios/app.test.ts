@@ -101,6 +101,30 @@ describe('the app layer', () => {
     expect(status).toMatchObject({ name: 'Main', status: { state: 'active' }, pendingChanges: 0 });
   });
 
+  it('labels each change by what made it, and the other browser sees the same labels', async () => {
+    const { a, b, accA, accB } = await pair();
+    const groupId = await a.app.createGroup({ accountId: accA, name: 'Main', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
+    await b.app.joinGroup({ accountId: accB, groupId, target: { kind: 'whole' }, mode: 'merge', ignoreDefaults: true });
+
+    const mine = await a.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'Mine', url: 'https://mine.example/' });
+    a.app.noteChange(mine);
+    await a.app.syncAll();
+    a.app.setImporting(true);
+    const synced = await a.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'Synced', url: 'https://synced.example/' });
+    a.app.noteChange(synced);
+    a.app.setImporting(false);
+    await a.app.syncAll();
+    now += 120_000;
+    await a.bookmarks.create({ parentId: FAKE_ROOTS.toolbar, kind: 'bookmark', title: 'Unseen', url: 'https://unseen.example/' });
+    await a.app.syncAll();
+    await b.app.syncAll();
+
+    const via = (rows: Awaited<ReturnType<SyncApp['timeline']>>) => Object.fromEntries(rows.flatMap((e) => e.changes.map((c) => [c.title, e.via])));
+    const expected = { Mine: 'user', Synced: 'browser-sync', Unseen: 'later' };
+    expect(via(await a.app.timeline(groupId))).toMatchObject(expected);
+    expect(via(await b.app.timeline(groupId))).toMatchObject(expected);
+  });
+
   it('joins from what the folder list and preview already read, fetching only newer changes', async () => {
     const { provider, a, b, accA, accB } = await pair();
     const groupId = await a.app.createGroup({ accountId: accA, name: 'Main', mode: 'everything', target: { kind: 'whole' }, ignoreDefaults: false });
