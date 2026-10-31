@@ -3,7 +3,6 @@ import { Action } from '../../../../ui/components/Action.js';
 import { ErrorText } from '../../../../ui/components/ErrorText.js';
 import { useLoad } from '../../../../ui/hooks/useLoad.js';
 import { send } from '../../../../ui/lib/messaging.js';
-import { About } from './About.js';
 import { Setting } from './Setting.js';
 import { SettingsForm } from './SettingsForm.js';
 import { StorageList } from './StorageList.js';
@@ -36,7 +35,6 @@ export function SettingsTab() {
           </Setting>
         </div>
       </div>
-      <About />
     </>
   );
 }

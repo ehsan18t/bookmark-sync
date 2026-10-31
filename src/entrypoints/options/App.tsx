@@ -25,7 +25,7 @@ export function App() {
           </Banner>
         </div>
       )}
-      {hash.value === 'setup' || inSetup.value ? <Setup onFinish={finishSetup} /> : <Dashboard tab={isTab(hash.value) ? hash.value : 'overview'} />}
+      {hash.value === 'setup' || (inSetup.value && hash.value !== 'about') ? <Setup onFinish={finishSetup} /> : <Dashboard tab={isTab(hash.value) ? hash.value : 'overview'} />}
     </>
   );
 }
