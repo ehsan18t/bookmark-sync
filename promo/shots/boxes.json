@@ -1,0 +1,38 @@
+{
+  "setup-1-storage/server": {
+    "x": 200,
+    "y": 301.453125,
+    "width": 600,
+    "height": 77.828125
+  },
+  "setup-4-what/folders": {
+    "x": 200,
+    "y": 279.765625,
+    "width": 600,
+    "height": 77.828125
+  },
+  "setup-4-what/start": {
+    "x": 669.875,
+    "y": 495.34375,
+    "width": 130.125,
+    "height": 44
+  },
+  "join-2-preview/join": {
+    "x": 666.65625,
+    "y": 1193.921875,
+    "width": 133.34375,
+    "height": 44
+  },
+  "join-2-preview/combine": {
+    "x": 309,
+    "y": 810.46875,
+    "width": 472,
+    "height": 22.59375
+  },
+  "dash-history/undo": {
+    "x": 787.765625,
+    "y": 388.78125,
+    "width": 131.234375,
+    "height": 36
+  }
+}

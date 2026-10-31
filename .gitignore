@@ -10,3 +10,8 @@ coverage/
 .env.*.local
 
 .env
+
+# Promo video outputs, rebuilt by promo/music.mjs and promo/render.mjs
+promo/*.mp4
+promo/music.wav
+promo/stills/

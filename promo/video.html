@@ -1,0 +1,507 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Bookmark sync promo</title>
+<style>
+:root {
+  --bg: #070b14;
+  --border: rgba(148, 163, 184, 0.16);
+  --text: #e8ecf3;
+  --text2: #94a0b4;
+  --accent: #3b7bf0;
+  --accent2: #7aa7ff;
+  --ok: #34d399;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+#stage { position: absolute; inset: 0; overflow: hidden; }
+.layer { position: absolute; inset: 0; }
+.grid { position: absolute; inset: -128px; background-image: linear-gradient(rgba(148,163,184,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.055) 1px, transparent 1px); background-size: 64px 64px; mask-image: radial-gradient(ellipse at 50% 48%, #000 15%, transparent 68%); }
+.blob { position: absolute; left: 0; top: 0; border-radius: 50%; filter: blur(140px); }
+.vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,.55)); pointer-events: none; }
+
+.head { position: absolute; left: 0; right: 0; top: 74px; text-align: center; font-size: 66px; font-weight: 650; letter-spacing: -0.028em; line-height: 1.1; }
+.head .w { display: inline-block; white-space: pre; }
+.grad { background: linear-gradient(92deg, #8db4ff, #b49cff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+.win { position: absolute; left: 0; top: 0; width: 320px; height: 210px; margin: -105px 0 0 -160px; border-radius: 16px; background: linear-gradient(180deg, #151d2d, #0e1420); border: 1px solid var(--border); overflow: hidden; box-shadow: 0 30px 60px -20px rgba(0,0,0,.75), 0 0 0 0 rgba(59,123,240,0); }
+.bar { height: 38px; display: flex; align-items: center; gap: 7px; padding: 0 14px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,.025); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #2a3346; }
+.bname { margin-left: 8px; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.bname i { width: 10px; height: 10px; border-radius: 50%; }
+.count { position: absolute; right: 14px; top: 0; height: 38px; display: flex; align-items: center; font-size: 13px; color: var(--text2); }
+.count span { position: absolute; right: 0; white-space: nowrap; }
+.row { position: absolute; left: 12px; right: 12px; top: 0; height: 34px; display: flex; align-items: center; gap: 11px; padding: 0 10px; border-radius: 8px; font-size: 16px; color: #d6dce7; }
+.row .ic { width: 20px; height: 20px; flex: none; display: grid; place-items: center; border-radius: 6px; font-size: 11px; font-weight: 700; color: #0b1020; }
+.row .ic svg { width: 20px; height: 20px; color: var(--accent2); }
+.row .t { position: relative; flex: 1; height: 22px; }
+.row .t span { position: absolute; left: 0; top: 0; white-space: nowrap; }
+.row.dupe { background: rgba(251, 191, 36, .1); color: #fcd34d; }
+
+.toast { position: absolute; left: 0; top: 0; height: 34px; padding: 0 14px; border-radius: 17px; display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; background: var(--accent); color: white; white-space: nowrap; box-shadow: 0 10px 30px -6px rgba(59,123,240,.7); transform: translate(-50%, -50%); }
+.pill-ok { position: absolute; right: 12px; top: 8px; height: 22px; padding: 0 9px; border-radius: 11px; font-size: 12px; font-weight: 600; color: var(--ok); background: rgba(52, 211, 153, .12); display: flex; align-items: center; gap: 5px; }
+
+.node { position: absolute; left: 0; top: 0; width: 160px; height: 160px; margin: -80px 0 0 -80px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #22365e, #0f1a30 70%); border: 1px solid rgba(122,167,255,.35); box-shadow: 0 0 80px -10px rgba(59,123,240,.55), inset 0 0 30px rgba(122,167,255,.15); }
+.node-label { position: absolute; left: 0; top: 0; transform: translate(-50%, 0); font-size: 18px; color: var(--text2); white-space: nowrap; font-weight: 500; }
+.logo { position: absolute; left: 0; top: 0; width: 170px; height: 170px; margin: -85px 0 0 -85px; color: var(--accent2); filter: drop-shadow(0 0 30px rgba(59,123,240,.6)); }
+.logo svg { width: 100%; height: 100%; }
+.title { position: absolute; left: 0; right: 0; text-align: center; font-weight: 700; letter-spacing: -0.035em; }
+.tag { position: absolute; left: 0; right: 0; text-align: center; color: var(--text2); font-weight: 500; }
+
+.pk { position: absolute; left: 0; top: 0; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: radial-gradient(circle, #fff 0 25%, #8db4ff 45%, rgba(59,123,240,0) 72%); box-shadow: 0 0 22px 6px rgba(91,141,255,.55); }
+.pk.tr { width: 10px; height: 10px; margin: -5px 0 0 -5px; box-shadow: 0 0 14px 3px rgba(91,141,255,.35); }
+.pk.cipher { width: auto; height: 26px; margin: -13px 0 0 -40px; padding: 0 9px; border-radius: 8px; background: rgba(15, 23, 42, .92); border: 1px solid rgba(180,156,255,.6); color: #c9b8ff; font: 600 14px/24px 'Cascadia Mono', Consolas, monospace; box-shadow: 0 0 18px rgba(180,156,255,.35); }
+.ring { position: absolute; left: 0; top: 0; width: 160px; height: 160px; margin: -80px 0 0 -80px; border-radius: 50%; border: 2px solid rgba(122,167,255,.8); }
+.chip { position: absolute; left: 0; top: 0; height: 52px; padding: 0 22px; border-radius: 26px; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 10px; font-size: 21px; font-weight: 600; background: rgba(21, 29, 45, .92); border: 1px solid rgba(122,167,255,.3); box-shadow: 0 12px 40px -10px rgba(0,0,0,.8); white-space: nowrap; }
+.chip i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent2); }
+.lock { position: absolute; left: 0; top: 0; width: 110px; height: 110px; margin: -55px 0 0 -55px; color: #c9b8ff; filter: drop-shadow(0 0 24px rgba(180,156,255,.7)); }
+
+.frame-wrap { position: absolute; left: 680px; top: 110px; width: 1180px; height: 896px; perspective: 2400px; }
+.frame { position: absolute; inset: 0; border-radius: 18px; overflow: hidden; background: #f4f6f9; border: 1px solid rgba(255,255,255,.14); box-shadow: 0 60px 120px -30px rgba(0,0,0,.9), 0 0 0 1px rgba(0,0,0,.4); transform-origin: 30% 50%; }
+.fbar { height: 46px; background: #e6e9ef; display: flex; align-items: center; gap: 8px; padding: 0 18px; border-bottom: 1px solid #d5dae2; }
+.fbar .d { width: 12px; height: 12px; border-radius: 50%; }
+.addr { margin-left: 24px; height: 28px; flex: 0 0 520px; border-radius: 14px; background: #fff; display: flex; align-items: center; gap: 8px; padding: 0 14px; font: 500 14px 'Segoe UI', sans-serif; color: #565d6b; }
+.addr svg { width: 15px; height: 15px; color: #2563eb; }
+.view { position: absolute; left: 0; top: 46px; width: 1180px; height: 850px; overflow: hidden; }
+.slide { position: absolute; inset: 0; }
+.slide img { width: 1180px; display: block; }
+.hl { position: absolute; border: 3px solid #2563eb; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(15, 23, 42, .28), 0 0 30px rgba(37,99,235,.6); }
+.cap { position: absolute; left: 120px; top: 400px; width: 500px; }
+.cap .k { font-size: 18px; font-weight: 700; letter-spacing: .16em; color: var(--accent2); margin-bottom: 18px; }
+.cap .h { font-size: 54px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.08; margin-bottom: 20px; }
+.cap .s { font-size: 25px; line-height: 1.45; color: var(--text2); }
+.popup { position: absolute; left: 0; top: 0; width: 420px; height: 222px; border-radius: 16px; overflow: hidden; background: #f4f6f9; box-shadow: 0 40px 90px -20px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.2); }
+.popup img { width: 420px; display: block; }
+.page img { width: 1180px; display: block; }
+.cursor { position: absolute; left: 0; top: 0; margin: -3px 0 0 -5px; filter: drop-shadow(0 4px 6px rgba(0,0,0,.35)); transform-origin: 5px 3px; }
+.ripple { position: absolute; left: 0; top: 0; width: 70px; height: 70px; margin: -35px 0 0 -35px; border-radius: 50%; background: rgba(37,99,235,.28); border: 2px solid rgba(37,99,235,.8); }
+.flash { position: absolute; inset: 0; background: radial-gradient(circle at 50% 46%, rgba(140,180,255,.55), rgba(90,110,255,.12) 40%, transparent 70%); pointer-events: none; }
+.spark { position: absolute; left: 0; top: 0; border-radius: 50%; background: #b8ccff; }
+.shine { background: linear-gradient(100deg, #e8ecf3 0%, #e8ecf3 42%, #ffffff 50%, #a9c4ff 54%, #e8ecf3 62%, #e8ecf3 100%); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; }
+.steps { position: absolute; left: 120px; top: 330px; display: flex; gap: 10px; }
+.steps i { width: 34px; height: 4px; border-radius: 2px; background: rgba(148,163,184,.25); }
+
+.browsers { position: absolute; left: 0; right: 0; display: flex; justify-content: center; gap: 34px; font-size: 26px; font-weight: 600; color: #cbd3e1; }
+.browsers span { display: flex; align-items: center; gap: 12px; }
+.browsers i { width: 12px; height: 12px; border-radius: 50%; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="layer" id="bg"><div class="grid" id="grid"></div></div>
+  <div class="layer" id="world"><svg class="layer" id="lines" width="1920" height="1080"></svg></div>
+  <div class="layer" id="product"></div>
+  <div class="layer" id="outro"></div>
+  <div class="vignette"></div>
+  <div class="flash" id="flash" style="opacity:0"></div>
+  <div class="layer" id="fade" style="background:#000;opacity:0"></div>
+</div>
+<script>
+const LOGO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path pathLength="1" d="M15 10v11l-5 -3l-5 3v-11a3 3 0 0 1 3 -3h4a3 3 0 0 1 3 3" /><path pathLength="1" d="M11 3h5a3 3 0 0 1 3 3v11" /></svg>';
+const FOLDER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2" /></svg>';
+const LOCK_BODY = '<path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z" /><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" />';
+const LOCK_SHACKLE = '<path d="M8 11v-4a4 4 0 1 1 8 0v4" />';
+const MERGE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /><path d="M7 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /><path d="M17 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /><path d="M7 8l0 8" /><path d="M7 8a4 4 0 0 0 4 4h4" /></svg>';
+
+const EASE = 'cubic-bezier(.22,1,.36,1)';
+const INOUT = 'cubic-bezier(.65,0,.35,1)';
+const DURATION = 40000;
+
+const $ = (sel) => document.querySelector(sel);
+function mk(tag, cls, html, parent) {
+  const el = document.createElement(tag);
+  if (cls) el.className = cls;
+  if (html != null) el.innerHTML = html;
+  if (parent) parent.append(el);
+  return el;
+}
+// Inline style holds the state before an element's first animation; every animation fills forwards only, so later ones win once they start.
+function set(el, style) { Object.assign(el.style, style); return el; }
+function A(el, frames, start, dur, easing = EASE) {
+  const a = el.animate(frames, { delay: start, duration: dur, fill: 'forwards', easing });
+  a.pause();
+  return a;
+}
+const px = ([x, y]) => `${x}px ${y}px`;
+
+const bg = $('#bg'), world = $('#world'), lines = $('#lines'), product = $('#product'), outro = $('#outro');
+
+const blobs = [
+  { c: '#1d4ed8', s: 760, from: [-200, -260], to: [160, -120], o: .45 },
+  { c: '#7c3aed', s: 680, from: [1400, 600], to: [1080, 420], o: .32 },
+  { c: '#0ea5e9', s: 520, from: [1500, -200], to: [1300, -40], o: .2 },
+];
+for (const b of blobs) {
+  const el = set(mk('div', 'blob', null, bg), { width: b.s + 'px', height: b.s + 'px', background: b.c, opacity: b.o, translate: px(b.from) });
+  A(el, [{ translate: px(b.from) }, { translate: px(b.to) }], 0, DURATION, 'linear');
+}
+A($('#grid'), [{ translate: '0px 0px' }, { translate: '64px 64px' }], 0, DURATION, 'linear');
+set(bg, { opacity: 0 });
+A(bg, [{ opacity: 0 }, { opacity: 1 }], 0, 900, 'linear');
+
+let seed = 7;
+const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+for (let i = 0; i < 70; i++) {
+  const x = rnd() * 1920, y = rnd() * 1180, r = 1 + rnd() * 2.4, o = .15 + rnd() * .45;
+  const d = set(mk('div', 'spark', null, bg), { width: r * 2 + 'px', height: r * 2 + 'px', translate: px([x, y]), opacity: 0 });
+  A(d, [{ translate: px([x, y]) }, { translate: px([x + (rnd() - .5) * 160, y - 160 - rnd() * 200]) }], 0, DURATION, 'linear');
+  const ph = rnd() * 4000;
+  A(d, [{ opacity: 0 }, { opacity: o, offset: .2 }, { opacity: o * .3, offset: .5 }, { opacity: o, offset: .8 }, { opacity: 0 }], ph, 6000 + rnd() * 5000, 'ease-in-out');
+  for (let k = ph + 9000; k < DURATION; k += 9000) A(d, [{ opacity: 0 }, { opacity: o, offset: .25 }, { opacity: o * .3, offset: .5 }, { opacity: o, offset: .75 }, { opacity: 0 }], k, 8000, 'ease-in-out');
+}
+
+function drawLogo(el, start) {
+  set(el, { opacity: 0 });
+  A(el, [{ opacity: 0 }, { opacity: 1 }], start, 120, 'linear');
+  el.querySelectorAll('path').forEach((p, i) => {
+    set(p, { strokeDasharray: '1', strokeDashoffset: '1' });
+    A(p, [{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], start + i * 180, 750, INOUT);
+  });
+  A(el, [{ filter: 'drop-shadow(0 0 0px rgba(59,123,240,0))', rotate: '-8deg' }, { filter: 'drop-shadow(0 0 30px rgba(59,123,240,.6))', rotate: '0deg' }], start, 1100);
+}
+function impact(layer, start) {
+  A($('#flash'), [{ opacity: 0 }, { opacity: .8, offset: .1 }, { opacity: 0 }], start, 1200, 'ease-out');
+  const k = [];
+  for (let i = 0; i <= 10; i++) { const a = 9 * (1 - i / 10) ** 2; k.push({ translate: `${i % 2 ? a : -a}px ${i % 3 ? -a / 2 : a / 2}px` }); }
+  A(layer, k, start, 450, 'linear');
+}
+
+function headline(html, start, end, parent = world, top = 74) {
+  const el = set(mk('div', 'head', null, parent), { top: top + 'px' });
+  const tmp = mk('div', null, html);
+  let i = 0;
+  for (const node of [...tmp.childNodes]) {
+    const isGrad = node.nodeType === 1;
+    for (const word of node.textContent.split(/(?<= )/)) {
+      const w = set(mk('span', 'w' + (isGrad ? ' grad' : ''), null, el), { opacity: 0 });
+      w.textContent = word;
+      A(w, [{ opacity: 0, translate: '0 34px', filter: 'blur(14px)' }, { opacity: 1, translate: '0 0', filter: 'blur(0px)' }], start + i * 70, 800);
+      i++;
+    }
+  }
+  if (end) A(el, [{ opacity: 1, filter: 'blur(0px)', translate: '0 0' }, { opacity: 0, filter: 'blur(12px)', translate: '0 -24px' }], end, 500, 'ease-in');
+  return el;
+}
+
+const NODE = [960, 560];
+const BROWSERS = [
+  { name: 'Chrome', color: '#f5b800', pos: [430, 420], scatter: [330, 360, -7], count: 14 },
+  { name: 'Edge', color: '#2aa8f2', pos: [1490, 420], scatter: [1560, 330, 6], count: 9 },
+  { name: 'Brave', color: '#fb542b', pos: [330, 800], scatter: [560, 790, 4], count: 21 },
+  { name: 'Vivaldi', color: '#ef4b5f', pos: [1590, 800], scatter: [1370, 830, -5], count: 6 },
+  { name: 'Firefox', color: '#ff8a3d', pos: [960, 890], scatter: [960, 560, 2], count: 11 },
+];
+const SCATTERED = [
+  [['f', 'Work'], ['GitHub', '#e2e8f0'], ['MDN Web Docs', '#93c5fd'], ['f', 'Reading list']],
+  [['f', 'Travel'], ['Weather', '#7dd3fc'], ['GitHub', '#e2e8f0'], ['f', 'Work (old)']],
+  [['f', 'Recipes'], ['GitHub', '#e2e8f0', 'dupe'], ['GitHub', '#e2e8f0', 'dupe'], ['Lisbon guide', '#fca5a5']],
+  [['f', 'Reading list'], ['Sprint board', '#a7f3d0'], ['News', '#fde68a']],
+  [['Weather', '#7dd3fc'], ['f', 'Work'], ['Train times', '#c4b5fd'], ['Pasta al limone', '#fdba74']],
+];
+const ROW_Y = (i) => 46 + i * 40;
+
+function rowEl(parent, [title, color, extra], i) {
+  const r = set(mk('div', 'row' + (extra ? ' ' + extra : ''), null, parent), { translate: `0 ${ROW_Y(i)}px` });
+  const ic = mk('div', 'ic', null, r);
+  if (title === 'f') { ic.innerHTML = FOLDER; title = color; }
+  else { ic.textContent = title[0]; ic.style.background = color; }
+  const t = mk('div', 't', null, r);
+  mk('span', null, null, t).textContent = title;
+  return r;
+}
+
+const wins = BROWSERS.map((b, bi) => {
+  const w = set(mk('div', 'win', null, world), { translate: px(b.scatter), rotate: b.scatter[2] + 'deg', opacity: 0 });
+  const bar = mk('div', 'bar', '<span class="dot"></span><span class="dot"></span><span class="dot"></span>', w);
+  mk('span', 'bname', `<i style="background:${b.color}"></i>${b.name}`, bar);
+  const count = mk('div', 'count', null, bar);
+  const c1 = mk('span', null, null, count); c1.textContent = `${b.count} bookmarks`;
+  const c2 = set(mk('span', null, null, count), { opacity: 0 }); c2.textContent = '23 bookmarks';
+  const c3 = set(mk('span', null, null, count), { opacity: 0 }); c3.textContent = '24 bookmarks';
+  const scattered = SCATTERED[bi].map((r, i) => rowEl(w, r, i));
+  const rows = {
+    hn: rowEl(w, ['Hacker News', '#fdba74'], 0),
+    work: rowEl(w, ['f', 'Work'], 0),
+    read: rowEl(w, ['f', 'Reading list'], 1),
+    travel: rowEl(w, ['f', 'Travel'], 2),
+    gh: rowEl(w, ['GitHub', '#e2e8f0'], 3),
+  };
+  for (const r of Object.values(rows)) r.style.opacity = 0;
+  const alt = (row, text) => { const s = set(mk('span', null, null, row.querySelector('.t')), { opacity: 0 }); s.textContent = text; return [row.querySelector('.t span'), s]; };
+  const ok = set(mk('div', 'pill-ok', '✓ Up to date', w), { opacity: 0 });
+  return { ...b, el: w, count: [c1, c2, c3], scattered, rows, workAlt: alt(rows.work, 'Work · Q4'), readAlt: alt(rows.read, 'Read later'), ok };
+});
+
+function edge(c, d, w = 320, h = 210) {
+  const dx = d[0] - c[0], dy = d[1] - c[1];
+  const t = Math.min(w / 2 / Math.abs(dx || 1e-6), h / 2 / Math.abs(dy || 1e-6));
+  return [c[0] + dx * t, c[1] + dy * t];
+}
+function nodeEdge(p, r = 84) {
+  const dx = p[0] - NODE[0], dy = p[1] - NODE[1], l = Math.hypot(dx, dy);
+  return [NODE[0] + (dx / l) * r, NODE[1] + (dy / l) * r];
+}
+for (const w of wins) { w.out = edge(w.pos, NODE); w.in = nodeEdge(w.pos); }
+
+function packet(from, to, start, dur = 650) {
+  [['pk tr', 90, .45], ['pk tr', 45, .7], ['pk', 0, 1]].forEach(([cls, lag, o]) => {
+    const p = set(mk('div', cls, null, world), { opacity: 0, translate: px(from) });
+    A(p, [{ translate: px(from), opacity: 0, scale: .4 }, { opacity: o, scale: 1, offset: .18 }, { opacity: o, offset: .82 }, { translate: px(to), opacity: 0, scale: .7 }], start + lag, dur, 'cubic-bezier(.5,0,.25,1)');
+  });
+}
+function cipher(from, to, start, text, dur = 1100) {
+  const p = set(mk('div', 'pk cipher', null, world), { opacity: 0, translate: px(from) });
+  p.textContent = text;
+  A(p, [{ translate: px(from), opacity: 0, scale: .6 }, { opacity: 1, scale: 1, offset: .15 }, { opacity: 1, offset: .85 }, { translate: px(to), opacity: 0, scale: .7 }], start, dur, 'cubic-bezier(.5,0,.25,1)');
+}
+function ring(at, start, size = 1, color) {
+  const r = set(mk('div', 'ring', null, world), { opacity: 0, translate: px(at) });
+  if (color) r.style.borderColor = color;
+  A(r, [{ opacity: .9, scale: .6 * size }, { opacity: 0, scale: 2.1 * size }], start, 1100, 'cubic-bezier(.2,.7,.3,1)');
+}
+const SHADOW = '0 30px 60px -20px rgba(0,0,0,.75), 0 0 0 0 rgba(59,123,240,0)';
+const GLOW = '0 30px 60px -20px rgba(0,0,0,.75), 0 0 0 2px rgba(122,167,255,.9), 0 0 50px 4px rgba(59,123,240,.55)';
+function flash(w, start) { A(w.el, [{ boxShadow: SHADOW }, { boxShadow: GLOW, offset: .25 }, { boxShadow: SHADOW }], start, 1000, 'ease-out'); }
+function toast(w, html, start, color) {
+  const t = set(mk('div', 'toast', html, world), { opacity: 0, translate: px([w.pos[0], w.pos[1] - 140]) });
+  if (color) t.style.background = color;
+  A(t, [{ opacity: 0, scale: .6 }, { opacity: 1, scale: 1.06, offset: .14 }, { opacity: 1, scale: 1, offset: .22 }, { opacity: 1, scale: 1, offset: .85 }, { opacity: 0, scale: .9 }], start, 1500);
+}
+const fadeSwap = (a, b, start, dur = 400) => { A(a, [{ opacity: 1 }, { opacity: 0 }], start, dur, 'linear'); A(b, [{ opacity: 0 }, { opacity: 1 }], start, dur, 'linear'); };
+function moveRow(row, i, start, extra = {}) { A(row, [{}, { translate: `0 ${ROW_Y(i)}px`, ...extra }], start, 550, INOUT); }
+
+headline('Your bookmarks live in <b>five browsers.</b>', 300, 2600);
+wins.forEach((w, i) => {
+  const [x, y, r] = w.scatter;
+  A(w.el, [{ opacity: 0, translate: `${x}px ${y + 90}px`, scale: .85, rotate: r * 2 + 'deg' }, { opacity: 1, translate: px([x, y]), scale: 1, rotate: r + 'deg' }], 500 + i * 140, 1000);
+  A(w.el, [{ translate: px([x, y]) }, { translate: px([x + (i % 2 ? 10 : -10), y - 12]) }], 1500 + i * 140, 3400, 'ease-in-out');
+});
+headline('And <b>none of them agree.</b>', 2950, 4500);
+wins.forEach((w, i) => A(w.count[0], [{ color: '#94a0b4' }, { color: '#fda4af' }], 3100 + i * 80, 300));
+
+wins.forEach((w, i) => A(w.el, [{}, { translate: px(w.pos), rotate: '0deg', opacity: .45 }], 4700 + i * 60, 1300, INOUT));
+
+const logo = set(mk('div', 'logo', LOGO, world), { translate: '960px 455px', opacity: 0 });
+drawLogo(logo, 5300);
+impact(world, 5300);
+const title = set(mk('div', 'title shine', 'Bookmark sync', world), { top: '575px', fontSize: '104px', opacity: 0 });
+A(title, [{ opacity: 0, translate: '0 30px', letterSpacing: '0.02em', filter: 'blur(10px)' }, { opacity: 1, translate: '0 0', letterSpacing: '-0.035em', filter: 'blur(0px)' }], 5600, 1100);
+const tag = set(mk('div', 'tag', 'One set of bookmarks. <span class="grad">Every browser.</span>', world), { top: '715px', fontSize: '36px', opacity: 0 });
+A(tag, [{ opacity: 0, translate: '0 20px' }, { opacity: 1, translate: '0 0' }], 6100, 900);
+A(title, [{ opacity: 1 }, { opacity: 0, translate: '0 -20px', filter: 'blur(10px)' }], 7700, 450, 'ease-in');
+A(tag, [{ opacity: 1 }, { opacity: 0, filter: 'blur(10px)' }], 7700, 450, 'ease-in');
+
+const node = set(mk('div', 'node', null, world), { translate: px(NODE), opacity: 0 });
+world.insertBefore(node, logo);
+A(node, [{ opacity: 0, scale: .2 }, { opacity: 1, scale: 1 }], 8000, 800);
+A(logo, [{ translate: '960px 455px', scale: 1 }, { translate: px(NODE), scale: .42 }], 7850, 900, INOUT);
+const nodeLabel = set(mk('div', 'node-label', 'Your storage', world), { translate: px([960, 660]), opacity: 0 });
+A(nodeLabel, [{ opacity: 0 }, { opacity: 1 }], 8700, 500);
+wins.forEach((w, i) => A(w.el, [{ opacity: .45 }, { opacity: 1 }], 8200 + i * 50, 500));
+
+const lineEls = wins.map((w) => {
+  const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  const len = Math.hypot(w.in[0] - w.out[0], w.in[1] - w.out[1]);
+  Object.entries({ x1: w.in[0], y1: w.in[1], x2: w.out[0], y2: w.out[1], stroke: 'rgba(122,167,255,.4)', 'stroke-width': 2, 'stroke-dasharray': len, 'stroke-dashoffset': len }).forEach(([k, v]) => l.setAttribute(k, v));
+  lines.append(l);
+  const flow = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  Object.entries({ x1: w.in[0], y1: w.in[1], x2: w.out[0], y2: w.out[1], stroke: 'rgba(160,190,255,.55)', 'stroke-width': 2, 'stroke-dasharray': '3 16', 'stroke-linecap': 'round', opacity: 0 }).forEach(([k, v]) => flow.setAttribute(k, v));
+  lines.append(flow);
+  return { l, len, flow };
+});
+lineEls.forEach(({ l, len, flow }, i) => {
+  A(l, [{ strokeDashoffset: len }, { strokeDashoffset: 0 }], 8600 + i * 90, 700, INOUT);
+  A(flow, [{ opacity: 0 }, { opacity: 1 }], 9400, 600);
+  A(flow, [{ strokeDashoffset: 0 }, { strokeDashoffset: -760 }], 9400, 30600, 'linear');
+});
+
+headline('Every browser gets <b>the same bookmarks.</b>', 9300, 12000);
+ring(NODE, 9500);
+wins.forEach((w, i) => {
+  packet(w.in, w.out, 9600 + i * 40, 600);
+  const t = 10200 + i * 40;
+  flash(w, t);
+  w.scattered.forEach((r) => A(r, [{ opacity: 1, filter: 'blur(0px)' }, { opacity: 0, filter: 'blur(6px)' }], t, 300, 'linear'));
+  ['work', 'read', 'travel', 'gh'].forEach((k, j) => A(w.rows[k], [{ opacity: 0, translate: `0 ${ROW_Y(j) + 14}px` }, { opacity: 1, translate: `0 ${ROW_Y(j)}px` }], t + 120 + j * 60, 500));
+  fadeSwap(w.count[0], w.count[1], t);
+});
+
+headline('Every change syncs <b>as it happens.</b>', 12300, 15100);
+const chrome = wins[0];
+toast(chrome, '+ Bookmark added', 12900);
+A(chrome.rows.hn, [{ opacity: 0, scale: .9 }, { opacity: 1, scale: 1 }], 13250, 500);
+const shiftDown = (w, t) => {
+  moveRow(w.rows.work, 1, t); moveRow(w.rows.read, 2, t); moveRow(w.rows.travel, 3, t);
+  moveRow(w.rows.gh, 4, t, { opacity: 0 });
+  fadeSwap(w.count[1], w.count[2], t);
+};
+shiftDown(chrome, 13100);
+flash(chrome, 13150);
+packet(chrome.out, chrome.in, 13600);
+ring(NODE, 14200);
+wins.slice(1).forEach((w, i) => {
+  packet(w.in, w.out, 14300 + i * 50);
+  const t = 14900 + i * 50;
+  shiftDown(w, t - 100);
+  A(w.rows.hn, [{ opacity: 0, scale: .9 }, { opacity: 1, scale: 1 }], t + 50, 500);
+  flash(w, t);
+});
+
+headline('Edits from different browsers <b>merge cleanly.</b>', 15400, 18600);
+const brave = wins[2], firefox = wins[4];
+toast(brave, '✎ Renamed', 15900, '#7c3aed');
+toast(firefox, '✎ Renamed', 15950, '#7c3aed');
+fadeSwap(...brave.readAlt, 16150, 350);
+fadeSwap(...firefox.workAlt, 16200, 350);
+flash(brave, 16150); flash(firefox, 16200);
+packet(brave.out, brave.in, 16550);
+packet(firefox.out, firefox.in, 16550);
+const merge = set(mk('div', 'logo', MERGE, world), { translate: px(NODE), opacity: 0, scale: .4 });
+A(logo, [{ opacity: 1 }, { opacity: 0, rotate: '90deg' }], 17150, 300, 'ease-in');
+A(merge, [{ opacity: 0, rotate: '-90deg', scale: .3 }, { opacity: 1, rotate: '0deg', scale: .42 }], 17250, 450);
+A(merge, [{ opacity: 1 }, { opacity: 0, rotate: '90deg' }], 18000, 300, 'ease-in');
+A(logo, [{ opacity: 0, rotate: '-90deg' }, { opacity: 1, rotate: '0deg' }], 18150, 400);
+ring(NODE, 17300, 1, 'rgba(180,156,255,.9)');
+wins.forEach((w, i) => {
+  if (w !== firefox) { packet(w.in, w.out, 17550 + i * 40); fadeSwap(...w.workAlt, 18150 + i * 40, 350); }
+  if (w !== brave) { if (w === firefox) packet(w.in, w.out, 17550 + i * 40); fadeSwap(...w.readAlt, 18150 + i * 40, 350); }
+  flash(w, 18150 + i * 40);
+});
+headline('Nothing lost. <b>Nothing doubled.</b>', 18900, 20900);
+wins.forEach((w, i) => {
+  A(w.count[2], [{ opacity: 1 }, { opacity: 0 }], 19000, 300, 'linear');
+  A(w.ok, [{ opacity: 0, scale: .6 }, { opacity: 1, scale: 1 }], 19050 + i * 90, 450);
+});
+
+wins.forEach((w) => A(w.el, [{ opacity: 1, scale: 1, filter: 'blur(0px)' }, { opacity: .25, scale: .94, filter: 'blur(2px)' }], 21000, 700, INOUT));
+A(lines, [{ opacity: 1 }, { opacity: .35 }], 21000, 700);
+A(node, [{ scale: 1 }, { scale: 1.3 }], 21000, 800, INOUT);
+A(logo, [{ scale: .42 }, { scale: .55 }], 21000, 800, INOUT);
+A(nodeLabel, [{ opacity: 1 }, { opacity: 0 }], 21000, 300);
+headline('Kept on <b>storage you choose.</b>', 21200, 23500);
+const STORES = ['Nextcloud', 'ownCloud', 'Synology', 'Koofr', 'rclone', 'Any WebDAV server', 'Google Drive'];
+STORES.forEach((s, i) => {
+  const a = -Math.PI / 2 + (i / STORES.length) * Math.PI * 2;
+  const p = [NODE[0] + Math.cos(a) * 400, NODE[1] + 20 + Math.sin(a) * 255];
+  const c = set(mk('div', 'chip', `<i></i>${s}`, world), { translate: px(NODE), opacity: 0 });
+  if (s === 'Google Drive') c.querySelector('i').style.background = '#34d399';
+  A(c, [{ translate: px(NODE), opacity: 0, scale: .3 }, { translate: px(p), opacity: 1, scale: 1 }], 21500 + i * 110, 900);
+  A(c, [{ translate: px(p) }, { translate: px([p[0] + Math.cos(a + 1.6) * 18, p[1] + Math.sin(a + 1.6) * 12]) }], 22400 + i * 110, 1300, 'ease-in-out');
+  A(c, [{ opacity: 1, scale: 1 }, { opacity: 0, scale: .6, translate: px(NODE) }], 23600 + i * 40, 600, 'cubic-bezier(.5,0,.75,0)');
+});
+
+headline('Optional encryption, <b>with a passphrase only you know.</b>', 23900, 26600);
+wins.forEach((w) => A(w.el, [{ opacity: .25, filter: 'blur(2px)' }, { opacity: .75, filter: 'blur(0px)' }], 24000, 600));
+A(lines, [{ opacity: .35 }, { opacity: 1 }], 24000, 600);
+A(logo, [{ opacity: 1 }, { opacity: 0, scale: .3 }], 24000, 300, 'ease-in');
+const lock = set(mk('div', 'lock', `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${LOCK_BODY}<g id="shackle">${LOCK_SHACKLE}</g></svg>`, world), { translate: px(NODE), opacity: 0 });
+A(lock, [{ opacity: 0, scale: .5 }, { opacity: 1, scale: 1 }], 24200, 500);
+const shackle = set(lock.querySelector('#shackle'), { translate: '0 -3px' });
+A(shackle, [{ translate: '0 -3px' }, { translate: '0 0' }], 24800, 250, 'cubic-bezier(.6,0,.9,.4)');
+A(node, [{ borderColor: 'rgba(122,167,255,.35)', boxShadow: '0 0 80px -10px rgba(59,123,240,.55), inset 0 0 30px rgba(122,167,255,.15)' }, { borderColor: 'rgba(180,156,255,.8)', boxShadow: '0 0 110px 0px rgba(139,92,246,.6), inset 0 0 40px rgba(180,156,255,.25)' }], 25000, 400);
+ring(NODE, 25050, 1.3, 'rgba(180,156,255,.9)');
+const CIPHERS = ['x9#Kq2!', 'Zr0$7vB', 'm4@Lp8&', 'Q1%e7Yw', 'b6^Tn3*'];
+wins.forEach((w, i) => cipher(w.out, w.in, 25300 + i * 110, CIPHERS[i]));
+
+A(world, [{ scale: 1 }, { scale: 1.035 }], 5000, 21600, 'linear');
+A(world, [{ opacity: 1, scale: 1.035, filter: 'blur(0px)' }, { opacity: 0, scale: 1.18, filter: 'blur(16px)' }], 26600, 700, 'cubic-bezier(.5,0,.75,0)');
+
+// CSS-pixel boxes from shots/boxes.json; copy them again after re-running capture.mjs.
+const BOXES = {
+  server: { x: 200, y: 301.5, width: 600, height: 77.8 },
+  start: { x: 669.9, y: 495.3, width: 130.1, height: 44 },
+  combine: { x: 309, y: 810.5, width: 60, height: 22.6 },
+  join: { x: 666.7, y: 1193.9, width: 133.3, height: 44 },
+  undo: { x: 787.8, y: 388.8, width: 131.2, height: 36 },
+};
+const K = 1180 / 1000;
+const at = (key, scroll = 0) => { const b = BOXES[key]; return [(b.x + b.width / 2) * K, (b.y + b.height / 2) * K - scroll]; };
+const JOIN_SCROLL = 700;
+const SLIDES = [
+  { img: 'shots/setup-1-storage.png', k: 'SET UP', h: 'Ready in a minute', s: 'Pick Google Drive or any WebDAV server. The page checks the connection for you.', origin: '50% 20%',
+    cursor: [[700, [780, 720]], [1500, at('server'), true]] },
+  { img: 'shots/setup-4-what.png', k: 'CHOOSE', h: 'Sync it all, or just some folders', s: 'Every bookmark, or only the folders you tick.', origin: '30% 30%',
+    cursor: [[600, [380, 720]], [1500, at('start'), true]] },
+  { img: 'shots/join-2-preview.png', k: 'JOIN', h: 'Add your other browsers', s: 'Join the sync, pick where each folder goes, and preview what changes.', origin: '40% 10%', scroll: JOIN_SCROLL,
+    cursor: [[900, [760, 560]], [1500, at('combine', JOIN_SCROLL), true], [2100, at('join', JOIN_SCROLL), true]] },
+  { img: 'shots/dash-history.png', k: 'HISTORY', h: 'Every change, kept', s: 'Go back to any point. The undo reaches every browser.', origin: '80% 60%', hl: [930, 452, 165, 210],
+    cursor: [[600, [700, 760]], [1300, at('undo'), true]] },
+];
+const CURSOR = '<svg viewBox="0 0 24 24" width="34" height="34"><path d="M4 2.5l15 11.2-6.6 1.1 3.9 7.3-3.1 1.6-3.8-7.4-5.4 4.6z" fill="#fff" stroke="#0f172a" stroke-width="1.4" stroke-linejoin="round"/></svg>';
+window.CLICKS = [];
+const fw = mk('div', 'frame-wrap', null, product);
+const frame = set(mk('div', 'frame', null, fw), { opacity: 0 });
+mk('div', 'fbar', `<span class="d" style="background:#ff5f57"></span><span class="d" style="background:#febc2e"></span><span class="d" style="background:#28c840"></span><div class="addr">${LOGO}Bookmark sync</div>`, frame);
+const view = mk('div', 'view', null, frame);
+A(frame, [{ opacity: 0, transform: 'translateX(260px) rotateY(-28deg) scale(.9)' }, { opacity: 1, transform: 'translateX(0) rotateY(-7deg) scale(.95)' }], 27000, 1200);
+A(frame, [{ transform: 'translateX(0) rotateY(-7deg) scale(.95)' }, { transform: 'translateX(0) rotateY(-2deg) scale(.95)' }], 28200, 8000, 'ease-in-out');
+const steps = mk('div', 'steps', null, product);
+const stepDots = SLIDES.map(() => set(mk('i', null, null, steps), { opacity: 0 }));
+const SLOT = 2350, S5 = 27200;
+SLIDES.forEach((sl, i) => {
+  const t0 = S5 + i * SLOT, t1 = t0 + SLOT + (i === SLIDES.length - 1 ? 2200 : 0);
+  const slide = set(mk('div', 'slide', null, view), { opacity: 0, transformOrigin: sl.origin });
+  const pageEl = mk('div', 'page', `<img src="${sl.img}">`, slide);
+  if (sl.scroll) A(pageEl, [{ translate: '0 0' }, { translate: `0 ${-sl.scroll}px` }], t0 + 450, 900, INOUT);
+  if (i === 0) slide.style.opacity = 1;
+  else A(slide, [{ opacity: 0, translate: '90px 0', filter: 'blur(8px)' }, { opacity: 1, translate: '0 0', filter: 'blur(0px)' }], t0, 650);
+  A(slide, [{ scale: 1 }, { scale: 1.07 }], t0, t1 - t0 + 600, 'linear');
+  if (i < SLIDES.length - 1) A(slide, [{ opacity: 1, translate: '0 0' }, { opacity: 0, translate: '-90px 0' }], t1, 650, INOUT);
+  if (sl.hl) {
+    const [x, y, w, h] = sl.hl;
+    const hl = set(mk('div', 'hl', null, slide), { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px', opacity: 0 });
+    A(hl, [{ opacity: 0, scale: 1.15 }, { opacity: 1, scale: 1 }], t0 + 700, 500);
+  }
+  const [[firstAt, firstP], ...moves] = sl.cursor;
+  const cur = set(mk('div', 'cursor', CURSOR, slide), { translate: px(firstP), opacity: 0 });
+  A(cur, [{ opacity: 0, scale: 1.3 }, { opacity: 1, scale: 1 }], t0 + firstAt, 300);
+  let prev = firstP;
+  for (const [dt, p, click] of moves) {
+    A(cur, [{ translate: px(prev) }, { translate: px(p) }], t0 + dt - 480, 480, 'cubic-bezier(.4,0,.15,1)');
+    if (click) {
+      const t = t0 + dt + 60;
+      window.CLICKS.push(t);
+      A(cur, [{ scale: 1 }, { scale: .82, offset: .4 }, { scale: 1 }], t, 260, 'ease-out');
+      const rip = set(mk('div', 'ripple', null, slide), { translate: px(p), opacity: 0 });
+      A(rip, [{ opacity: .9, scale: .2 }, { opacity: 0, scale: 1.6 }], t + 40, 600, 'cubic-bezier(.2,.7,.3,1)');
+    }
+    prev = p;
+  }
+  const cap = set(mk('div', 'cap', `<div class="k">${sl.k}</div><div class="h">${sl.h}</div><div class="s">${sl.s}</div>`, product), { opacity: 0 });
+  [...cap.children].forEach((c, j) => A(c, [{ opacity: 0, translate: '0 26px', filter: 'blur(8px)' }, { opacity: 1, translate: '0 0', filter: 'blur(0px)' }], t0 + 200 + j * 90, 700));
+  A(cap, [{ opacity: 0 }, { opacity: 1 }], t0, 10, 'linear');
+  A(cap, [{ opacity: 1, translate: '0 0' }, { opacity: 0, translate: '0 -20px' }], t1 - 150, 400, 'ease-in');
+  A(stepDots[i], [{ opacity: 0 }, { opacity: 1 }], S5 + i * 60, 400);
+  A(stepDots[i], [{ background: 'rgba(148,163,184,.25)', width: '34px' }, { background: '#7aa7ff', width: '60px' }], t0, 400);
+  if (i < SLIDES.length - 1) A(stepDots[i], [{}, { background: 'rgba(122,167,255,.45)', width: '34px' }], t1, 400);
+});
+const popup = set(mk('div', 'popup', '<img src="shots/popup.png">', product), { translate: '120px 1200px', opacity: 0 });
+A(popup, [{ translate: '120px 1200px', opacity: 0, rotate: '6deg' }, { translate: '120px 745px', opacity: 1, rotate: '-2deg' }], 35100, 900);
+A(product, [{ opacity: 1, scale: 1, filter: 'blur(0px)' }, { opacity: 0, scale: .94, filter: 'blur(14px)' }], 36600, 600, 'cubic-bezier(.5,0,.75,0)');
+
+const oLogo = set(mk('div', 'logo', LOGO, outro), { translate: '960px 330px', opacity: 0 });
+set(oLogo, { scale: .82 });
+drawLogo(oLogo, 37000);
+impact(outro, 37000);
+const oTitle = set(mk('div', 'title shine', 'Bookmark sync', outro), { top: '430px', fontSize: '120px', opacity: 0 });
+A(oTitle, [{ opacity: 0, translate: '0 30px', letterSpacing: '0.04em', filter: 'blur(12px)' }, { opacity: 1, translate: '0 0', letterSpacing: '-0.035em', filter: 'blur(0px)' }], 37100, 1100);
+const oTag = set(mk('div', 'tag', 'One set of bookmarks. <span class="grad">Every browser.</span>', outro), { top: '600px', fontSize: '40px', opacity: 0 });
+A(oTag, [{ opacity: 0, translate: '0 20px' }, { opacity: 1, translate: '0 0' }], 37500, 900);
+const oBrowsers = set(mk('div', 'browsers', BROWSERS.map((b) => `<span><i style="background:${b.color}"></i>${b.name}</span>`).join(''), outro), { top: '745px' });
+[...oBrowsers.children].forEach((c, i) => { c.style.opacity = 0; A(c, [{ opacity: 0, translate: '0 18px' }, { opacity: 1, translate: '0 0' }], 37900 + i * 90, 700); });
+const oStore = set(mk('div', 'tag', 'Syncs through WebDAV or Google Drive', outro), { top: '815px', fontSize: '24px', opacity: 0 });
+A(oStore, [{ opacity: 0 }, { opacity: .85 }], 38500, 800);
+
+A($('#flash'), [{ opacity: 0 }, { opacity: .4, offset: .12 }, { opacity: 0 }], 28000, 1100, 'ease-out');
+A($('#fade'), [{ opacity: 0 }, { opacity: 1 }], 39200, 800, 'ease-in');
+A($('.title.shine'), [{ backgroundPosition: '100% 0' }, { backgroundPosition: '0% 0' }], 6200, 1600, INOUT);
+A(oTitle, [{ backgroundPosition: '100% 0' }, { backgroundPosition: '0% 0' }], 37900, 1700, INOUT);
+window.seek = (t) => { for (const a of document.getAnimations()) a.currentTime = t; };
+window.DURATION = DURATION;
+const q = new URLSearchParams(location.search).get('t');
+seek(q ? Number(q) : 0);
+window.ready = Promise.all([document.fonts.ready, ...[...document.images].map((i) => i.decode().catch(() => {}))]);
+</script>
+</body>
+</html>
