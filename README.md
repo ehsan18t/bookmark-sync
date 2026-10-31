@@ -2,7 +2,7 @@
 
 **Your bookmarks, the same in every browser.**
 
-https://github.com/user-attachments/assets/5849f818-9aca-4ffa-b06b-f3697e4647b6
+https://github.com/user-attachments/assets/2ac44853-5fa4-46ad-a774-564400b4bc05
 
 Bookmark sync is a browser extension that keeps your bookmarks in step across Chrome, Edge, Brave, Vivaldi and Firefox. Add a bookmark in one browser and it appears in the others. Your bookmarks are stored in your own Google Drive or on your own server, never on ours.
 
