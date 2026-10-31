@@ -8,11 +8,18 @@ export function extensionId(publicKeyBase64) {
   return [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
 }
 
+/** Firefox names the redirect host after the SHA-1 of the add-on ID, and offers this loopback form of it. */
+export function firefoxRedirect(geckoId) {
+  return `http://127.0.0.1/mozoauth2/${createHash('sha1').update(geckoId).digest('hex')}`;
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const files = ['.env', '.env.local'].filter((f) => existsSync(f)).map((f) => parseEnv(readFileSync(f, 'utf8')));
-  const key = Object.assign({}, ...files).WXT_CHROMIUM_KEY;
-  if (!key) throw new Error('WXT_CHROMIUM_KEY is not set in .env');
-  const id = extensionId(key);
-  console.log(`Extension ID:  ${id}`);
-  console.log(`Redirect URI:  https://${id}.chromiumapp.org/`);
+  const env = Object.assign({}, ...files);
+  if (!env.WXT_CHROMIUM_KEY) throw new Error('WXT_CHROMIUM_KEY is not set in .env');
+  const id = extensionId(env.WXT_CHROMIUM_KEY);
+  console.log(`Chromium extension ID:   ${id}`);
+  console.log(`Chromium redirect URI:   https://${id}.chromiumapp.org/`);
+  if (env.WXT_GECKO_ID) console.log(`Firefox redirect URI:    ${firefoxRedirect(env.WXT_GECKO_ID)}`);
+  else console.log('Firefox redirect URI:    set WXT_GECKO_ID in .env to see it');
 }
