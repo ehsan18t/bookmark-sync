@@ -712,7 +712,7 @@ export class GroupEngine {
         const localId = await this.ports.place(decodeHint(n.url?.value ?? '') ?? { root: 'other', path: [title] }, title, this.groupId);
         if (localId) {
           parts.push({ part: id, localId });
-          this.notice(`“${title}” was added to this sync in another browser. It syncs here in a new folder; to use a folder you already have, move it under Folders synced here.`);
+          this.notice(`“${title}” was added to this sync in another browser. It syncs here in a new folder. To use a folder you already have instead, move it under Folders synced here.`);
         } else {
           config.declined = [...(config.declined ?? []), id];
           this.notice(`“${title}” was added to this sync in another browser, but its place here is already synced by another folder. Add it from Folders synced here to pick a place for it.`);
